@@ -286,7 +286,6 @@ public class RicePlantListener implements Listener {
         return behavior.canStay(block, state);
     }
 
-    @SuppressWarnings("unchecked")
     private void syncSupportingState(Block block, ImmutableBlockState state) {
         if (isUpperRiceHalf(state)) {
             return;
@@ -306,27 +305,6 @@ public class RicePlantListener implements Listener {
 
             CraftEngineBlocks.place(block.getLocation(), state.with(supportingProperty, shouldSupport), false);
         } catch (Exception ignored) {
-        }
-    }
-
-    private Integer getIntProperty(ImmutableBlockState state, String propertyName) {
-        if (state == null || state.isEmpty()) {
-            return null;
-        }
-
-        try {
-            Property<?> property = state.owner().value().getProperty(propertyName);
-            if (property == null) {
-                return null;
-            }
-
-            Object value = state.get(property);
-            if (value instanceof Integer integer) {
-                return integer;
-            }
-            return null;
-        } catch (Exception ignored) {
-            return null;
         }
     }
 
@@ -395,7 +373,6 @@ public class RicePlantListener implements Listener {
         return String.valueOf(value).trim().toLowerCase();
     }
 
-    @SuppressWarnings("unchecked")
     private Property<Integer> getAgeProperty(CustomBlock block) {
         if (block == null) {
             return null;
@@ -404,7 +381,6 @@ public class RicePlantListener implements Listener {
         return (Property<Integer>) block.getProperty("age");
     }
 
-    @SuppressWarnings("unchecked")
     private Property<Integer> getAgeProperty(ImmutableBlockState state) {
         if (state == null || state.isEmpty()) {
             return null;
@@ -561,10 +537,6 @@ public class RicePlantListener implements Listener {
         return getWildRiceBehavior().canPlantAt(waterBlock);
     }
 
-    private boolean isValidWildRiceSoil(Block block) {
-        return getWildRiceBehavior().isValidSoil(block);
-    }
-
     private void resetLowerAfterUpperBreak(Block lowerBlock) {
         if (lowerBlock == null) {
             return;
@@ -708,10 +680,6 @@ public class RicePlantListener implements Listener {
         return placementSucceeded || placedNow;
     }
 
-    private void scheduleRiceStabilization(Location location) {
-        scheduleRiceStabilization(location, 2);
-    }
-
     private void scheduleRiceStabilization(Location location, int attemptsRemaining) {
         if (location == null || location.getWorld() == null || attemptsRemaining <= 0) {
             return;
@@ -731,7 +699,7 @@ public class RicePlantListener implements Listener {
         }, 1L);
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
+    @SuppressWarnings({"rawtypes"})
     private ImmutableBlockState withRawProperty(ImmutableBlockState state, Property<?> property, Object value) {
         if (state == null || property == null || value == null) {
             return state;

@@ -197,16 +197,6 @@ public class BlockBreakListener implements Listener {
         return blockId != null && MANAGED_INTERACTIVE_BLOCK_IDS.contains(blockId);
     }
 
-    private boolean isManagedInteractiveBlock(org.bukkit.block.Block block) {
-        String blockId = CustomBlockUtils.getId(block);
-        return blockId != null && MANAGED_INTERACTIVE_BLOCK_IDS.contains(blockId);
-    }
-
-    private boolean isStateManagedInteractiveBlock(ImmutableBlockState state) {
-        String blockId = CustomBlockUtils.getId(state);
-        return blockId != null && STATE_MANAGED_INTERACTIVE_BLOCK_IDS.contains(blockId);
-    }
-
     private boolean isStateManagedInteractiveBlock(org.bukkit.block.Block block) {
         String blockId = CustomBlockUtils.getId(block);
         return blockId != null && STATE_MANAGED_INTERACTIVE_BLOCK_IDS.contains(blockId);

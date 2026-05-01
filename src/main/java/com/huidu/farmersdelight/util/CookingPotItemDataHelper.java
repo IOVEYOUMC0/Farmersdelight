@@ -215,7 +215,14 @@ public final class CookingPotItemDataHelper {
                 ? inventory[CookingPotBlockBehavior.SLOT_OUTPUT]
                 : null;
         if (output != null && !output.getType().isAir()) {
-            return output.clone();
+            ItemStack preview = output.clone();
+            ItemStack pending = inventory.length > CookingPotBlockBehavior.SLOT_MEAL_DISPLAY
+                    ? inventory[CookingPotBlockBehavior.SLOT_MEAL_DISPLAY]
+                    : null;
+            if (isSameMealPreviewType(preview, pending)) {
+                preview.setAmount(Math.min(64, preview.getAmount() + pending.getAmount()));
+            }
+            return preview;
         }
 
         ItemStack pending = inventory.length > CookingPotBlockBehavior.SLOT_MEAL_DISPLAY
@@ -230,6 +237,24 @@ public final class CookingPotItemDataHelper {
         }
 
         return null;
+    }
+
+    private static boolean isSameMealPreviewType(ItemStack first, ItemStack second) {
+        if (first == null || second == null || first.getType().isAir() || second.getType().isAir()) {
+            return false;
+        }
+
+        String firstCustomId = ItemUtils.getCustomItemId(first);
+        String secondCustomId = ItemUtils.getCustomItemId(second);
+        if (firstCustomId != null || secondCustomId != null) {
+            return firstCustomId != null && firstCustomId.equals(secondCustomId);
+        }
+
+        ItemStack firstSingle = first.clone();
+        firstSingle.setAmount(1);
+        ItemStack secondSingle = second.clone();
+        secondSingle.setAmount(1);
+        return firstSingle.isSimilar(secondSingle);
     }
 
     private static void updatePackedLore(ItemMeta meta, ItemStack preview) {

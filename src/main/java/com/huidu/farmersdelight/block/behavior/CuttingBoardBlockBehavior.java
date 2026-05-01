@@ -206,7 +206,6 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
         return CustomBlockUtils.idContains(world.getBlockAt(posKey.x(), posKey.y(), posKey.z()), "cutting_board");
     }
 
-    @SuppressWarnings("unchecked")
     public static final BlockBehaviorFactory<CuttingBoardBlockBehavior> FACTORY = new BlockBehaviorFactory<CuttingBoardBlockBehavior>() {
         @Override
         public CuttingBoardBlockBehavior create(CustomBlock block, Map<String, Object> arguments) {
