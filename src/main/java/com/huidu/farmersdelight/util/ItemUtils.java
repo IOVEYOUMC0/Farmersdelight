@@ -375,7 +375,6 @@ public final class ItemUtils {
         return items;
     }
 
-    @SuppressWarnings("unchecked")
     private static boolean isVanillaMaterialInTag(Material material, Key tagKey) {
         NamespacedKey namespacedKey = NamespacedKey.fromString(tagKey.toString());
         if (namespacedKey == null) {

@@ -43,8 +43,6 @@ public class TallCropBlockBehavior extends BlockBehavior {
     private final boolean requiresWater;
     private final boolean resetOnHarvest;
     private final Key upperBlockId;
-    private final SoilRules soilRules;
-
     private static final Map<Key, SoilRules> SOIL_RULES = new ConcurrentHashMap<>();
 
     private TallCropBlockBehavior(CustomBlock block, Property<Integer> ageProperty,
@@ -68,7 +66,6 @@ public class TallCropBlockBehavior extends BlockBehavior {
         this.requiresWater = requiresWater;
         this.resetOnHarvest = resetOnHarvest;
         this.upperBlockId = upperBlockId;
-        this.soilRules = soilRules;
     }
 
     @SuppressWarnings("unchecked")
@@ -564,7 +561,7 @@ public class TallCropBlockBehavior extends BlockBehavior {
         return String.valueOf(value).trim().toLowerCase();
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
+    @SuppressWarnings({})
     private static Object getRawPropertyValue(Object configuredValue, Property<?> property, Object fallback) {
         if (configuredValue == null || property == null) {
             return fallback;

@@ -82,7 +82,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private final List<String> behaviorRegistryConflicts = new ArrayList<>();
     private boolean shouldDisable = false;
     private volatile boolean startupSyncCompleted = false;
-    private volatile boolean datapackReloadQueued = false;
     private volatile boolean datapackSyncQueued = false;
     private volatile boolean datapackRemovalQueued = false;
     private BukkitTask pendingCraftEngineReloadTask;
@@ -465,7 +464,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             return;
         }
 
-        datapackReloadQueued = true;
         pendingDatapackReloadTask = getServer().getScheduler().runTaskLater(this, () -> {
             pendingDatapackReloadTask = null;
             try {
@@ -476,7 +474,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                 getLogger().info("Reloading data packs to " + reloadReason + "...");
                 getServer().reloadData();
             } finally {
-                datapackReloadQueued = false;
             }
         }, 10L);
     }

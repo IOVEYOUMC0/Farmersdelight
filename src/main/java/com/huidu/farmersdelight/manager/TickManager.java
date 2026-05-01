@@ -177,6 +177,7 @@ public class TickManager {
             try {
                 switch (activeBlock.type) {
                     case COOKING_POT -> tickCookingPot(world, activeBlock.posKey);
+                    default -> throw new IllegalArgumentException("Unexpected value: " + activeBlock.type);
                 }
             } catch (Exception e) {
                 plugin.getLogger().warning("Error ticking " + activeBlock.type + " at " + activeBlock.posKey + ": " + e.getMessage());
@@ -429,20 +430,6 @@ public class TickManager {
             return defaultValue;
         }
         return section.getDouble(key, defaultValue);
-    }
-
-    private double getBehaviorOrConfigDouble(Double behaviorValue, ConfigurationSection section, String key, double defaultValue) {
-        if (behaviorValue != null) {
-            return behaviorValue;
-        }
-        return getDouble(section, key, defaultValue);
-    }
-
-    private String getString(ConfigurationSection section, String key) {
-        if (section == null) {
-            return null;
-        }
-        return section.getString(key);
     }
 
     private String firstNonBlank(String primary, String fallback) {
