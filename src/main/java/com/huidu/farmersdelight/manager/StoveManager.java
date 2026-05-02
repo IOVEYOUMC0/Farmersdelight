@@ -558,9 +558,9 @@ public class StoveManager {
         BlockFace facing = CustomBlockUtils.getFacing(block).getOppositeFace();
 
         return switch (facing) {
-            case EAST -> new double[]{-offset[2], offset[1], offset[0]};
+            case EAST -> new double[]{offset[2], offset[1], -offset[0]};
             case SOUTH -> new double[]{-offset[0], offset[1], -offset[2]};
-            case WEST -> new double[]{offset[2], offset[1], -offset[0]};
+            case WEST -> new double[]{-offset[2], offset[1], offset[0]};
             default -> new double[]{offset[0], offset[1], offset[2]};
         };
     }
