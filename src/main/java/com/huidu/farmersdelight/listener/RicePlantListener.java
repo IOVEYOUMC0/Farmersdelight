@@ -55,8 +55,6 @@ public class RicePlantListener implements Listener {
         Block block = event.getBlock();
         ImmutableBlockState state = CraftEngineBlocks.getCustomBlockState(block);
         if (isWildRiceBlock(state)) {
-            event.setCancelled(true);
-
             if (canWildRiceStay(block, state)) {
                 return;
             }
@@ -68,8 +66,6 @@ public class RicePlantListener implements Listener {
         if (!isRiceBlock(state)) {
             return;
         }
-
-        event.setCancelled(true);
 
         if (canRiceStay(block, state)) {
             syncSupportingState(block, state);
