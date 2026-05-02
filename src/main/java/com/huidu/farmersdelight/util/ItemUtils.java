@@ -291,7 +291,7 @@ public final class ItemUtils {
         String key = matcher.group(1);
         String translated = translate(key, locale);
         if (translated.equals(key)) {
-            return null;
+            return Component.translatable(key);
         }
         return Component.text(translated);
     }

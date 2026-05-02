@@ -72,7 +72,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             "advancements/data/farmersdelight/advancement/main/plant_rice.json",
             "advancements/data/farmersdelight/advancement/main/plant_all_crops.json",
             "advancements/data/farmersdelight/advancement/main/get_ham.json",
-            "advancements/data/farmersdelight/advancement/main/eat_comfort_food.json",
             "advancements/data/farmersdelight/advancement/main/eat_nourishing_food.json",
             "advancements/data/farmersdelight/advancement/main/master_chef.json"
     );
@@ -247,6 +246,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         getServer().getPluginManager().registerEvents(blockPlaceListener, this);
         getServer().getPluginManager().registerEvents(new SkilletPlaceListener(), this);
         getServer().getPluginManager().registerEvents(new SkilletAttackSoundListener(), this);
+        getServer().getPluginManager().registerEvents(new CuttingBoardInteractListener(), this);
 
         strawDropListener = new StrawDropListener(this);
         getServer().getPluginManager().registerEvents(strawDropListener, this);
@@ -573,7 +573,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private void refreshAfterCraftEngineReload() {
         RecipeViewGui.clearConfigCache();
         StoveCookingBlockBehavior.clearRecipeCache();
-        StoveCookingBlockEntity.clearRecipeCache();
         SkilletBlockEntity.clearRecipeCache();
 
         if (stoveManager != null) {
@@ -592,7 +591,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         I18n.reload();
         RecipeViewGui.clearConfigCache();
         StoveCookingBlockBehavior.clearRecipeCache();
-        StoveCookingBlockEntity.clearRecipeCache();
         SkilletBlockEntity.clearRecipeCache();
 
         if (knifeDropHandler != null) {
