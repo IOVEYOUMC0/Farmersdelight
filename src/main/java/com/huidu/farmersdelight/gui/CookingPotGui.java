@@ -378,7 +378,9 @@ public class CookingPotGui implements InventoryHolder, Listener {
         String containerLabel = viewer != null
                 ? I18n.get("gui.recipe.container", viewer)
                 : I18n.get("gui.recipe.container");
-        String containerName = ItemUtils.getDisplayName(container);
+        String containerName = viewer != null
+                ? ItemUtils.getDisplayName(container, viewer)
+                : ItemUtils.getDisplayName(container);
 
         lore.add(Component.empty());
         lore.add(Component.text(containerLabel + ": ", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
