@@ -106,8 +106,6 @@ cooking-pot-packed-drop:
   enabled: true
   durability-bar:
     enabled: true
-  hide-advanced-durability-tooltip:
-    enabled: false
 
 # Cooking pot world animation effects
 cooking-pot-effects:
