@@ -13,6 +13,7 @@ import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.HashSet;
@@ -261,6 +262,12 @@ public class TickManager {
         }
 
         if (entity.getCookingProgress() > 0 && entity.getCurrentRecipe() != null) {
+            CookingPotRecipe recipe = entity.getCurrentRecipe();
+            ItemStack result = recipe.getResult();
+            String recipeName = result.hasItemMeta() && result.getItemMeta().displayName() != null
+                    ? result.getItemMeta().displayName().toString()
+                    : recipe.getId();
+            CookingPotBlockBehavior.setCookingRecipeName(posKey, recipeName);
             CookingPotBlockBehavior.updateProgressDisplay(world, posKey, entity.getProgressPercent());
         } else {
             CookingPotBlockBehavior.removeProgressDisplay(world, posKey);
