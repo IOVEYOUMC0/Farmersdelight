@@ -47,7 +47,7 @@ public class CookingPotBlockBehavior extends BlockBehavior {
     private static final Map<UUID, Map<BlockPosKey, CookingPotBlockEntity>> worldBlockEntities = new ConcurrentHashMap<>();
     private static final Map<UUID, Map<BlockPosKey, TextDisplay>> worldProgressDisplays = new ConcurrentHashMap<>();
     private static final Map<BlockPosKey, Set<UUID>> displayVisibleToPlayers = new ConcurrentHashMap<>();
-    private static final Map<BlockPosKey, String> cookingRecipeNames = new ConcurrentHashMap<>();
+    private static final Map<BlockPosKey, ItemStack> cookingRecipeItems = new ConcurrentHashMap<>();
     private static final Map<BlockPosKey, Long> recentPlacements = new ConcurrentHashMap<>();
     private static final String BLOCK_TYPE = "cooking_pot";
     private static final long PLACE_INTERACTION_COOLDOWN_MS = 1000L;
@@ -263,21 +263,16 @@ public class CookingPotBlockBehavior extends BlockBehavior {
             return;
         }
 
-        String recipeName = cookingRecipeNames.get(posKey);
-        if (recipeName != null && !recipeName.isEmpty()) {
-            display.text(net.kyori.adventure.text.Component.text(recipeName + " " + progressPercent + "%"));
-        } else {
-            display.text(net.kyori.adventure.text.Component.text(progressPercent + "%"));
-        }
+        display.text(net.kyori.adventure.text.Component.text(progressPercent + "%"));
 
         updateDisplayVisibility(world, posKey, display);
     }
 
-    public static void setCookingRecipeName(BlockPosKey posKey, String recipeName) {
-        if (recipeName != null && !recipeName.isEmpty()) {
-            cookingRecipeNames.put(posKey, recipeName);
+    public static void setCookingRecipeItem(BlockPosKey posKey, ItemStack recipeItem) {
+        if (recipeItem != null && !recipeItem.getType().isAir()) {
+            cookingRecipeItems.put(posKey, recipeItem);
         } else {
-            cookingRecipeNames.remove(posKey);
+            cookingRecipeItems.remove(posKey);
         }
     }
 
@@ -295,7 +290,7 @@ public class CookingPotBlockBehavior extends BlockBehavior {
         }
 
         displayVisibleToPlayers.remove(posKey);
-        cookingRecipeNames.remove(posKey);
+        cookingRecipeItems.remove(posKey);
     }
 
     private static TextDisplay getOrCreateProgressDisplay(World world, BlockPosKey posKey) {

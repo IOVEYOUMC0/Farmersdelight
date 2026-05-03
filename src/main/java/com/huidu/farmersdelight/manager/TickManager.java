@@ -7,7 +7,6 @@ import com.huidu.farmersdelight.recipe.CookingPotRecipe;
 import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
-import com.huidu.farmersdelight.util.ItemUtils;
 import com.huidu.farmersdelight.util.ManagerSupport;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -265,8 +264,7 @@ public class TickManager {
         if (entity.getCookingProgress() > 0 && entity.getCurrentRecipe() != null) {
             CookingPotRecipe recipe = entity.getCurrentRecipe();
             ItemStack result = recipe.getResult();
-            String recipeName = ItemUtils.getDisplayName(result);
-            CookingPotBlockBehavior.setCookingRecipeName(posKey, recipeName);
+            CookingPotBlockBehavior.setCookingRecipeItem(posKey, result);
             CookingPotBlockBehavior.updateProgressDisplay(world, posKey, entity.getProgressPercent());
         } else {
             CookingPotBlockBehavior.removeProgressDisplay(world, posKey);
