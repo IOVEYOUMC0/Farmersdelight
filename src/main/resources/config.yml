@@ -107,6 +107,11 @@ cooking-pot-packed-drop:
   durability-bar:
     enabled: true
 
+# Cooking pot progress display settings
+cooking-pot-progress-display:
+  # Whether to show the recipe name in the progress display above the pot
+  show-recipe-name: false
+
 # Cooking pot world animation effects
 cooking-pot-effects:
   bubble:

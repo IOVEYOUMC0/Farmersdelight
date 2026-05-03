@@ -263,7 +263,18 @@ public class CookingPotBlockBehavior extends BlockBehavior {
             return;
         }
 
-        display.text(net.kyori.adventure.text.Component.text(progressPercent + "%"));
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        if (plugin != null && plugin.isShowRecipeNameInProgressDisplay()) {
+            ItemStack recipeItem = cookingRecipeItems.get(posKey);
+            if (recipeItem != null) {
+                String recipeName = com.huidu.farmersdelight.util.ItemUtils.getDisplayName(recipeItem);
+                display.text(net.kyori.adventure.text.Component.text(recipeName + " " + progressPercent + "%"));
+            } else {
+                display.text(net.kyori.adventure.text.Component.text(progressPercent + "%"));
+            }
+        } else {
+            display.text(net.kyori.adventure.text.Component.text(progressPercent + "%"));
+        }
 
         updateDisplayVisibility(world, posKey, display);
     }

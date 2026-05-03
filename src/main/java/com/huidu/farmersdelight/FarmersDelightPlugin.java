@@ -117,6 +117,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private AdvancementManager advancementManager;
     private boolean advancementsEnabled;
     private boolean debugEnabled;
+    private boolean showRecipeNameInProgressDisplay;
     private Set<String> debugCategories = Set.of();
 
     public static FarmersDelightPlugin getInstance() {
@@ -660,6 +661,12 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         if (containerReturnSection != null) {
             containerReturnConfig.loadFromConfig(containerReturnSection);
         }
+
+        showRecipeNameInProgressDisplay = getConfig().getBoolean("cooking-pot-progress-display.show-recipe-name", false);
+    }
+
+    public boolean isShowRecipeNameInProgressDisplay() {
+        return showRecipeNameInProgressDisplay;
     }
 
     private boolean isLateCraftEngineLoad() {
