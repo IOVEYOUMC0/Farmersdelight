@@ -87,10 +87,9 @@ public final class EffectManager {
 
         try {
             PersistentDataContainer pdc = player.getPersistentDataContainer();
-            Integer nourishmentDuration = pdc.get(NOURISHMENT_KEY, PersistentDataType.INTEGER);
-            boolean hasNourishment = nourishmentDuration != null && nourishmentDuration > 0;
+            int nourishmentDuration = pdc.getOrDefault(NOURISHMENT_KEY, PersistentDataType.INTEGER, 0);
 
-            if (!hasNourishment) {
+            if (nourishmentDuration <= 0) {
                 EffectListener.untrackPlayer(player.getUniqueId());
                 return;
             }
@@ -141,10 +140,7 @@ public final class EffectManager {
         boolean isPlayerHealingWithHunger = naturalRegen && isHurt && foodLevel >= NOURISHMENT_MIN_FOOD_FOR_HEALING;
 
         if (!isPlayerHealingWithHunger) {
-            float exhaustion = player.getExhaustion();
-            if (exhaustion > 0) {
-                player.setExhaustion(Math.max(0, exhaustion - NOURISHMENT_EXHAUSTION_REDUCTION));
-            }
+            player.setExhaustion(0);
         }
     }
 

@@ -37,6 +37,11 @@ public final class Constants {
     public static final String BEHAVIOR_TATAMI = "farmersdelight:tatami";
     public static final String BEHAVIOR_UPPER_HALF_LOOT_RELAY = "farmersdelight:upper_half_loot_relay";
     public static final String BEHAVIOR_WILD_RICE = "farmersdelight:wild_rice";
+    public static final String BEHAVIOR_ROPE = "farmersdelight:rope";
+    public static final String BEHAVIOR_MUSHROOM_COLONY = "farmersdelight:mushroom_colony";
+    public static final String BLOCK_ROPE = "farmersdelight:rope";
+    public static final String BLOCK_BROWN_MUSHROOM_COLONY = "farmersdelight:brown_mushroom_colony";
+    public static final String BLOCK_RED_MUSHROOM_COLONY = "farmersdelight:red_mushroom_colony";
     public static final String SOUND_COOKING_POT_BOIL = "farmersdelight:block.cooking_pot.boil";
     public static final String SOUND_COOKING_POT_BOIL_SOUP = "farmersdelight:block.cooking_pot.boil_soup";
     public static final String SOUND_CUTTING_BOARD_KNIFE = "farmersdelight:block.cutting_board.knife";

@@ -32,6 +32,7 @@ import net.momirealms.craftengine.core.block.behavior.BlockBehaviors;
 import net.momirealms.craftengine.core.registry.BuiltInRegistries;
 import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.command.CommandSender;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
@@ -76,7 +77,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             "advancements/data/farmersdelight/advancement/main/master_chef.json"
     );
 
-    private static FarmersDelightPlugin instance;
+    private static volatile FarmersDelightPlugin instance;
     private static volatile boolean enabled = false;
     private final List<String> behaviorRegistryConflicts = new ArrayList<>();
     private boolean shouldDisable = false;
@@ -205,9 +206,9 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         if (shouldDisable) {
             getLogger().severe("Plugin disabled due to missing CraftEngine dependency.");
             if (!behaviorRegistryConflicts.isEmpty()) {
-                for (String conflict : behaviorRegistryConflicts) {
-                    getLogger().severe(conflict);
-                }
+                getLogger().severe("Block behavior conflict (" + behaviorRegistryConflicts.size() + " behaviors). "
+                        + "This happens when FarmersDelight is reloaded without restarting the server. "
+                        + "Use /restart instead of /plugman reload or /reload.");
             }
             getServer().getPluginManager().disablePlugin(this);
             return;
@@ -261,6 +262,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         petFoodListener = new PetFoodListener(this);
         getServer().getPluginManager().registerEvents(petFoodListener, this);
         horseFeedTemptListener = new HorseFeedTemptListener(this);
+        getServer().getPluginManager().registerEvents(horseFeedTemptListener, this);
         horseFeedTemptListener.start();
         hopperInteractionListener = new HopperInteractionListener(this);
         hopperInteractionListener.start();
@@ -285,6 +287,9 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         trayManager = new TrayManager(this);
         getServer().getPluginManager().registerEvents(new AutoTrayFurnitureListener(this), this);
 
+        getServer().getPluginManager().registerEvents(new RopeBlockListener(this), this);
+        getServer().getPluginManager().registerEvents(new RopeClimbListener(this), this);
+
         chunkLoadListener = new ChunkLoadListener(this);
         getServer().getPluginManager().registerEvents(chunkLoadListener, this);
         chunkLoadListener.loadAlreadyLoadedChunks();
@@ -294,8 +299,18 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         getServer().getScheduler().runTask(this, () -> startupSyncCompleted = true);
 
         FarmersDelightCommand commandHandler = new FarmersDelightCommand(this);
-        getCommand("farmersdelight").setExecutor(commandHandler);
-        getCommand("farmersdelight").setTabCompleter(commandHandler);
+        org.bukkit.command.Command base = new org.bukkit.command.Command("farmersdelight",
+                "Main FarmersDelight command", "/farmersdelight [recipe|reload|help]", List.of("fd")) {
+            @Override
+            public boolean execute(CommandSender sender, String label, String[] args) {
+                return commandHandler.onCommand(sender, this, label, args);
+            }
+            @Override
+            public java.util.List<String> tabComplete(CommandSender sender, String alias, String[] args) {
+                return commandHandler.onTabComplete(sender, this, alias, args);
+            }
+        };
+        getServer().getCommandMap().register("farmersdelight", "FarmersDelight", base);
 
         getLogger().info("FarmersDelight plugin has been enabled!");
     }
@@ -756,6 +771,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         registerBehavior(Constants.BEHAVIOR_TATAMI, TatamiPairingBehavior.FACTORY);
         registerBehavior(Constants.BEHAVIOR_UPPER_HALF_LOOT_RELAY, UpperHalfLootRelayBehavior.FACTORY);
         registerBehavior(Constants.BEHAVIOR_WILD_RICE, WildRiceBlockBehavior.FACTORY);
+        registerBehavior(Constants.BEHAVIOR_ROPE, RopeBlockBehavior.FACTORY);
+        registerBehavior(Constants.BEHAVIOR_MUSHROOM_COLONY, MushroomColonyBehavior.FACTORY);
 
         getLogger().info("Registered custom block behaviors");
     }
@@ -1089,7 +1106,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                 }
             }
 
-            Files.createDirectories(Objects.requireNonNull(target.getParent()));
             Files.createDirectories(Objects.requireNonNull(target.getParent()));
             Path tempFile = Files.createTempFile(target.getParent(), "fd-adv", ".tmp");
             try {

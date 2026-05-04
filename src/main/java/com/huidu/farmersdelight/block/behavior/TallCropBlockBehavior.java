@@ -115,7 +115,7 @@ public class TallCropBlockBehavior extends BlockBehavior {
             
             boolean requiresWater = getBoolean(arguments, "requires-water", false);
             boolean resetOnHarvest = getBoolean(arguments, "reset-on-harvest", true);
-            SoilRules soilRules = parseSoilRules(arguments);
+            SoilRules soilRules = SoilRuleSupport.parseSoilRules(arguments);
             
             String upperBlockStr = getString(arguments, "upper-block", "");
             Key upperBlockId = upperBlockStr.isEmpty() ? null : Key.of(upperBlockStr);
@@ -596,7 +596,6 @@ public class TallCropBlockBehavior extends BlockBehavior {
         return String.valueOf(value).trim().toLowerCase();
     }
 
-    @SuppressWarnings({})
     private static Object getRawPropertyValue(Object configuredValue, Property<?> property, Object fallback) {
         if (configuredValue == null || property == null) {
             return fallback;
@@ -656,9 +655,5 @@ public class TallCropBlockBehavior extends BlockBehavior {
         if (placerObj instanceof Player player) {
             player.sendMessage(I18n.get(messageKey, player));
         }
-    }
-
-    private static SoilRules parseSoilRules(Map<String, Object> arguments) {
-        return SoilRuleSupport.parseSoilRules(arguments);
     }
 }

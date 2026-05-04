@@ -207,7 +207,7 @@ public final class CookingPotItemDataHelper {
             ItemStack pending = inventory.length > CookingPotBlockBehavior.SLOT_MEAL_DISPLAY
                     ? inventory[CookingPotBlockBehavior.SLOT_MEAL_DISPLAY]
                     : null;
-            if (isSameMealPreviewType(preview, pending)) {
+            if (pending != null && isSameMealPreviewType(preview, pending)) {
                 preview.setAmount(Math.min(64, preview.getAmount() + pending.getAmount()));
             }
             return preview;
