@@ -8,15 +8,20 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class CookingPotRecipeManager {
 
     private final FarmersDelightPlugin plugin;
     private final Map<String, CookingPotRecipe> recipes = new HashMap<>();
     private final Map<String, Set<String>> ingredientToRecipes = new HashMap<>();
-    private final Map<String, CookingPotRecipe> recipeCache = new ConcurrentHashMap<>();
+    private final Map<String, CookingPotRecipe> recipeCache = new LinkedHashMap<>(MAX_CACHE_SIZE + 1, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, CookingPotRecipe> eldest) {
+            return size() > MAX_CACHE_SIZE;
+        }
+    };
     private static final int MAX_CACHE_SIZE = 100;
+    private final Set<String> validContainerKeys = new HashSet<>();
 
     public CookingPotRecipeManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
@@ -25,7 +30,10 @@ public class CookingPotRecipeManager {
     public void loadRecipes() {
         recipes.clear();
         ingredientToRecipes.clear();
-        recipeCache.clear();
+        synchronized (recipeCache) {
+            recipeCache.clear();
+        }
+        validContainerKeys.clear();
         RecipeFileLoader.loadRecipeSections(plugin, "recipes/cooking_pot_recipes.yml", "cooking_pot_recipes", "cooking pot",
                 (recipeId, section) -> {
                     CookingPotRecipe recipe = parseRecipe(recipeId, section);
@@ -35,6 +43,15 @@ public class CookingPotRecipeManager {
                         for (String ingredientKey : flattenIngredientKeys(ingredient)) {
                             ingredientToRecipes.computeIfAbsent(ingredientKey, k -> new HashSet<>()).add(recipeId);
                         }
+                    }
+
+                    ItemStack container = recipe.getContainer();
+                    if (container != null && !container.getType().isAir()) {
+                        String customId = ItemUtils.getCustomItemId(container);
+                        if (customId != null) {
+                            validContainerKeys.add(customId);
+                        }
+                        validContainerKeys.add("minecraft:" + container.getType().name().toLowerCase());
                     }
                 });
     }
@@ -141,7 +158,10 @@ public class CookingPotRecipeManager {
         }
 
         String cacheKey = buildCacheKey(nonEmptyInputs);
-        CookingPotRecipe cached = recipeCache.get(cacheKey);
+        CookingPotRecipe cached;
+        synchronized (recipeCache) {
+            cached = recipeCache.get(cacheKey);
+        }
         if (cached != null) {
             return cached;
         }
@@ -153,22 +173,24 @@ public class CookingPotRecipeManager {
         if (candidateRecipes != null && !candidateRecipes.isEmpty()) {
             for (String recipeId : candidateRecipes) {
                 CookingPotRecipe recipe = recipes.get(recipeId);
-                if (recipe != null && matchRecipe(recipe, nonEmptyInputs, container)) {
+                if (recipe != null && matchRecipe(recipe, nonEmptyInputs)) {
                     result = recipe;
                     break;
                 }
             }
         } else {
             for (CookingPotRecipe recipe : recipes.values()) {
-                if (matchRecipe(recipe, nonEmptyInputs, container)) {
+                if (matchRecipe(recipe, nonEmptyInputs)) {
                     result = recipe;
                     break;
                 }
             }
         }
 
-        if (result != null && recipeCache.size() < MAX_CACHE_SIZE) {
-            recipeCache.put(cacheKey, result);
+        if (result != null) {
+            synchronized (recipeCache) {
+                recipeCache.put(cacheKey, result);
+            }
         }
 
         return result;
@@ -222,7 +244,7 @@ public class CookingPotRecipeManager {
         return candidates;
     }
 
-    private boolean matchRecipe(CookingPotRecipe recipe, List<ItemStack> inputs, ItemStack container) {
+    private boolean matchRecipe(CookingPotRecipe recipe, List<ItemStack> inputs) {
         List<RecipeIngredient> requiredIngredients = recipe.getIngredients();
 
         List<ItemStack> availableInputs = new ArrayList<>();
@@ -246,29 +268,6 @@ public class CookingPotRecipeManager {
                 }
             }
             if (!found) {
-                return false;
-            }
-        }
-
-        for (ItemStack input : inputs) {
-            if (input == null || input.getType().isAir()) {
-                continue;
-            }
-
-            Material type = input.getType();
-            if (type == Material.BUCKET || type == Material.GLASS_BOTTLE || type == Material.BOWL) {
-                continue;
-            }
-
-            boolean isRelevant = false;
-            for (RecipeIngredient ingredient : requiredIngredients) {
-                if (matchIngredient(input, ingredient)) {
-                    isRelevant = true;
-                    break;
-                }
-            }
-
-            if (!isRelevant) {
                 return false;
             }
         }
@@ -354,6 +353,10 @@ public class CookingPotRecipeManager {
         return Collections.unmodifiableMap(recipes);
     }
 
+    public Set<String> getValidContainerKeys() {
+        return validContainerKeys;
+    }
+
     public int getRecipeCount() {
         return recipes.size();
     }
@@ -367,6 +370,8 @@ public class CookingPotRecipeManager {
     }
     
     public void clearCache() {
-        recipeCache.clear();
+        synchronized (recipeCache) {
+            recipeCache.clear();
+        }
     }
 }

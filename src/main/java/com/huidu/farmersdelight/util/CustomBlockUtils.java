@@ -72,9 +72,10 @@ public final class CustomBlockUtils {
         if (trimmed.endsWith("]")) {
             int bracketIndex = trimmed.lastIndexOf('[');
             if (bracketIndex >= 0) {
-                trimmed = trimmed.substring(bracketIndex + 1).trim();
+                trimmed = trimmed.substring(0, bracketIndex).trim();
+            } else {
+                trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
             }
-            trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
         }
 
         return trimmed;

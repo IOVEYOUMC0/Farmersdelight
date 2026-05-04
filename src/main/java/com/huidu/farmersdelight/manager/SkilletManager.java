@@ -72,7 +72,7 @@ public class SkilletManager {
             public void run() {
                 tick();
             }
-        }.runTaskTimer(plugin, 1L, 4L);
+        }.runTaskTimer(plugin, 1L, 1L);
     }
 
     private void stopTaskIfIdle() {
@@ -618,10 +618,9 @@ public class SkilletManager {
                 + " at " + formatLocation(location));
 
         for (int i = 0; i < displayCount; i++) {
-            double offsetX = (random.nextDouble() - 0.5D) * 0.3D;
-            double offsetZ = (random.nextDouble() - 0.5D) * 0.3D;
+            double offsetX = displayCount == 1 ? 0 : (random.nextDouble() - 0.5D) * 0.3D;
+            double offsetZ = displayCount == 1 ? 0 : (random.nextDouble() - 0.5D) * 0.3D;
             double offsetY = 0.1D + ((i + 1) * 0.03D);
-            float randomSpin = (float) ((random.nextDouble() - 0.5D) * 35.0D);
 
             ItemStack visualItem = skillet.storedItem.clone();
             visualItem.setAmount(1);
@@ -630,7 +629,7 @@ public class SkilletManager {
             leftRotation.rotationYXZ(
                     (float) Math.toRadians(yRotation),
                     (float) Math.toRadians(90.0f),
-                    (float) Math.toRadians(randomSpin)
+                    0.0f
             );
 
             Transformation transformation = new Transformation(

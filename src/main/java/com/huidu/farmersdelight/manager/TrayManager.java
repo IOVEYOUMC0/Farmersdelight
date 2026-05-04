@@ -217,7 +217,6 @@ public class TrayManager {
 
         Map<BlockPos, BlockPos> worldTrays = cookingPotTrays.get(world.getUID());
         if (worldTrays == null || worldTrays.isEmpty()) {
-            purgeMarkedTrayEntities(world, Set.of());
             return;
         }
 
@@ -366,31 +365,28 @@ public class TrayManager {
     }
 
     private void purgeMarkedTrayEntities(World world, Set<BlockPos> trackedTrayPositions) {
-        if (world == null) {
+        if (world == null || trackedTrayPositions.isEmpty()) {
             return;
         }
 
-        for (Entity entity : world.getEntities()) {
-            if (!entity.isValid() || !entity.getPersistentDataContainer().has(trayMarkerKey, PersistentDataType.BYTE)) {
+        for (BlockPos trayPos : trackedTrayPositions) {
+            Location loc = new Location(world, trayPos.x(), trayPos.y(), trayPos.z());
+            BukkitFurniture furniture = findTrayFurniture(world, loc);
+            if (furniture == null) {
                 continue;
             }
-
-            BukkitFurniture furniture = CraftEngineFurniture.getLoadedFurnitureByMetaEntity(entity);
-            if (furniture == null || !trayFurnitureId.equals(furniture.id().toString())) {
+            Entity entity = furniture.bukkitEntity();
+            if (entity == null || !entity.isValid()) {
                 continue;
             }
-
-            BlockPos trayPos = new BlockPos(
-                    entity.getLocation().getBlockX(),
-                    entity.getLocation().getBlockY(),
-                    entity.getLocation().getBlockZ()
-            );
+            if (!entity.getPersistentDataContainer().has(trayMarkerKey, PersistentDataType.BYTE)) {
+                continue;
+            }
             if (trackedTrayPositions.contains(trayPos)) {
                 continue;
             }
 
             CraftEngineFurniture.remove(entity, false, false);
-
             if (plugin.getConfig().getBoolean("debug", false)) {
                 plugin.getLogger().info("Purged orphan auto tray at " + entity.getLocation());
             }

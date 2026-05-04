@@ -37,7 +37,7 @@ import java.util.regex.Pattern;
 public final class ItemUtils {
 
     private static final PlainTextComponentSerializer PLAIN_TEXT = PlainTextComponentSerializer.plainText();
-    private static final Pattern L10N_PATTERN = Pattern.compile("^<l10n[:;]([^>]+)>$");
+    private static final Pattern L10N_PATTERN = Pattern.compile("<l10n[:;]([^>]+)>");
     private static final Pattern TRANSLATION_KEY_PATTERN = Pattern.compile("^[a-z0-9_]+(?:\\.[a-z0-9_]+)+$");
 
     private ItemUtils() {
@@ -175,9 +175,10 @@ public final class ItemUtils {
 
         String materialName = item.getType().name().toLowerCase();
         String translated = translate("item.minecraft." + materialName, locale);
-        if (translated.equals("item.minecraft." + materialName)) {
-            translated = translate("block.minecraft." + materialName, locale);
+        if (!translated.equals("item.minecraft." + materialName)) {
+            return translated;
         }
+        translated = translate("block.minecraft." + materialName, locale);
         if (!translated.equals("block.minecraft." + materialName)) {
             return translated;
         }
@@ -237,7 +238,7 @@ public final class ItemUtils {
         }
         String normalized = rawText.trim();
         Matcher matcher = L10N_PATTERN.matcher(normalized);
-        if (matcher.matches()) {
+        if (matcher.find()) {
             String key = matcher.group(1);
             String translated = translate(key, locale);
             if (!translated.equals(key)) {
@@ -268,7 +269,8 @@ public final class ItemUtils {
                 || path.endsWith("_soil")
                 || path.endsWith("_farmland")
                 || path.endsWith("_compost")
-                || path.endsWith("_block");
+                || path.endsWith("_block")
+                || path.equals("rope");
     }
 
     private static Component resolveSpecialDisplayComponent(Component component, Player player) {
@@ -282,7 +284,7 @@ public final class ItemUtils {
         }
         String normalized = rawText.trim();
         Matcher matcher = L10N_PATTERN.matcher(normalized);
-        if (matcher.matches()) {
+        if (matcher.find()) {
             String key = matcher.group(1);
             String translated = translate(key, locale);
             if (!translated.equals(key)) {
@@ -388,5 +390,23 @@ public final class ItemUtils {
         } catch (IllegalArgumentException ignored) {
             return false;
         }
+    }
+
+    public static String resolveItemId(ItemStack item) {
+        if (item == null || item.getType().isAir()) {
+            return null;
+        }
+        String customId = getCustomItemId(item);
+        if (customId != null) {
+            return customId;
+        }
+        return "minecraft:" + item.getType().name().toLowerCase();
+    }
+
+    public static ItemStack cloneOrNull(ItemStack item) {
+        if (item == null) {
+            return null;
+        }
+        return item.clone();
     }
 }
