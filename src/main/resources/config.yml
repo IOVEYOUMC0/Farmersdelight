@@ -96,7 +96,7 @@ tray:
   enabled: true
   tray-block-id: "farmersdelight:tray"
   x-offset: 0.5
-  y-offset: -0.5
+  y-offset: -0.4
   z-offset: 0.5
   require-non-full-support: true
   marker-key: "auto_tray_marker"
@@ -477,7 +477,8 @@ container-returns:
 
 # Rope climbing
 rope:
-  # Fall damage is reset when the player is inside a rope block during vertical movement.
+  # Whether players can climb ropes by pressing jump.
+  climb-enabled: true
   # This radius (0.0 ~ 0.5) determines how close the player must be to the rope center to count as "climbing".
   # Larger values are more forgiving.
   climb-reach: 0.5

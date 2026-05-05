@@ -16,6 +16,8 @@ import net.momirealms.craftengine.core.util.UniqueKey;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -968,9 +970,12 @@ public class RecipeViewGui implements InventoryHolder, Listener {
                 return customItem.buildItemStack();
             }
 
-            Material material = Material.matchMaterial(key.toString());
-            if (material != null) {
-                return new ItemStack(material);
+            NamespacedKey materialKey = NamespacedKey.fromString(key.toString());
+            if (materialKey != null) {
+                Material material = Registry.MATERIAL.get(materialKey);
+                if (material != null) {
+                    return new ItemStack(material);
+                }
             }
         } catch (Exception e) {
             if (plugin.getConfig().getBoolean("debug", false)) {

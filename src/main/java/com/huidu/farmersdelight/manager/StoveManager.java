@@ -186,7 +186,7 @@ public class StoveManager {
     }
 
     public boolean isStoveStateBlock(Location location) {
-        return CustomBlockUtils.hasId(location, "farmersdelight:stove");
+        return CustomBlockUtils.hasId(location, Constants.BLOCK_STOVE);
     }
 
     public void saveAllData() {
@@ -351,7 +351,7 @@ public class StoveManager {
                 continue;
             }
 
-            if (!CustomBlockUtils.hasId(state, "farmersdelight:stove")) {
+            if (!CustomBlockUtils.hasId(state, Constants.BLOCK_STOVE)) {
                 debug(() -> "tick state: stove state id mismatch, skipping this tick at " + formatLocation(location));
                 continue;
             }
@@ -383,10 +383,10 @@ public class StoveManager {
                 if (isLit) {
                     stove.cookingTime[i]++;
 
-                    if (Math.random() < 0.2) {
+                    if (Math.random() < Constants.STOVE_PARTICLE_CHANCE) {
                         spawnCookingParticles(location, i, facing);
                     }
-                    if (Math.random() < 0.05) {
+                    if (Math.random() < Constants.STOVE_CRACKLE_CHANCE) {
                         SoundUtils.play(world, location, getCrackleSound(location), Sound.BLOCK_CAMPFIRE_CRACKLE, 1.0f, 1.0f);
                     }
                     if (stove.cookingTime[i] >= stove.maxTime[i]) {

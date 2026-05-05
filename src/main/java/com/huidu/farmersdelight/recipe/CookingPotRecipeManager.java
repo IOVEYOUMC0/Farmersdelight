@@ -1,6 +1,7 @@
 package com.huidu.farmersdelight.recipe;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
+import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.Material;
@@ -85,7 +86,7 @@ public class CookingPotRecipeManager {
         result.setAmount(Math.max(1, section.getInt("result-count", 1)));
 
         float experience = Math.max(0, (float) section.getDouble("experience", 0.0));
-        int cookTime = Math.max(20, Math.min(6000, section.getInt("cook-time", 200)));
+        int cookTime = Math.max(20, Math.min(6000, section.getInt("cook-time", Constants.DEFAULT_COOKING_TIME_COOKING_POT)));
         String category = section.getString("category", "misc");
 
         return new CookingPotRecipe(id, ingredients, container, needsContainer, result, experience, cookTime, category);

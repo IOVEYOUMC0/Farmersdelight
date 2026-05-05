@@ -91,6 +91,7 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
                 for (org.bukkit.World world : Bukkit.getWorlds()) {
                     for (org.bukkit.entity.Entity entity : world.getEntities()) {
                         if (entity instanceof org.bukkit.entity.ItemDisplay display) {
+                            @SuppressWarnings("deprecation")
                             String customName = display.getCustomName();
                             if (customName != null && (customName.contains("farmersdelight") || customName.contains("fd_"))) {
                                 display.remove();

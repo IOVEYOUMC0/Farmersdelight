@@ -66,10 +66,19 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
     public static Map<BlockPosKey, CuttingBoardBlockEntity> getAllBlockEntities(World world) {
         if (world == null) return Map.of();
         Map<BlockPosKey, CuttingBoardBlockEntity> worldEntities = worldBlockEntities.get(world.getUID());
-        if (worldEntities != null) {
-            return Map.copyOf(worldEntities);
+        if (worldEntities != null && !worldEntities.isEmpty()) {
+            return worldEntities;
         }
         return Map.of();
+    }
+
+    public static Set<Map.Entry<BlockPosKey, CuttingBoardBlockEntity>> getBlockEntityEntries(World world) {
+        if (world == null) return Set.of();
+        Map<BlockPosKey, CuttingBoardBlockEntity> worldEntities = worldBlockEntities.get(world.getUID());
+        if (worldEntities != null && !worldEntities.isEmpty()) {
+            return worldEntities.entrySet();
+        }
+        return Set.of();
     }
 
     public static CuttingBoardBlockEntity putBlockEntity(World world, BlockPosKey posKey, CuttingBoardBlockEntity entity) {
@@ -350,8 +359,9 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
 
         if (blockEntity.hasItem()) {
             ItemStack tool = findMatchingTool(blockEntity, mainHand, offHand);
+            boolean toolIsOffhand = tool != null && tool == offHand;
             if (tool != null) {
-                boolean result = processCutting(blockEntity, tool, bukkitPlayer, facing, world, posKey);
+                boolean result = processCutting(blockEntity, tool, bukkitPlayer, facing, world, posKey, toolIsOffhand);
                 if (result) {
                     return InteractionResult.SUCCESS_AND_CANCEL;
                 }
@@ -423,7 +433,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
                 }
             }
 
-            bukkitPlayer.playSound(bukkitPlayer.getLocation(), Sound.BLOCK_WOOD_HIT, 0.25f, 0.5f);
+            bukkitPlayer.playSound(bukkitPlayer.getLocation(), Sound.BLOCK_WOOD_HIT, Constants.CUTTING_BOARD_FAIL_VOLUME, Constants.CUTTING_BOARD_FAIL_PITCH);
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
 
@@ -542,7 +552,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
     }
 
     private boolean processCutting(CuttingBoardBlockEntity blockEntity, ItemStack tool, Player player, 
-                                    BlockFace facing, World world, BlockPosKey posKey) {
+                                    BlockFace facing, World world, BlockPosKey posKey, boolean toolIsOffhand) {
         ItemStack storedItem = blockEntity.getStoredItem();
         if (storedItem == null) return false;
 
@@ -563,9 +573,9 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
             ItemStack result = resultEntry.item().clone();
 
             if (fortuneLevel > 0 && resultEntry.chance() < 1.0d) {
-                double bonusChance = resultEntry.chance() * (fortuneLevel / (fortuneLevel + 2.0d));
-                if (ThreadLocalRandom.current().nextDouble() < bonusChance) {
-                    result.setAmount(result.getAmount() + 1);
+                double adjustedChance = Math.min(1.0d, resultEntry.chance() + 0.1d * fortuneLevel);
+                if (ThreadLocalRandom.current().nextDouble() > adjustedChance) {
+                    result.setAmount(Math.max(0, result.getAmount() - 1));
                 }
             }
 
@@ -573,7 +583,11 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
         }
 
         playCuttingFeedback(world, posKey, storedItem, recipe);
-        swingToolHand(player, tool);
+        if (toolIsOffhand) {
+            player.swingOffHand();
+        } else {
+            player.swingMainHand();
+        }
 
         if (player.getGameMode() != GameMode.CREATIVE) {
             if (tool.getItemMeta() instanceof Damageable damageable) {
@@ -606,18 +620,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
         return true;
     }
 
-    private void swingToolHand(Player player, ItemStack tool) {
-        if (player == null || tool == null) {
-            return;
-        }
-        ItemStack offHand = player.getInventory().getItemInOffHand();
-        if (offHand != null && offHand == tool) {
-            player.swingOffHand();
-        } else {
-            player.swingMainHand();
-        }
-    }
-
+    
     private void playCuttingFeedback(World world, BlockPosKey posKey, ItemStack storedItem, CuttingBoardRecipe recipe) {
         if (world == null || posKey == null) {
             return;
@@ -625,7 +628,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
 
         Location effectLocation = posKey.toLocation(world).add(0.5, 0.1, 0.5);
         SoundUtils.play(world, effectLocation, recipe.getSound(), Sound.BLOCK_WOOD_BREAK, 1.0f, 1.0f);
-        world.spawnParticle(Particle.ITEM, effectLocation, 10, 0.08, 0.05, 0.08, 0.0, storedItem);
+        world.spawnParticle(Particle.ITEM, effectLocation, 5, 0.1, 0.1, 0.1, 0.0, storedItem);
     }
 
     private void spawnItemEntity(World world, BlockPosKey posKey, ItemStack item, BlockFace facing) {

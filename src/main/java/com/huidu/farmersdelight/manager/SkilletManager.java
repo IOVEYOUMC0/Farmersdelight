@@ -23,12 +23,11 @@ import org.joml.Vector3f;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 public class SkilletManager {
 
     private static final String BLOCK_TYPE = "skillet";
-    private static final int DEFAULT_COOK_TIME = 600;
+    
     private static final int MIN_COOK_TIME = 60;
     private static final int HEARTBEAT_LOG_INTERVAL = 20;
 
@@ -43,7 +42,7 @@ public class SkilletManager {
         ItemStack storedItem;
         ItemStack skilletStack;
         int cookingProgress = 0;
-        int cookingDuration = DEFAULT_COOK_TIME;
+        int cookingDuration = Constants.DEFAULT_COOKING_TIME_SKILLET;
         CookingRecipe<?> currentRecipe;
         int fireAspectLevel = 0;
         final List<Integer> displayEntityIds = new ArrayList<>();
@@ -72,7 +71,7 @@ public class SkilletManager {
             public void run() {
                 tick();
             }
-        }.runTaskTimer(plugin, 1L, 1L);
+        }.runTaskTimer(plugin, 1L, 4L);
     }
 
     private void stopTaskIfIdle() {
@@ -407,10 +406,13 @@ public class SkilletManager {
             return List.of();
         }
 
-        return skillets.keySet().stream()
-                .filter(location -> world.equals(location.getWorld()))
-                .map(Location::clone)
-                .collect(Collectors.toUnmodifiableList());
+        List<Location> result = new ArrayList<>();
+        for (Location loc : skillets.keySet()) {
+            if (world.equals(loc.getWorld())) {
+                result.add(loc.clone());
+            }
+        }
+        return result;
     }
 
     public void reloadRecipeCache() {
@@ -430,12 +432,12 @@ public class SkilletManager {
     }
 
     private int getAdjustedCookingTime(int baseTime, int fireAspectLevel) {
-        int cookingTime = baseTime > 0 ? baseTime : DEFAULT_COOK_TIME;
+        int cookingTime = baseTime > 0 ? baseTime : Constants.DEFAULT_COOKING_TIME_SKILLET;
         int cookingSeconds = cookingTime / 20;
-        float cookingTimeReduction = 0.2F;
+        float cookingTimeReduction = Constants.SKILLET_COOKING_TIME_REDUCTION;
 
         if (fireAspectLevel > 0) {
-            cookingTimeReduction -= fireAspectLevel * 0.05F;
+            cookingTimeReduction -= fireAspectLevel * Constants.SKILLET_FIRE_ASPECT_BONUS;
         }
 
         int result = (int) (cookingSeconds * cookingTimeReduction) * 20;
@@ -481,10 +483,10 @@ public class SkilletManager {
             if (hasHeat && skillet.currentRecipe != null) {
                 skillet.cookingProgress++;
 
-                if (Math.random() < 0.1) {
+                if (Math.random() < Constants.SKILLET_PARTICLE_CHANCE) {
                     spawnCookingParticles(location);
                 }
-                if (Math.random() < 0.03) {
+                if (Math.random() < Constants.SKILLET_SIZZLE_CHANCE) {
                     SoundUtils.play(world, location, getSizzleSound(location), Sound.BLOCK_CAMPFIRE_CRACKLE, 0.5f, 1.0f);
                 }
                 if (skillet.cookingProgress >= skillet.cookingDuration) {

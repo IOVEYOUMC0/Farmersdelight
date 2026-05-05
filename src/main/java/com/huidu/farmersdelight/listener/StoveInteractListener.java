@@ -5,6 +5,7 @@ import com.huidu.farmersdelight.block.behavior.StoveCookingBlockBehavior;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.manager.StoveManager;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
+import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.InteractionDebouncer;
 import com.huidu.farmersdelight.util.ItemUtils;
 import org.bukkit.Bukkit;
@@ -162,7 +163,7 @@ public class StoveInteractListener implements Listener {
     }
 
     private boolean isStoveBlock(String ceBlockId) {
-        return "stove".equals(ceBlockId);
+        return Constants.CE_SHORT_STOVE.equals(ceBlockId);
     }
 
     private boolean shouldLogAttempt(Block block, String ceBlockId) {

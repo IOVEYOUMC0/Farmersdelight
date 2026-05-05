@@ -139,7 +139,7 @@ public class SkilletInteractListener implements Listener {
     }
 
     private boolean isSkilletBlock(String ceBlockId) {
-        return "skillet".equals(ceBlockId);
+        return Constants.CE_SHORT_SKILLET.equals(ceBlockId);
     }
 
     private boolean shouldLogAttempt(Block block, String ceBlockId) {

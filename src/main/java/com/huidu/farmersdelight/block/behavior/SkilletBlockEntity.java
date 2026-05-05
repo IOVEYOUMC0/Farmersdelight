@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.block.behavior;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.util.BlockPosKey;
+import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.visual.ItemDisplayManager;
 import net.momirealms.craftengine.core.world.BlockPos;
 import org.bukkit.Bukkit;
@@ -108,12 +109,11 @@ public class SkilletBlockEntity {
     }
 
     public static int getSkilletCookingTime(int originalCookingTime, int fireAspectLevel) {
-        int cookingTime = originalCookingTime > 0 ? originalCookingTime : 600;
+        int cookingTime = originalCookingTime > 0 ? originalCookingTime : Constants.DEFAULT_COOKING_TIME_SKILLET;
         int cookingSeconds = cookingTime / 20;
-        float cookingTimeReduction = 0.2F;
-        
+        float cookingTimeReduction = Constants.SKILLET_COOKING_TIME_REDUCTION;
         if (fireAspectLevel > 0) {
-            cookingTimeReduction -= fireAspectLevel * 0.05F;
+            cookingTimeReduction -= fireAspectLevel * Constants.SKILLET_FIRE_ASPECT_BONUS;
         }
         
         int result = (int) (cookingSeconds * cookingTimeReduction) * 20;
