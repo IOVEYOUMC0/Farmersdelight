@@ -129,10 +129,19 @@ public class CookingPotBlockBehavior extends BlockBehavior {
     public static Map<BlockPosKey, CookingPotBlockEntity> getAllBlockEntities(World world) {
         if (world == null) return Map.of();
         Map<BlockPosKey, CookingPotBlockEntity> worldEntities = worldBlockEntities.get(world.getUID());
-        if (worldEntities != null) {
-            return Map.copyOf(worldEntities);
+        if (worldEntities != null && !worldEntities.isEmpty()) {
+            return worldEntities;
         }
         return Map.of();
+    }
+
+    public static Set<Map.Entry<BlockPosKey, CookingPotBlockEntity>> getBlockEntityEntries(World world) {
+        if (world == null) return Set.of();
+        Map<BlockPosKey, CookingPotBlockEntity> worldEntities = worldBlockEntities.get(world.getUID());
+        if (worldEntities != null && !worldEntities.isEmpty()) {
+            return worldEntities.entrySet();
+        }
+        return Set.of();
     }
 
     public String getBoilSound() {
@@ -235,11 +244,8 @@ public class CookingPotBlockBehavior extends BlockBehavior {
         if (location == null) {
             return;
         }
-
-        BlockPosKey posKey = new BlockPosKey(location);
         long now = System.currentTimeMillis();
-        recentPlacements.put(posKey, now);
-        recentPlacements.entrySet().removeIf(entry -> now - entry.getValue() > PLACE_INTERACTION_COOLDOWN_MS);
+        recentPlacements.put(new BlockPosKey(location), now);
     }
 
     private static boolean isRecentlyPlaced(BlockPosKey posKey) {

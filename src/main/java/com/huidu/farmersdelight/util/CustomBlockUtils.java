@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.util;
 
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
+import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
 import net.momirealms.craftengine.core.block.properties.Property;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
@@ -51,6 +52,20 @@ public final class CustomBlockUtils {
 
     public static boolean hasId(Location location, String blockId) {
         return location != null && location.getWorld() != null && hasId(location.getBlock(), blockId);
+    }
+
+    public static boolean hasBehavior(ImmutableBlockState state, Class<? extends BlockBehavior> behaviorClass) {
+        if (state == null || state.isEmpty()) return false;
+        return behaviorClass.isInstance(state.behavior());
+    }
+
+    public static boolean hasBehavior(Block block, Class<? extends BlockBehavior> behaviorClass) {
+        return hasBehavior(getState(block), behaviorClass);
+    }
+
+    public static boolean hasBehavior(Location location, Class<? extends BlockBehavior> behaviorClass) {
+        return location != null && location.getWorld() != null
+                && hasBehavior(location.getBlock(), behaviorClass);
     }
 
     public static boolean idContains(Block block, String fragment) {

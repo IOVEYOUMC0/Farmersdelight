@@ -1,9 +1,8 @@
 package com.huidu.farmersdelight.listener;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
+import com.huidu.farmersdelight.block.behavior.RopeBlockBehavior;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
-import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
-import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
@@ -15,16 +14,33 @@ import org.bukkit.util.Vector;
 
 public class RopeClimbListener implements Listener {
 
-    private static final String ROPE_BLOCK_ID = "farmersdelight:rope";
     private static final double ROPE_MIN = 7.0 / 16.0;
     private static final double ROPE_MAX = 9.0 / 16.0;
     private static final double CLIMB_SPEED = 0.2;
     private static final double DESCEND_SPEED = -0.1;
 
     private final FarmersDelightPlugin plugin;
+    private volatile double cachedReach = -1;
+    private volatile Boolean cachedClimbEnabled = null;
 
     public RopeClimbListener(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
+    }
+
+    private double getReach() {
+        double reach = cachedReach;
+        if (reach >= 0) return reach;
+        reach = plugin.getConfig().getDouble("rope.climb-reach", 0.5);
+        cachedReach = reach;
+        return reach;
+    }
+
+    private boolean isClimbEnabled() {
+        Boolean enabled = cachedClimbEnabled;
+        if (enabled != null) return enabled;
+        enabled = plugin.getConfig().getBoolean("rope.climb-enabled", true);
+        cachedClimbEnabled = enabled;
+        return enabled;
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -35,9 +51,9 @@ public class RopeClimbListener implements Listener {
         if (to == null || from == null) return;
 
         Player player = event.getPlayer();
-        if (player.isInWater() || player.isFlying()) return;
+        if (!isClimbEnabled() || player.isInWater() || player.isFlying() || player.isGliding()) return;
 
-        if (!isPlayerInsideRope(player)) return;
+        if (!isPlayerInsideRope(player, to)) return;
 
         player.setFallDistance(0);
 
@@ -46,32 +62,28 @@ public class RopeClimbListener implements Listener {
             return;
         }
 
-        if (to.getY() > from.getY()) {
+        if (player.isJumping() && to.getY() > from.getY() && player.getVelocity().getY() < CLIMB_SPEED) {
             player.setVelocity(new Vector(0, CLIMB_SPEED, 0));
         }
     }
 
-    private boolean isPlayerInsideRope(Player player) {
-        double reach = plugin.getConfig().getDouble("rope.climb-reach", 0.5);
-        Location loc = player.getLocation();
-        int blockX = loc.getBlockX();
-        int blockZ = loc.getBlockZ();
-        double relX = loc.getX() - blockX;
-        double relZ = loc.getZ() - blockZ;
+    private boolean isPlayerInsideRope(Player player, Location loc) {
+        double reach = getReach();
+        double relX = loc.getX() - loc.getBlockX();
+        double relZ = loc.getZ() - loc.getBlockZ();
 
         if (relX < ROPE_MIN - reach || relX > ROPE_MAX + reach
                 || relZ < ROPE_MIN - reach || relZ > ROPE_MAX + reach) {
             return false;
         }
 
-        for (int dy = 0; dy <= 1; dy++) {
-            int blockY = loc.getBlockY() + dy;
-            Block block = loc.getWorld().getBlockAt(blockX, blockY, blockZ);
-            ImmutableBlockState state = CraftEngineBlocks.getCustomBlockState(block);
-            if (state != null && !state.isEmpty() && CustomBlockUtils.hasId(state, ROPE_BLOCK_ID)) {
-                return true;
-            }
-        }
-        return false;
+        Block headBlock = loc.getBlock();
+        if (isRopeBlock(headBlock)) return true;
+        Block feetBlock = loc.getWorld().getBlockAt(loc.getBlockX(), loc.getBlockY() - 1, loc.getBlockZ());
+        return isRopeBlock(feetBlock);
+    }
+
+    private static boolean isRopeBlock(Block block) {
+        return CustomBlockUtils.hasBehavior(block, RopeBlockBehavior.class);
     }
 }

@@ -880,7 +880,7 @@ public class CookingPotBlockEntity {
     }
 
     public void decrementCookingProgress() {
-        cookingProgress.updateAndGet(v -> Math.max(0, v - 1));
+        cookingProgress.updateAndGet(v -> Math.max(0, v - 2));
     }
 
     public int getCookingDuration() {

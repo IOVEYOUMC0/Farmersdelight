@@ -144,6 +144,7 @@ public class CuttingBoardBlockEntity {
         };
     }
 
+    @SuppressWarnings("unused")
     private boolean isCarvedTool(ItemStack item) {
         if (item == null || item.getType().isAir()) {
             return false;
