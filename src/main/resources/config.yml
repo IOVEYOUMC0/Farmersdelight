@@ -74,6 +74,12 @@ knife-config:
     - farmersdelight:diamond_knife
     - farmersdelight:netherite_knife
 
+# Cutting board interaction settings
+cutting-board:
+  # Latest Farmer's Delight uses main-hand-only cutting board controls.
+  # Set true to also allow off-hand knives/tools and off-hand ingredients.
+  allow-offhand-interactions: false
+
 # Heat source settings used by cooking blocks
 heat-sources:
   tags:
@@ -90,13 +96,24 @@ heat-sources:
     - farmersdelight:stove[fire:true]
   conductors:
     - minecraft:hopper
+  conductor-tags: []
+  skillet:
+    # Original Farmer's Delight skillet does not expose hopper interaction/capability.
+    # Keep false to stop hoppers or other conductors from carrying heat into skillets.
+    # Set true to allow the global conductors list to heat skillets too.
+    allow-conductors: false
 
 # Tray auto-placement settings
 tray:
   enabled: true
+  # Full tray resync interval. Placement/removal events still update immediately;
+  # this periodic pass is only a safety sweep.
+  sync-interval-ticks: 100
+  # Maximum cooking blocks checked per world during each safety sweep.
+  sync-batch-size: 32
   tray-block-id: "farmersdelight:tray"
   x-offset: 0.5
-  y-offset: -0.4
+  y-offset: -0.5
   z-offset: 0.5
   require-non-full-support: true
   marker-key: "auto_tray_marker"
@@ -105,6 +122,8 @@ tray:
 cooking-pot-packed-drop:
   enabled: true
   durability-bar:
+    enabled: true
+  hide-advanced-durability-tooltip:
     enabled: true
 
 # Cooking pot progress display settings
@@ -474,14 +493,6 @@ nourishment-foods:
 # Returned containers after cooking
 container-returns:
   farmersdelight:milk_bottle: minecraft:glass_bottle
-
-# Rope climbing
-rope:
-  # Whether players can climb ropes by pressing jump.
-  climb-enabled: true
-  # This radius (0.0 ~ 0.5) determines how close the player must be to the rope center to count as "climbing".
-  # Larger values are more forgiving.
-  climb-reach: 0.5
 
 # Debug mode
 debug:

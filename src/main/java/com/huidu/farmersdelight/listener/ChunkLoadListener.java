@@ -173,4 +173,12 @@ public class ChunkLoadListener implements Listener {
             CuttingBoardBlockBehavior.removeBlockEntity(world, posKey, false);
         }
     }
+
+    public void shutdown() {
+        if (startupLoadTask != null) {
+            startupLoadTask.cancel();
+            startupLoadTask = null;
+        }
+    }
 }
+

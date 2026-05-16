@@ -33,6 +33,7 @@ public class AdvancementManager {
         registerAdvancement("use_cutting_board", "main/use_cutting_board");
         registerAdvancement("plant_rice", "main/plant_rice");
         registerAdvancement("plant_all_crops", "main/plant_all_crops");
+        registerAdvancement("get_mushroom_colony", "main/get_mushroom_colony");
         registerAdvancement("get_ham", "main/get_ham");
         registerAdvancement("netherite_knife", "main/obtain_netherite_knife");
         registerAdvancement("rotten_tomato_throw", "main/hit_raider_with_rotten_tomato");
@@ -166,3 +167,4 @@ public class AdvancementManager {
         load();
     }
 }
+

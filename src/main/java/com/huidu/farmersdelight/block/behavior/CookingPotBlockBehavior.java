@@ -10,7 +10,7 @@ import com.huidu.farmersdelight.storage.BlockStorageManager;
 import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
-import net.momirealms.craftengine.core.block.CustomBlock;
+import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
@@ -18,7 +18,9 @@ import net.momirealms.craftengine.core.entity.player.InteractionResult;
 import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Display;
@@ -37,7 +39,25 @@ import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class CookingPotBlockBehavior extends BlockBehavior {
+public class CookingPotBlockBehavior extends BlockBehavior implements net.momirealms.craftengine.core.block.behavior.WorldlyContainerHolder {
+
+    @Override
+    public Object getContainer(Object thisBlock, Object[] args) {
+        return WorldlyContainerBridge.cookingPotContainer(args);
+    }
+
+    @Override
+    public boolean isPathFindable(Object thisBlock, Object[] args) {
+        return false;
+    }
+
+    @Override
+    public void fallOn(Object thisBlock, Object[] args) {
+    }
+
+    @Override
+    public void updateEntityMovementAfterFallOn(Object thisBlock, Object[] args) {
+    }
 
     public static final int SLOT_MEAL_DISPLAY = 6;
     public static final int SLOT_CONTAINER = 7;
@@ -65,7 +85,7 @@ public class CookingPotBlockBehavior extends BlockBehavior {
     private final Double soundPitchMax;
 
     private CookingPotBlockBehavior(
-            CustomBlock block,
+            BlockDefinition block,
             String permission,
             boolean openWhileSneaking,
             boolean placeTrayOnOpen,
@@ -237,6 +257,7 @@ public class CookingPotBlockBehavior extends BlockBehavior {
         worldProgressDisplays.clear();
         displayVisibleToPlayers.clear();
         displayVisibilityCheckCooldown.clear();
+        cookingRecipeItems.clear();
         recentPlacements.clear();
     }
 
@@ -493,7 +514,7 @@ public class CookingPotBlockBehavior extends BlockBehavior {
                 world.getUID(), k -> new ConcurrentHashMap<>());
         worldEntities.put(posKey, entity);
 
-        if (entity.hasInput() || entity.hasPendingOutput()) {
+        if (entity.hasStoredContents()) {
             TickManager tickManager = plugin.getTickManager();
             if (tickManager != null) {
                 tickManager.markActive(world, posKey, TickManager.BlockType.COOKING_POT);
@@ -524,7 +545,8 @@ public class CookingPotBlockBehavior extends BlockBehavior {
 
     public static final BlockBehaviorFactory<CookingPotBlockBehavior> FACTORY = new BlockBehaviorFactory<CookingPotBlockBehavior>() {
         @Override
-        public CookingPotBlockBehavior create(CustomBlock block, Map<String, Object> arguments) {
+        public CookingPotBlockBehavior create(BlockDefinition block, net.momirealms.craftengine.core.plugin.config.ConfigSection section) {
+            Map<String, Object> arguments = section != null ? section.values() : Map.of();
             String permission = getString(arguments, "permission", "farmersdelight.use.cooking_pot");
             boolean openWhileSneaking = getBoolean(arguments, "open-while-sneaking", false);
             boolean placeTrayOnOpen = getBoolean(arguments, "place-tray-on-open", true);
@@ -582,6 +604,10 @@ public class CookingPotBlockBehavior extends BlockBehavior {
             tickManager.markActive(world, posKey, TickManager.BlockType.COOKING_POT);
         }
 
+        if (handleHeldContainerServing(bukkitPlayer, world, posKey, blockEntity)) {
+            return InteractionResult.SUCCESS_AND_CANCEL;
+        }
+
         TrayManager trayManager = FarmersDelightPlugin.getInstance().getTrayManager();
         if (placeTrayOnOpen && trayManager != null) {
             trayManager.checkAndPlaceTray(world, pos);
@@ -597,6 +623,39 @@ public class CookingPotBlockBehavior extends BlockBehavior {
         gui.open(bukkitPlayer);
 
         return InteractionResult.SUCCESS_AND_CANCEL;
+    }
+
+    private boolean handleHeldContainerServing(Player player, World world, BlockPosKey posKey, CookingPotBlockEntity blockEntity) {
+        ItemStack heldItem = player.getInventory().getItemInMainHand();
+        if (heldItem == null || heldItem.getType().isAir()) {
+            return false;
+        }
+        if (!blockEntity.doesMealHaveContainer() || !blockEntity.isContainerValid(heldItem)) {
+            return false;
+        }
+
+        ItemStack meal = blockEntity.useHeldContainerOnPendingMeal(world, heldItem);
+        if (meal == null || meal.getType().isAir()) {
+            return false;
+        }
+
+        if (player.getGameMode() != GameMode.CREATIVE) {
+            heldItem.setAmount(heldItem.getAmount() - 1);
+            if (heldItem.getAmount() <= 0) {
+                player.getInventory().setItemInMainHand(null);
+            }
+        }
+
+        Map<Integer, ItemStack> leftovers = player.getInventory().addItem(meal);
+        if (!leftovers.isEmpty()) {
+            Location dropLocation = posKey.toLocation(world).add(0.5, 0.7, 0.5);
+            leftovers.values().forEach(item -> world.dropItemNaturally(dropLocation, item));
+        }
+
+        saveBlockEntityData(world, posKey);
+        world.playSound(posKey.toLocation(world), Sound.ENTITY_ITEM_PICKUP, 1.0f, 1.0f);
+        player.updateInventory();
+        return true;
     }
 
     public boolean checkHeatSource(BlockPos pos, World world) {
@@ -620,7 +679,7 @@ public class CookingPotBlockBehavior extends BlockBehavior {
     }
 
     @Override
-    public int getAnalogOutputSignal(Object thisBlock, Object[] args) throws Exception {
+    public int getAnalogOutputSignal(Object thisBlock, Object[] args) {
         if (args.length >= 3 && args[1] instanceof net.momirealms.craftengine.core.world.World ceWorld && args[2] instanceof BlockPos pos) {
             World world = Bukkit.getWorld(ceWorld.uuid());
             if (world == null) return 0;
@@ -650,7 +709,7 @@ public class CookingPotBlockBehavior extends BlockBehavior {
     }
 
     @Override
-    public void tick(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public void tick(Object thisBlock, Object[] args) {
         // Managed by TickManager.
     }
 
@@ -707,3 +766,4 @@ public class CookingPotBlockBehavior extends BlockBehavior {
         return arguments.get(key);
     }
 }
+

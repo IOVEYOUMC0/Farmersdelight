@@ -7,7 +7,7 @@ import com.huidu.farmersdelight.util.*;
 import com.huidu.farmersdelight.visual.ItemDisplayManager;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
-import net.momirealms.craftengine.core.block.properties.Property;
+import net.momirealms.craftengine.core.block.property.Property;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -139,7 +139,7 @@ public class StoveManager {
                     + ", location=" + formatLocation(location));
         }
 
-        SoundUtils.play(location.getWorld(), location, getCrackleSound(location), Sound.BLOCK_CAMPFIRE_CRACKLE, 1.0f, 1.0f);
+        location.getWorld().playSound(location, Sound.BLOCK_LANTERN_PLACE, 0.5f, 1.0f);
         return true;
     }
 
@@ -472,11 +472,9 @@ public class StoveManager {
         debug("finish cooking: slot=" + slot + ", input=" + formatItem(input)
                 + ", recipe=" + (recipe != null ? recipe.getKey() : "null")
                 + ", location=" + formatLocation(location));
-        if (recipe != null) {
-            ItemStack result = recipe.getResult();
-            if (result != null) {
-                location.getWorld().dropItemNaturally(location.clone().add(0.5, 1.0, 0.5), result.clone());
-            }
+        ItemStack result = recipe != null ? recipe.getResult() : input;
+        if (result != null && !result.getType().isAir()) {
+            location.getWorld().dropItemNaturally(location.clone().add(0.5, 1.0, 0.5), result.clone());
         }
 
         stove.items[slot] = null;
@@ -487,7 +485,6 @@ public class StoveManager {
         if (!hasAnyItem(stove)) {
             ManagerSupport.removeStoredData(plugin, location);
         }
-        location.getWorld().playSound(location, Sound.BLOCK_FIRE_EXTINGUISH, 0.5f, 1.0f);
     }
 
     private void ejectAllItems(Location location, StoveData stove) {
@@ -702,3 +699,4 @@ public class StoveManager {
     }
 
 }
+

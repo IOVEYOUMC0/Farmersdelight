@@ -6,7 +6,7 @@ import com.huidu.farmersdelight.manager.SkilletManager;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
-import net.momirealms.craftengine.core.block.CustomBlock;
+import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
@@ -27,6 +27,19 @@ import java.util.concurrent.Callable;
 
 public class SkilletBlockBehavior extends BlockBehavior {
 
+    @Override
+    public boolean isPathFindable(Object thisBlock, Object[] args) {
+        return false;
+    }
+
+    @Override
+    public void fallOn(Object thisBlock, Object[] args) {
+    }
+
+    @Override
+    public void updateEntityMovementAfterFallOn(Object thisBlock, Object[] args) {
+    }
+
     public static final int DEFAULT_COOKING_TIME = 600;
     public static final int MINIMUM_COOKING_TIME = 60;
 
@@ -35,14 +48,15 @@ public class SkilletBlockBehavior extends BlockBehavior {
 
     public static final BlockBehaviorFactory<SkilletBlockBehavior> FACTORY = new BlockBehaviorFactory<>() {
         @Override
-        public SkilletBlockBehavior create(CustomBlock block, Map<String, Object> arguments) {
+        public SkilletBlockBehavior create(BlockDefinition block, net.momirealms.craftengine.core.plugin.config.ConfigSection section) {
+            Map<String, Object> arguments = section != null ? section.values() : Map.of();
             String addFoodSound = getArgumentString(arguments, "add-food-sound", Constants.SOUND_SKILLET_ADD_FOOD);
             String sizzleSound = getArgumentString(arguments, "sizzle-sound", Constants.SOUND_SKILLET_SIZZLE);
             return new SkilletBlockBehavior(block, addFoodSound, sizzleSound);
         }
     };
 
-    private SkilletBlockBehavior(CustomBlock block, String addFoodSound, String sizzleSound) {
+    private SkilletBlockBehavior(BlockDefinition block, String addFoodSound, String sizzleSound) {
         super(block);
         this.addFoodSound = addFoodSound;
         this.sizzleSound = sizzleSound;
@@ -129,7 +143,7 @@ public class SkilletBlockBehavior extends BlockBehavior {
     }
 
     @Override
-    public void tick(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public void tick(Object thisBlock, Object[] args) {
         // Managed by SkilletManager.
     }
 
@@ -193,3 +207,4 @@ public class SkilletBlockBehavior extends BlockBehavior {
         return "minecraft:" + item.getType().name().toLowerCase();
     }
 }
+

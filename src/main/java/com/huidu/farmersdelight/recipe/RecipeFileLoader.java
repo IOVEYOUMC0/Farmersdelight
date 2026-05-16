@@ -49,3 +49,4 @@ final class RecipeFileLoader {
         plugin.getLogger().info("Loaded " + loadedCount + " " + recipeTypeName + " recipes");
     }
 }
+

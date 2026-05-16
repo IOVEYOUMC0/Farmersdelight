@@ -26,7 +26,6 @@ public class AchievementListener implements Listener {
 
     private final Set<String> KNIFE_IDS = new HashSet<>();
     private final Set<String> FD_SEED_IDS = new HashSet<>();
-
     public AchievementListener() {
         loadConfig();
     }
@@ -81,6 +80,7 @@ public class AchievementListener implements Listener {
     public void onEntityPickupItem(EntityPickupItemEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
         checkSeedAdvancement(player);
+        checkMushroomColonyAdvancement(player);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -90,6 +90,7 @@ public class AchievementListener implements Listener {
             am.award(event.getPlayer(), "root");
         }
         checkSeedAdvancement(event.getPlayer());
+        checkMushroomColonyAdvancement(event.getPlayer());
     }
 
     private void handleCraftedItem(Player player, ItemStack result) {
@@ -133,4 +134,27 @@ public class AchievementListener implements Listener {
             }
         }
     }
+
+    private void checkMushroomColonyAdvancement(Player player) {
+        AdvancementManager am = FarmersDelightPlugin.getInstance().getAdvancementManager();
+        if (am == null || am.hasAdvancement(player, "get_mushroom_colony")) {
+            return;
+        }
+
+        boolean hasBrown = false;
+        boolean hasRed = false;
+        for (ItemStack item : player.getInventory().getContents()) {
+            String customItemId = ItemUtils.getCustomItemId(item);
+            if (Constants.BLOCK_BROWN_MUSHROOM_COLONY.equals(customItemId)) {
+                hasBrown = true;
+            } else if (Constants.BLOCK_RED_MUSHROOM_COLONY.equals(customItemId)) {
+                hasRed = true;
+            }
+            if (hasBrown && hasRed) {
+                am.award(player, "get_mushroom_colony");
+                return;
+            }
+        }
+    }
 }
+

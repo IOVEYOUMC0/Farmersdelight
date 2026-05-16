@@ -2,7 +2,7 @@ package com.huidu.farmersdelight.listener;
 
 import com.huidu.farmersdelight.block.behavior.UpperHalfLootRelayBehavior;
 import com.huidu.farmersdelight.block.behavior.TallCropBlockBehavior;
-import net.momirealms.craftengine.bukkit.api.BukkitAdaptors;
+import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.bukkit.api.event.CustomBlockBreakEvent;
 import net.momirealms.craftengine.bukkit.world.BukkitExistingBlock;
@@ -32,8 +32,7 @@ public class UpperHalfLootRelayListener implements Listener {
         }
 
         UpperHalfLootRelayBehavior behavior = brokenState.behavior()
-                .getAs(UpperHalfLootRelayBehavior.class)
-                .orElse(null);
+                .getFirst(UpperHalfLootRelayBehavior.class);
         if (behavior == null) {
             return;
         }
@@ -44,8 +43,7 @@ public class UpperHalfLootRelayListener implements Listener {
         }
 
         TallCropBlockBehavior tallCrop = brokenState.behavior()
-                .getAs(TallCropBlockBehavior.class)
-                .orElse(null);
+                .getFirst(TallCropBlockBehavior.class);
         if (tallCrop != null && tallCrop.isUpperHalf(brokenState) && !tallCrop.isUpperMature(brokenState)) {
             return;
         }
@@ -58,7 +56,7 @@ public class UpperHalfLootRelayListener implements Listener {
         }
 
         WorldPosition position = new WorldPosition(
-                BukkitAdaptors.adapt(brokenBlock.getWorld()),
+                BukkitAdaptor.adapt(brokenBlock.getWorld()),
                 brokenBlock.getX() + 0.5,
                 brokenBlock.getY() + 0.5,
                 brokenBlock.getZ() + 0.5
@@ -70,18 +68,19 @@ public class UpperHalfLootRelayListener implements Listener {
 
         ItemStack mainHand = event.getPlayer().getInventory().getItemInMainHand();
         if (mainHand != null && !mainHand.getType().isAir()) {
-            builder.withOptionalParameter(DirectContextParameters.ITEM_IN_HAND, BukkitAdaptors.adapt(mainHand));
+            builder.withOptionalParameter(DirectContextParameters.ITEM_IN_HAND, BukkitAdaptor.adapt(mainHand));
         }
 
-        List<net.momirealms.craftengine.core.item.Item<Object>> drops =
+        List<net.momirealms.craftengine.core.item.Item> drops =
                 lootSourceState.getDrops(builder, position.world(), event.player());
         if (drops.isEmpty()) {
             return;
         }
 
         event.setDropItems(false);
-        for (net.momirealms.craftengine.core.item.Item<Object> drop : drops) {
+        for (net.momirealms.craftengine.core.item.Item drop : drops) {
             position.world().dropItemNaturally(position, drop);
         }
     }
 }
+

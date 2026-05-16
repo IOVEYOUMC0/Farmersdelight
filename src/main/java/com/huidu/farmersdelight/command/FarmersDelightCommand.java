@@ -65,7 +65,6 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
                 }
 
                 plugin.reloadConfigs();
-                plugin.reloadRecipesWhenReady("Refreshing recipes after /fd reload...");
                 sender.sendMessage(I18n.get("general.config_reloaded"));
                 if (sender instanceof Player player) {
                     sender.sendMessage(I18n.get("general.hot_reload_warning", player));
@@ -159,3 +158,4 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
         return completions;
     }
 }
+

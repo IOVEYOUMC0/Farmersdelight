@@ -1,11 +1,11 @@
 package com.huidu.farmersdelight.block.behavior;
 
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
-import net.momirealms.craftengine.core.block.CustomBlock;
+import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
-import net.momirealms.craftengine.core.block.properties.Property;
+import net.momirealms.craftengine.core.block.property.Property;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 
@@ -13,11 +13,24 @@ import java.util.Map;
 import java.util.Objects;
 
 public class UpperHalfLootRelayBehavior extends BlockBehavior {
+
+    @Override
+    public boolean isPathFindable(Object thisBlock, Object[] args) {
+        return false;
+    }
+
+    @Override
+    public void fallOn(Object thisBlock, Object[] args) {
+    }
+
+    @Override
+    public void updateEntityMovementAfterFallOn(Object thisBlock, Object[] args) {
+    }
     private final BlockFace lowerHalfDirection;
     private final boolean requireMatchingLowerHalf;
 
     private UpperHalfLootRelayBehavior(
-            CustomBlock block,
+            BlockDefinition block,
             BlockFace lowerHalfDirection,
             boolean requireMatchingLowerHalf
     ) {
@@ -29,7 +42,8 @@ public class UpperHalfLootRelayBehavior extends BlockBehavior {
     public static final BlockBehaviorFactory<UpperHalfLootRelayBehavior> FACTORY =
             new BlockBehaviorFactory<UpperHalfLootRelayBehavior>() {
                 @Override
-                public UpperHalfLootRelayBehavior create(CustomBlock block, Map<String, Object> arguments) {
+                public UpperHalfLootRelayBehavior create(BlockDefinition block, net.momirealms.craftengine.core.plugin.config.ConfigSection section) {
+            Map<String, Object> arguments = section != null ? section.values() : Map.of();
                     String lowerHalfDirectionName = getString(arguments, "lower-half-direction", "DOWN");
                     boolean requireMatchingLowerHalf = getBoolean(arguments, "require-matching-lower-half", true);
                     BlockFace lowerHalfDirection = parseDirection(lowerHalfDirectionName);
@@ -66,7 +80,7 @@ public class UpperHalfLootRelayBehavior extends BlockBehavior {
         if (lowerState == null || lowerState.isEmpty()) {
             return false;
         }
-        if (!Objects.equals(lowerState.owner().value().id(), this.customBlock.id())) {
+        if (!Objects.equals(lowerState.owner().value().id(), this.blockDefinition.id())) {
             return false;
         }
         return !isUpperHalf(lowerState);
@@ -115,3 +129,4 @@ public class UpperHalfLootRelayBehavior extends BlockBehavior {
         return fallback;
     }
 }
+

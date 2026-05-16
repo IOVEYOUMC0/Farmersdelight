@@ -14,10 +14,11 @@ repositories {
 }
 
 dependencies {
-    // Baseline compile target. General plugin code is kept compatible with Paper 1.21.4+.
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
-    compileOnly("net.momirealms:craft-engine-bukkit:0.0.67")
-    compileOnly("net.momirealms:craft-engine-core:0.0.67")
+    compileOnly("org.jetbrains:annotations:26.1.0")
+    compileOnly(files("../Reference/craft-engine-main/core/build/libs/craft-engine-core-26.5.jar"))
+    compileOnly(files("../Reference/craft-engine-main/bukkit/build/libs/craft-engine-bukkit-26.5.jar"))
+    compileOnly(files("../Reference/craft-engine-main/bukkit/proxy/build/libs/proxy.jar"))
 }
 
 java {
@@ -27,10 +28,13 @@ java {
 }
 
 tasks.withType<JavaCompile>().configureEach {
+    options.encoding = "UTF-8"
+    options.release.set(21)
     options.compilerArgs.add("-Xlint:deprecation")
 }
 
 tasks.processResources {
+    filteringCharset = "UTF-8"
     filesMatching("plugin.yml") {
         expand("version" to version)
     }

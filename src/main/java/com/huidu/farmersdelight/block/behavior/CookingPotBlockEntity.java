@@ -19,6 +19,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -143,6 +144,17 @@ public class CookingPotBlockEntity {
             }
         }
         return false;
+    }
+
+    public boolean hasStoredContents() {
+        synchronized (inventoryLock) {
+            for (ItemStack item : inventory) {
+                if (item != null && !item.getType().isAir()) {
+                    return true;
+                }
+            }
+        }
+        return doesMealHaveContainer();
     }
 
     public boolean consumeContainer() {
@@ -313,13 +325,12 @@ public class CookingPotBlockEntity {
             }
 
             if (customId != null) {
-                var customItem = FarmersDelightPlugin.getInstance().getCraftEngine().itemManager()
-                        .getCustomItem(Key.of(customId)).orElse(null);
-                if (customItem == null || !customItem.settings().tags().contains(tagIngredient.key())) {
+                Set<Key> customTags = ItemUtils.getCustomItemTags(Key.of(customId));
+                if (!customTags.contains(tagIngredient.key())) {
                     return false;
                 }
                 for (Key excludedTag : tagIngredient.excludedTags()) {
-                    if (customItem.settings().tags().contains(excludedTag)) {
+                    if (customTags.contains(excludedTag)) {
                         return false;
                     }
                 }
@@ -534,6 +545,34 @@ public class CookingPotBlockEntity {
     
     public ItemStack useContainerToTakeMeal() {
         return takeMealPortion(1);
+    }
+
+    public ItemStack useHeldContainerOnPendingMeal(World world, ItemStack container) {
+        synchronized (inventoryLock) {
+            if (!doesMealHaveContainer() || !isContainerValid(container)) {
+                return null;
+            }
+
+            ItemStack meal = inventory[CookingPotBlockBehavior.SLOT_MEAL_DISPLAY];
+            if (meal == null || meal.getType().isAir()) {
+                return null;
+            }
+
+            ItemStack result = splitItemWithExperience(meal, 1);
+            if (meal.getAmount() <= 0) {
+                inventory[CookingPotBlockBehavior.SLOT_MEAL_DISPLAY] = null;
+                mealContainerStack.set(null);
+            }
+
+            if (world != null) {
+                float mealExperience = getItemStoredExperience(result);
+                if (mealExperience > 0f) {
+                    dropExperience(world, mealExperience);
+                    clearItemStoredExperience(result);
+                }
+            }
+            return result;
+        }
     }
 
     public ItemStack takeMealPortionForDelivery(World world, int requestedAmount) {
@@ -907,3 +946,4 @@ public class CookingPotBlockEntity {
         return currentRecipe.get();
     }
 }
+

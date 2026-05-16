@@ -2,9 +2,11 @@ package com.huidu.farmersdelight.config;
 
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
-import net.momirealms.craftengine.core.block.properties.Property;
+import net.momirealms.craftengine.core.block.property.Property;
 import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.Lightable;
 import org.bukkit.configuration.ConfigurationSection;
@@ -63,11 +65,17 @@ public class HeatSourceConfig {
         for (String conductorId : conductorList) {
             addVanillaConductor(conductorId);
         }
+
+        List<String> conductorTagList = section.getStringList("conductor-tags");
+        for (String tagId : conductorTagList) {
+            addConductorTag(Key.of(tagId));
+        }
     }
 
     public void addVanillaBlock(String blockId) {
         try {
-            Material material = Material.valueOf(blockId.replace("minecraft:", "").toUpperCase());
+            NamespacedKey key = NamespacedKey.minecraft(blockId.replace("minecraft:", "").toLowerCase());
+            Material material = Registry.MATERIAL.get(key);
             vanillaBlocks.add(material);
         } catch (IllegalArgumentException e) {
             if (LOGGER != null) {
@@ -94,7 +102,8 @@ public class HeatSourceConfig {
 
     public void addVanillaConductor(String conductorId) {
         try {
-            Material material = Material.valueOf(conductorId.replace("minecraft:", "").toUpperCase());
+            NamespacedKey key = NamespacedKey.minecraft(conductorId.replace("minecraft:", "").toLowerCase());
+            Material material = Registry.MATERIAL.get(key);
             conductors.add(material);
         } catch (IllegalArgumentException e) {
             if (LOGGER != null) {
@@ -211,3 +220,4 @@ public class HeatSourceConfig {
         }
     }
 }
+
