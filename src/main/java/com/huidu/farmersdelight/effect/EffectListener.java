@@ -85,3 +85,4 @@ public class EffectListener implements Listener {
         untrackPlayer(event.getPlayer().getUniqueId());
     }
 }
+

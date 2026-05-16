@@ -7,7 +7,6 @@ import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
-import net.momirealms.craftengine.core.item.CustomItem;
 import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.GameMode;
 import org.bukkit.Sound;
@@ -110,14 +109,10 @@ public class CuttingBoardInteractListener implements Listener {
 
         String customId = ItemUtils.getCustomItemId(item);
         if (customId != null) {
-            CustomItem<?> customItem = FarmersDelightPlugin.getInstance().getCraftEngine().itemManager()
-                    .getCustomItem(Key.of(customId)).orElse(null);
-            if (customItem != null) {
-                Set<Key> itemTags = customItem.settings().tags();
-                for (Key tag : toolTags) {
-                    if (itemTags.contains(tag)) {
-                        return true;
-                    }
+            Set<Key> itemTags = ItemUtils.getCustomItemTags(Key.of(customId));
+            for (Key tag : toolTags) {
+                if (itemTags.contains(tag)) {
+                    return true;
                 }
             }
         }
@@ -138,3 +133,4 @@ public class CuttingBoardInteractListener implements Listener {
                 .anyMatch(id -> id.equalsIgnoreCase(customId));
     }
 }
+

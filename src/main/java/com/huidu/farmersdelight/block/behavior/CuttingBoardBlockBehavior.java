@@ -6,13 +6,12 @@ import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.recipe.CuttingBoardRecipe;
 import com.huidu.farmersdelight.storage.BlockStorageManager;
 import com.huidu.farmersdelight.util.*;
-import net.momirealms.craftengine.core.block.CustomBlock;
+import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
-import net.momirealms.craftengine.core.block.properties.Property;
+import net.momirealms.craftengine.core.block.property.Property;
 import net.momirealms.craftengine.core.entity.player.InteractionResult;
-import net.momirealms.craftengine.core.item.CustomItem;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
@@ -28,7 +27,25 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
-public class CuttingBoardBlockBehavior extends BlockBehavior {
+public class CuttingBoardBlockBehavior extends BlockBehavior implements net.momirealms.craftengine.core.block.behavior.WorldlyContainerHolder {
+
+    @Override
+    public Object getContainer(Object thisBlock, Object[] args) {
+        return WorldlyContainerBridge.cuttingBoardContainer(args);
+    }
+
+    @Override
+    public boolean isPathFindable(Object thisBlock, Object[] args) {
+        return false;
+    }
+
+    @Override
+    public void fallOn(Object thisBlock, Object[] args) {
+    }
+
+    @Override
+    public void updateEntityMovementAfterFallOn(Object thisBlock, Object[] args) {
+    }
 
     private static final Map<UUID, Map<BlockPosKey, CuttingBoardBlockEntity>> worldBlockEntities = new ConcurrentHashMap<>();
     private static final String BLOCK_TYPE = "cutting_board";
@@ -42,7 +59,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
     private final boolean enableStacking;
     private final int maxStackAmount;
 
-    private CuttingBoardBlockBehavior(CustomBlock block, Property<?> facingProperty, List<Key> toolTags, List<Key> toolItems, String knifeSound, boolean enableStacking, int maxStackAmount) {
+    private CuttingBoardBlockBehavior(BlockDefinition block, Property<?> facingProperty, List<Key> toolTags, List<Key> toolItems, String knifeSound, boolean enableStacking, int maxStackAmount) {
         super(block);
         this.facingProperty = facingProperty;
         this.toolTags = toolTags;
@@ -251,7 +268,8 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
 
     public static final BlockBehaviorFactory<CuttingBoardBlockBehavior> FACTORY = new BlockBehaviorFactory<CuttingBoardBlockBehavior>() {
         @Override
-        public CuttingBoardBlockBehavior create(CustomBlock block, Map<String, Object> arguments) {
+        public CuttingBoardBlockBehavior create(BlockDefinition block, net.momirealms.craftengine.core.plugin.config.ConfigSection section) {
+            Map<String, Object> arguments = section != null ? section.values() : Map.of();
             Property<?> facingProperty = block.getProperty("facing");
 
             List<String> toolTagStrings = getStringList(arguments, "tool-tags");
@@ -273,7 +291,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
                     .toList();
 
             String knifeSound = getArgumentString(arguments, "knife-sound", Constants.SOUND_CUTTING_BOARD_KNIFE);
-            boolean enableStacking = getBooleanValue(arguments, "enable-stacking", false);
+            boolean enableStacking = getBooleanValue(arguments, "enable-stacking", true);
             int maxStackAmount = getIntValue(arguments, "max-stack-amount", 64);
             return new CuttingBoardBlockBehavior(block, facingProperty, toolTags, toolItems, knifeSound, enableStacking, maxStackAmount);
         }
@@ -281,6 +299,14 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
 
     public String getKnifeSound() {
         return knifeSound;
+    }
+
+    public boolean isStackingEnabled() {
+        return enableStacking;
+    }
+
+    public int getMaxStackAmount() {
+        return maxStackAmount;
     }
 
     public static CuttingBoardBlockBehavior getBlockBehavior(Location location) {
@@ -354,20 +380,33 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
 
         ItemStack mainHand = bukkitPlayer.getInventory().getItemInMainHand();
         ItemStack offHand = bukkitPlayer.getInventory().getItemInOffHand();
-
+        boolean allowOffhandInteractions = FarmersDelightPlugin.getInstance().isCuttingBoardOffhandInteractionsAllowed();
         BlockFace facing = getFacing(state);
 
         if (blockEntity.hasItem()) {
-            ItemStack tool = findMatchingTool(blockEntity, mainHand, offHand);
-            boolean toolIsOffhand = tool != null && tool == offHand;
+            ItemStack tool = findMatchingTool(blockEntity, mainHand, offHand, allowOffhandInteractions);
+            boolean toolIsOffhand = allowOffhandInteractions && tool != null && tool == offHand;
             if (tool != null) {
                 boolean result = processCutting(blockEntity, tool, bukkitPlayer, facing, world, posKey, toolIsOffhand);
                 if (result) {
                     return InteractionResult.SUCCESS_AND_CANCEL;
                 }
-            } else if (isTool(mainHand) || isTool(offHand)) {
-                bukkitPlayer.sendActionBar(I18n.getComponent("messages.cutting_board.no_recipe", bukkitPlayer));
-                bukkitPlayer.playSound(bukkitPlayer.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 1.0f);
+            }
+
+            if (tryStackOntoBoard(blockEntity, mainHand, bukkitPlayer, facing, world, posKey)) {
+                return InteractionResult.SUCCESS_AND_CANCEL;
+            }
+
+            if (isTool(mainHand) || (allowOffhandInteractions && isTool(offHand))) {
+                boolean hasRecipe = FarmersDelightPlugin.getInstance().getCuttingBoardRecipes()
+                        .hasAnyRecipeFor(blockEntity.getStoredItem());
+                if (!hasRecipe) {
+                    bukkitPlayer.sendActionBar(I18n.getComponent("messages.cutting_board.no_recipe", bukkitPlayer));
+                    bukkitPlayer.playSound(bukkitPlayer.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 1.0f);
+                } else {
+                    bukkitPlayer.sendActionBar(I18n.getComponent("messages.cutting_board.wrong_tool", bukkitPlayer));
+                    bukkitPlayer.playSound(bukkitPlayer.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 0.8f);
+                }
                 return InteractionResult.SUCCESS_AND_CANCEL;
             } else if (!mainHand.getType().isAir() && !bukkitPlayer.isSneaking() && !isTool(mainHand)) {
                 bukkitPlayer.sendActionBar(I18n.getComponent("messages.cutting_board.need_tool", bukkitPlayer));
@@ -378,46 +417,37 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
 
         if (!blockEntity.hasItem() && !mainHand.getType().isAir()) {
             if (bukkitPlayer.isSneaking() && isTool(mainHand)) {
-                // Dedicated Bukkit interaction listener handles sneaking tool insertion
-                // to avoid CraftEngine interaction edge cases and double-processing.
                 return InteractionResult.PASS;
             }
 
-            ItemStack itemToPlace = mainHand.clone();
-            int amountToMove = itemToPlace.getAmount();
-            if (enableStacking) {
-                amountToMove = Math.min(amountToMove, maxStackAmount);
-            } else {
-                amountToMove = 1;
+            if (tryPlaceOnEmptyBoard(mainHand, false, bukkitPlayer, world, posKey, facing, blockEntity)) {
+                return InteractionResult.SUCCESS_AND_CANCEL;
             }
-            itemToPlace.setAmount(amountToMove);
-            boolean carveTool = bukkitPlayer.isSneaking() && isTool(mainHand);
-            storeItemInBoard(world, posKey, facing, blockEntity, itemToPlace, carveTool);
-            if (bukkitPlayer.getGameMode() != GameMode.CREATIVE) {
-                mainHand.setAmount(mainHand.getAmount() - amountToMove);
+            if (allowOffhandInteractions && tryPlaceOnEmptyBoard(offHand, true, bukkitPlayer, world, posKey, facing, blockEntity)) {
+                return InteractionResult.SUCCESS_AND_CANCEL;
             }
-            Sound placeSound = carveTool ? Sound.ITEM_TRIDENT_HIT : Sound.BLOCK_WOOD_PLACE;
-            float pitch = carveTool ? 1.2f : 1.0f;
-            String soundKey = carveTool ? knifeSound : null;
-            SoundUtils.play(bukkitPlayer.getWorld(), bukkitPlayer.getLocation(), soundKey, placeSound, 1.0f, pitch);
-            return InteractionResult.SUCCESS_AND_CANCEL;
+
+            if (!allowOffhandInteractions || offHand == null || offHand.getType().isAir()
+                    || !FarmersDelightPlugin.getInstance().getCuttingBoardRecipes().hasAnyRecipeFor(offHand)) {
+                bukkitPlayer.sendActionBar(I18n.getComponent("messages.cutting_board.no_recipe", bukkitPlayer));
+                bukkitPlayer.playSound(bukkitPlayer.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 1.0f);
+                return InteractionResult.SUCCESS_AND_CANCEL;
+            }
         }
 
-        if (blockEntity.hasItem() && !mainHand.getType().isAir() && enableStacking && !bukkitPlayer.isSneaking() && !isTool(mainHand)) {
-            ItemStack stored = blockEntity.getStoredItem();
-            if (stored != null && mainHand.isSimilar(stored) && stored.getAmount() < maxStackAmount) {
-                int space = maxStackAmount - stored.getAmount();
-                int toMove = Math.min(space, mainHand.getAmount());
-                if (toMove > 0) {
-                    stored.setAmount(stored.getAmount() + toMove);
-                    blockEntity.setStoredItem(stored, world, posKey, facing);
-                    if (bukkitPlayer.getGameMode() != GameMode.CREATIVE) {
-                        mainHand.setAmount(mainHand.getAmount() - toMove);
-                    }
-                    SoundUtils.play(bukkitPlayer.getWorld(), bukkitPlayer.getLocation(), null, Sound.BLOCK_WOOD_PLACE, 1.0f, 1.0f);
-                    return InteractionResult.SUCCESS_AND_CANCEL;
-                }
+        if (!blockEntity.hasItem() && allowOffhandInteractions && (mainHand == null || mainHand.getType().isAir())
+                && offHand != null && !offHand.getType().isAir()) {
+            if (bukkitPlayer.isSneaking() && isTool(offHand)) {
+                return InteractionResult.PASS;
             }
+
+            if (tryPlaceOnEmptyBoard(offHand, true, bukkitPlayer, world, posKey, facing, blockEntity)) {
+                return InteractionResult.SUCCESS_AND_CANCEL;
+            }
+
+            bukkitPlayer.sendActionBar(I18n.getComponent("messages.cutting_board.no_recipe", bukkitPlayer));
+            bukkitPlayer.playSound(bukkitPlayer.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 1.0f);
+            return InteractionResult.SUCCESS_AND_CANCEL;
         }
 
         if (blockEntity.hasItem() && mainHand.getType().isAir()) {
@@ -440,12 +470,78 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
         return InteractionResult.PASS;
     }
 
+    private boolean tryPlaceOnEmptyBoard(ItemStack sourceItem, boolean offhand, Player player,
+                                         World world, BlockPosKey posKey, BlockFace facing,
+                                         CuttingBoardBlockEntity blockEntity) {
+        if (sourceItem == null || sourceItem.getType().isAir()) {
+            return false;
+        }
+
+        ItemStack itemToPlace = sourceItem.clone();
+        int amountToMove = itemToPlace.getAmount();
+        if (enableStacking) {
+            amountToMove = Math.min(amountToMove, maxStackAmount);
+        } else {
+            amountToMove = 1;
+        }
+        itemToPlace.setAmount(amountToMove);
+
+        boolean carveTool = !offhand && player.isSneaking() && isTool(sourceItem);
+        storeItemInBoard(world, posKey, facing, blockEntity, itemToPlace, carveTool);
+        if (player.getGameMode() != GameMode.CREATIVE) {
+            sourceItem.setAmount(sourceItem.getAmount() - amountToMove);
+            if (sourceItem.getAmount() <= 0) {
+                if (offhand) {
+                    player.getInventory().setItemInOffHand(null);
+                } else {
+                    player.getInventory().setItemInMainHand(null);
+                }
+            }
+        }
+        Sound placeSound = carveTool ? Sound.ITEM_TRIDENT_HIT : Sound.BLOCK_WOOD_PLACE;
+        float pitch = carveTool ? 1.2f : 1.0f;
+        String soundKey = carveTool ? knifeSound : null;
+        SoundUtils.play(player.getWorld(), player.getLocation(), soundKey, placeSound, 1.0f, pitch);
+        return true;
+    }
+
+    private boolean tryStackOntoBoard(CuttingBoardBlockEntity blockEntity, ItemStack mainHand, Player player,
+                                      BlockFace facing, World world, BlockPosKey posKey) {
+        if (!enableStacking || player.isSneaking() || isTool(mainHand)) {
+            return false;
+        }
+        if (mainHand == null || mainHand.getType().isAir()) {
+            return false;
+        }
+
+        ItemStack stored = blockEntity.getStoredItem();
+        if (stored == null || !mainHand.isSimilar(stored) || stored.getAmount() >= maxStackAmount) {
+            return false;
+        }
+
+        int space = maxStackAmount - stored.getAmount();
+        int toMove = Math.min(space, mainHand.getAmount());
+        if (toMove <= 0) {
+            return false;
+        }
+
+        stored.setAmount(stored.getAmount() + toMove);
+        blockEntity.setStoredItem(stored, world, posKey, facing);
+        saveBlockEntityData(world, posKey);
+        if (player.getGameMode() != GameMode.CREATIVE) {
+            mainHand.setAmount(mainHand.getAmount() - toMove);
+        }
+        SoundUtils.play(player.getWorld(), player.getLocation(), null, Sound.BLOCK_WOOD_PLACE, 1.0f, 1.0f);
+        return true;
+    }
+
     @Override
-    public void tick(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public void tick(Object thisBlock, Object[] args) {
         // Managed by interaction and block entity state.
     }
 
-    private ItemStack findMatchingTool(CuttingBoardBlockEntity blockEntity, ItemStack mainHand, ItemStack offHand) {
+    private ItemStack findMatchingTool(CuttingBoardBlockEntity blockEntity, ItemStack mainHand, ItemStack offHand,
+                                       boolean allowOffhandInteractions) {
         ItemStack storedItem = blockEntity.getStoredItem();
         if (storedItem == null || storedItem.getType().isAir()) {
             return null;
@@ -454,7 +550,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
         if (matchesAnyRecipe(storedItem, mainHand)) {
             return mainHand;
         }
-        if (matchesAnyRecipe(storedItem, offHand)) {
+        if (allowOffhandInteractions && matchesAnyRecipe(storedItem, offHand)) {
             return offHand;
         }
         return null;
@@ -498,13 +594,9 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
         String customId = ItemUtils.getCustomItemId(item);
 
         if (customId != null) {
-            CustomItem<?> customItem = FarmersDelightPlugin.getInstance().getCraftEngine().itemManager()
-                    .getCustomItem(Key.of(customId)).orElse(null);
-            if (customItem != null) {
-                Set<Key> itemTags = customItem.settings().tags();
-                for (Key tag : toolTags) {
-                    if (itemTags.contains(tag)) return true;
-                }
+            Set<Key> itemTags = ItemUtils.getCustomItemTags(Key.of(customId));
+            for (Key tag : toolTags) {
+                if (itemTags.contains(tag)) return true;
             }
         }
 
@@ -710,3 +802,4 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
         return defaultValue;
     }
 }
+

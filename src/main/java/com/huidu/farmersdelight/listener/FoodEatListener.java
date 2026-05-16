@@ -84,3 +84,4 @@ public class FoodEatListener implements Listener {
         return "minecraft:" + type.name().toLowerCase();
     }
 }
+

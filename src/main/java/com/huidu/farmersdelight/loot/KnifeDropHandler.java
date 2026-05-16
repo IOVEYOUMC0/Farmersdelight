@@ -134,14 +134,11 @@ public class KnifeDropHandler implements Listener {
         }
 
         if (customItemId != null) {
-            var customItem = plugin.getCraftEngine().itemManager().getCustomItem(Key.of(customItemId)).orElse(null);
-            if (customItem != null) {
-                Set<Key> itemTags = customItem.settings().tags();
-                for (Key tag : itemTags) {
-                    for (String knifeTag : knifeTags) {
-                        if (tag.toString().equalsIgnoreCase(knifeTag)) {
-                            return true;
-                        }
+            Set<Key> itemTags = ItemUtils.getCustomItemTags(Key.of(customItemId));
+            for (Key tag : itemTags) {
+                for (String knifeTag : knifeTags) {
+                    if (tag.toString().equalsIgnoreCase(knifeTag)) {
+                        return true;
                     }
                 }
             }
@@ -184,3 +181,4 @@ public class KnifeDropHandler implements Listener {
         loadConfig();
     }
 }
+

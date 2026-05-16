@@ -339,3 +339,4 @@ public class StoveCookingBlockEntity {
         return entity;
     }
 }
+

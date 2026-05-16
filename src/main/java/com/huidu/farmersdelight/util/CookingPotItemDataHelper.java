@@ -9,6 +9,7 @@ import com.huidu.farmersdelight.storage.BlockStorageManager;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
@@ -21,6 +22,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.lang.reflect.Array;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -34,6 +38,7 @@ public final class CookingPotItemDataHelper {
     private static final int MAX_SERVINGS = 64;
     private static final int BAR_RESOLUTION = 4096;
     private static final PlainTextComponentSerializer PLAIN_TEXT = PlainTextComponentSerializer.plainText();
+    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
     private static final String BLOCK_TYPE = "cooking_pot";
 
     private CookingPotItemDataHelper() {
@@ -47,6 +52,12 @@ public final class CookingPotItemDataHelper {
     public static boolean isDurabilityBarEnabled() {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         return plugin != null && plugin.getConfig().getBoolean("cooking-pot-packed-drop.durability-bar.enabled", true);
+    }
+
+    public static boolean isAdvancedDurabilityTooltipHiddenEnabled() {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        return plugin != null && plugin.getConfig().getBoolean(
+                "cooking-pot-packed-drop.hide-advanced-durability-tooltip.enabled", true);
     }
 
     public static ItemStack createPackedPotItem(CookingPotBlockEntity entity) {
@@ -99,6 +110,7 @@ public final class CookingPotItemDataHelper {
             ItemStack preview = getMealPreview(entity.getInventory(), mealContainer);
             updatePackedLore(potItem, preview);
             updatePackedBar(potItem, preview);
+            updatePackedTooltipDisplay(potItem);
             return potItem;
         } catch (IOException e) {
             FarmersDelightPlugin.getInstance().getLogger().warning(
@@ -152,8 +164,7 @@ public final class CookingPotItemDataHelper {
             saveEntityToStorage(world, entity);
 
             TickManager tickManager = FarmersDelightPlugin.getInstance().getTickManager();
-            if (tickManager != null
-                    && (entity.hasInput() || entity.hasPendingOutput() || entity.getMealDisplayItem() != null)) {
+            if (tickManager != null && entity.hasStoredContents()) {
                 tickManager.markActive(world, entity.getPosKey(), TickManager.BlockType.COOKING_POT);
             }
             return true;
@@ -229,6 +240,7 @@ public final class CookingPotItemDataHelper {
         ItemStack preview = getStoredMealPreview(potItem);
         updatePackedLore(potItem, preview);
         updatePackedBar(potItem, preview);
+        updatePackedTooltipDisplay(potItem);
     }
 
     private static ItemStack getMealPreview(ItemStack[] inventory, ItemStack mealContainer) {
@@ -298,11 +310,11 @@ public final class CookingPotItemDataHelper {
         }
 
         if (preview != null && !preview.getType().isAir()) {
-            String name = ItemUtils.getDisplayName(preview, (String) null);
+            String name = ItemUtils.getDisplayName(preview, currentLocale());
             String dynamicLore = I18n.formatNamed(
                     "gui.packed_pot.contains",
                     Map.of("amount", String.valueOf(preview.getAmount()), "item", name));
-            lore.add(Component.text(dynamicLore));
+            lore.add(LEGACY.deserialize(dynamicLore).decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
             meta.getPersistentDataContainer().set(
                     key("dynamic_lore"), PersistentDataType.STRING, dynamicLore);
         } else {
@@ -326,6 +338,82 @@ public final class CookingPotItemDataHelper {
         int damage = Math.max(0, BAR_RESOLUTION - filledUnits);
         stack.setData(DataComponentTypes.MAX_DAMAGE, BAR_RESOLUTION);
         stack.setData(DataComponentTypes.DAMAGE, damage);
+    }
+
+    private static void updatePackedTooltipDisplay(ItemStack stack) {
+        if (stack == null || stack.getType().isAir()) {
+            return;
+        }
+
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null) {
+            return;
+        }
+
+        if (!isAdvancedDurabilityTooltipHiddenEnabled()) {
+            meta.getPersistentDataContainer().remove(key("managed_tooltip_display"));
+            stack.setItemMeta(meta);
+            return;
+        }
+
+        if (applyPackedTooltipDisplay(stack)) {
+            meta = stack.getItemMeta();
+            if (meta != null) {
+                meta.getPersistentDataContainer().set(key("managed_tooltip_display"), PersistentDataType.BYTE, (byte) 1);
+                stack.setItemMeta(meta);
+            }
+            return;
+        }
+
+        meta.getPersistentDataContainer().remove(key("managed_tooltip_display"));
+        stack.setItemMeta(meta);
+    }
+
+    private static boolean applyPackedTooltipDisplay(ItemStack stack) {
+        try {
+            Class<?> dataComponentTypesClass = Class.forName("io.papermc.paper.datacomponent.DataComponentTypes");
+            Class<?> dataComponentTypeClass = Class.forName("io.papermc.paper.datacomponent.DataComponentType");
+            Class<?> valuedTypeClass = Class.forName("io.papermc.paper.datacomponent.DataComponentType$Valued");
+            Class<?> builderClass = Class.forName("io.papermc.paper.datacomponent.DataComponentBuilder");
+            Class<?> tooltipDisplayClass = Class.forName("io.papermc.paper.datacomponent.item.TooltipDisplay");
+            Class<?> tooltipDisplayBuilderClass = Class.forName("io.papermc.paper.datacomponent.item.TooltipDisplay$Builder");
+
+            Object tooltipDisplayType = getStaticField(dataComponentTypesClass, "TOOLTIP_DISPLAY");
+            Object maxDamageType = getStaticField(dataComponentTypesClass, "MAX_DAMAGE");
+            Object damageType = getStaticField(dataComponentTypesClass, "DAMAGE");
+
+            Object builder = tooltipDisplayClass.getMethod("tooltipDisplay").invoke(null);
+            tooltipDisplayBuilderClass.getMethod("hideTooltip", boolean.class).invoke(builder, false);
+
+            Object hiddenTypes = Array.newInstance(dataComponentTypeClass, 2);
+            Array.set(hiddenTypes, 0, maxDamageType);
+            Array.set(hiddenTypes, 1, damageType);
+            Method addHiddenComponents = tooltipDisplayBuilderClass.getMethod("addHiddenComponents", hiddenTypes.getClass());
+            addHiddenComponents.invoke(builder, new Object[]{hiddenTypes});
+
+            Method setData = ItemStack.class.getMethod("setData", valuedTypeClass, builderClass);
+            setData.invoke(stack, tooltipDisplayType, builder);
+            return true;
+        } catch (Throwable throwable) {
+            FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+            if (plugin != null && plugin.getConfig().getBoolean("debug.enabled", false)) {
+                plugin.getLogger().warning("Failed to apply packed cooking pot tooltip display: " + throwable.getMessage());
+            }
+            return false;
+        }
+    }
+
+    private static String currentLocale() {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        if (plugin == null) {
+            return null;
+        }
+        return plugin.getConfig().getString("language", "zh_cn").toLowerCase();
+    }
+
+    private static Object getStaticField(Class<?> owner, String fieldName) throws ReflectiveOperationException {
+        Field field = owner.getField(fieldName);
+        return field.get(null);
     }
 
     private static byte[] serializeInventory(ItemStack[] inventory) throws IOException {
@@ -375,3 +463,4 @@ public final class CookingPotItemDataHelper {
         return new NamespacedKey(FarmersDelightPlugin.getInstance(), "packed_cooking_pot_" + path);
     }
 }
+

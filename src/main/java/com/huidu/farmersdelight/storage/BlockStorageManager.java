@@ -9,8 +9,11 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -28,6 +31,7 @@ public class BlockStorageManager {
     private final AtomicLong dataVersion = new AtomicLong();
     private final AtomicLong lastSavedVersion = new AtomicLong();
     private BukkitTask autoSaveTask;
+    private boolean legacyItemFormatLoaded;
 
     public BlockStorageManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
@@ -227,9 +231,7 @@ public class BlockStorageManager {
                             ConfigurationSection itemSection = blockSection.createSection("items." + dataEntry.getKey());
                             itemSection.set("material", itemStack.getType().name());
                             itemSection.set("amount", itemStack.getAmount());
-                            if (itemStack.hasItemMeta()) {
-                                itemSection.set("meta", serializeItemMeta(itemStack));
-                            }
+                            itemSection.set("bytes", serializeItemStack(itemStack));
                         } else if (value instanceof Integer || value instanceof Double || value instanceof Float
                                 || value instanceof Long || value instanceof Boolean || value instanceof String) {
                             blockSection.set("data." + dataEntry.getKey(), value);
@@ -367,25 +369,31 @@ public class BlockStorageManager {
             }
         }
         long loadedVersion = dataVersion.incrementAndGet();
-        lastSavedVersion.set(loadedVersion);
+        lastSavedVersion.set(legacyItemFormatLoaded ? -1L : loadedVersion);
     }
 
-    private String serializeItemMeta(ItemStack item) {
-        YamlConfiguration temp = new YamlConfiguration();
-        temp.set("item", item);
-        return temp.saveToString();
+    private String serializeItemStack(ItemStack item) {
+        return Base64.getEncoder().encodeToString(item.serializeAsBytes());
     }
 
     private ItemStack deserializeItemStack(ConfigurationSection section) {
         try {
+            String bytes = section.getString("bytes");
+            if (bytes != null && !bytes.isEmpty()) {
+                return deserializeModernItemStack(bytes);
+            }
+
             String materialName = section.getString("material");
             if (materialName == null) return null;
 
-            org.bukkit.Material material = org.bukkit.Material.valueOf(materialName);
+            org.bukkit.Material material = org.bukkit.Registry.MATERIAL.get(
+                    org.bukkit.NamespacedKey.minecraft(materialName.toLowerCase()));
+            if (material == null) return null;
             int amount = section.getInt("amount", 1);
 
             String metaStr = section.getString("meta");
             if (metaStr != null && !metaStr.isEmpty()) {
+                legacyItemFormatLoaded = true;
                 YamlConfiguration temp = new YamlConfiguration();
                 temp.loadFromString(metaStr);
                 ItemStack loadedItem = temp.getItemStack("item");
@@ -399,6 +407,37 @@ public class BlockStorageManager {
         } catch (Exception e) {
             plugin.getLogger().fine("Failed to deserialize ItemStack: " + e.getMessage());
             return null;
+        }
+    }
+
+    private ItemStack deserializeModernItemStack(String encodedBytes) throws IOException {
+        byte[] raw = Base64.getDecoder().decode(encodedBytes);
+
+        // Support a future length-prefixed wrapper format if we ever need it,
+        // while keeping today's plain ItemStack.serializeAsBytes() payloads simple.
+        if (looksLikeLengthPrefixedPayload(raw)) {
+            try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(raw))) {
+                int len = dis.readInt();
+                if (len > 0 && len <= raw.length - Integer.BYTES) {
+                    byte[] itemBytes = new byte[len];
+                    dis.readFully(itemBytes);
+                    return ItemStack.deserializeBytes(itemBytes);
+                }
+            }
+        }
+
+        return ItemStack.deserializeBytes(raw);
+    }
+
+    private boolean looksLikeLengthPrefixedPayload(byte[] raw) {
+        if (raw.length <= Integer.BYTES) {
+            return false;
+        }
+        try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(raw))) {
+            int len = dis.readInt();
+            return len > 0 && len <= raw.length - Integer.BYTES;
+        } catch (IOException ignored) {
+            return false;
         }
     }
 
@@ -454,9 +493,7 @@ public class BlockStorageManager {
                         ConfigurationSection itemSection = blockSection.createSection("items." + dataEntry.getKey());
                         itemSection.set("material", itemStack.getType().name());
                         itemSection.set("amount", itemStack.getAmount());
-                        if (itemStack.hasItemMeta()) {
-                            itemSection.set("meta", serializeItemMeta(itemStack));
-                        }
+                        itemSection.set("bytes", serializeItemStack(itemStack));
                     } else if (value instanceof Integer || value instanceof Double || value instanceof Float
                             || value instanceof Long || value instanceof Boolean || value instanceof String) {
                         blockSection.set("data." + dataEntry.getKey(), value);
@@ -548,3 +585,4 @@ public class BlockStorageManager {
     private record BlockData(String blockType, Map<String, Object> data) {
     }
 }
+

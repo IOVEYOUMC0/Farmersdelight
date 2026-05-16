@@ -3,7 +3,10 @@ package com.huidu.farmersdelight.listener;
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.advancement.AdvancementManager;
 import com.huidu.farmersdelight.block.behavior.CookingPotBlockBehavior;
+import com.huidu.farmersdelight.block.behavior.CuttingBoardBlockBehavior;
+import com.huidu.farmersdelight.block.behavior.CuttingBoardBlockEntity;
 import com.huidu.farmersdelight.manager.StoveManager;
+import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CookingPotItemDataHelper;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
@@ -56,6 +59,14 @@ public class BlockPlaceListener implements Listener {
     );
     private static final Map<PlacedItemKey, ItemStack> pendingPlacedItems = new ConcurrentHashMap<>();
     private static BukkitTask cleanupTask;
+
+    public static void cleanup() {
+        if (cleanupTask != null) {
+            cleanupTask.cancel();
+            cleanupTask = null;
+        }
+        pendingPlacedItems.clear();
+    }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
@@ -138,10 +149,22 @@ public class BlockPlaceListener implements Listener {
 
         if (customBlockId.equals(Constants.BLOCK_COOKING_POT)) {
             CookingPotBlockBehavior.markRecentlyPlaced(blockLocation);
+            boolean restoredPackedData = false;
             if (CookingPotItemDataHelper.isEnabled() && placedItem != null && !placedItem.getType().isAir()) {
-                CookingPotItemDataHelper.restorePackedData(blockLocation, placedItem);
+                restoredPackedData = CookingPotItemDataHelper.restorePackedData(blockLocation, placedItem);
+            }
+            if (!restoredPackedData) {
+                CookingPotBlockBehavior.getOrCreateBlockEntity(blockLocation);
             }
             am.award(player, "place_cooking_pot");
+        }
+
+        if (customBlockId.equals(Constants.BLOCK_CUTTING_BOARD)) {
+            CuttingBoardBlockBehavior.putBlockEntity(
+                    blockLocation.getWorld(),
+                    new BlockPosKey(blockLocation),
+                    new CuttingBoardBlockEntity(new BlockPosKey(blockLocation), blockLocation.getWorld())
+            );
         }
 
         if (customBlockId.equals(Constants.BLOCK_SKILLET)) {
@@ -226,3 +249,4 @@ public class BlockPlaceListener implements Listener {
     private record PlacedItemKey(UUID playerId, InteractionHand hand, String blockId) {
     }
 }
+

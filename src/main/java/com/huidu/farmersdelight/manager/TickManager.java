@@ -213,7 +213,7 @@ public class TickManager {
         // instead of relying only on GUI refreshes or manual output pickup.
         entity.tryMovePendingToOutput();
 
-        if (!entity.hasInput() && !entity.hasPendingOutput()) {
+        if (!entity.hasStoredContents()) {
             unregisterActiveBlock(world, posKey, BlockType.COOKING_POT);
             return;
         }
@@ -278,6 +278,7 @@ public class TickManager {
 
         boolean hasActivity = entity.hasInput()
                 || entity.hasPendingOutput()
+                || entity.getMealDisplayItem() != null
                 || entity.getCookingProgress() > 0
                 || entity.getCurrentRecipe() != null;
         if (!hasActivity) {
@@ -540,3 +541,4 @@ public class TickManager {
         }
     }
 }
+

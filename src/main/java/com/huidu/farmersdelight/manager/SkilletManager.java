@@ -508,6 +508,10 @@ public class SkilletManager {
             return true;
         }
 
+        if (!plugin.getConfig().getBoolean("heat-sources.skillet.allow-conductors", false)) {
+            return false;
+        }
+
         if (plugin.getHeatSourceConfig().isConductor(blockBelow)) {
             Block blockTwoBelow = location.clone().subtract(0, 2, 0).getBlock();
             return plugin.getHeatSourceConfig().isHeatSource(blockTwoBelow);
@@ -812,3 +816,4 @@ public class SkilletManager {
         return ManagerSupport.formatLocation(location);
     }
 }
+

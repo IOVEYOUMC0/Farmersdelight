@@ -22,7 +22,6 @@ import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
-import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
@@ -40,10 +39,12 @@ import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class RecipeViewGui implements InventoryHolder, Listener {
+public class RecipeViewGui implements InventoryHolder {
 
     private static final Map<UUID, RecipeViewGui> activeGuis = new ConcurrentHashMap<>();
+    private static volatile boolean listenerRegistered = false;
     private static volatile RecipeViewGuiConfig cachedConfig = null;
+    private static final Map<Key, ItemStack> itemCache = new ConcurrentHashMap<>();
     private static final ItemStack EMPTY_SLOT_BACKGROUND = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
     private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
     private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
@@ -163,7 +164,7 @@ public class RecipeViewGui implements InventoryHolder, Listener {
             existingGui.close();
         }
 
-        Bukkit.getPluginManager().registerEvents(this, plugin);
+        ensureListenerRegistered();
         activeGuis.put(player.getUniqueId(), this);
 
         refresh(player);
@@ -964,17 +965,22 @@ public class RecipeViewGui implements InventoryHolder, Listener {
     }
 
     private ItemStack createItemFromKey(Key key) {
+        ItemStack cached = itemCache.get(key);
+        if (cached != null) return cached.clone();
         try {
-            var customItem = plugin.getCraftEngine().itemManager().getCustomItem(key).orElse(null);
+            ItemStack customItem = ItemUtils.createItem(key);
             if (customItem != null) {
-                return customItem.buildItemStack();
+                itemCache.put(key, customItem.clone());
+                return customItem;
             }
 
             NamespacedKey materialKey = NamespacedKey.fromString(key.toString());
             if (materialKey != null) {
                 Material material = Registry.MATERIAL.get(materialKey);
                 if (material != null) {
-                    return new ItemStack(material);
+                    ItemStack item = new ItemStack(material);
+                    itemCache.put(key, item.clone());
+                    return item;
                 }
             }
         } catch (Exception e) {
@@ -1200,8 +1206,7 @@ public class RecipeViewGui implements InventoryHolder, Listener {
         return inventory;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onClick(InventoryClickEvent event) {
+    void onClick(InventoryClickEvent event) {
         if (event.getView().getTopInventory().getHolder() != this) return;
         event.setCancelled(true);
 
@@ -1220,8 +1225,7 @@ public class RecipeViewGui implements InventoryHolder, Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onDrag(InventoryDragEvent event) {
+    void onDrag(InventoryDragEvent event) {
         if (event.getView().getTopInventory().getHolder() != this) {
             return;
         }
@@ -1422,8 +1426,7 @@ public class RecipeViewGui implements InventoryHolder, Listener {
         player.closeInventory();
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onClose(InventoryCloseEvent event) {
+    void onClose(InventoryCloseEvent event) {
         if (event.getView().getTopInventory().getHolder() != this) return;
         if (closed) return;
         if (ignoreNextClose) {
@@ -1435,21 +1438,10 @@ public class RecipeViewGui implements InventoryHolder, Listener {
         activeGuis.remove(event.getPlayer().getUniqueId());
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onPlayerQuit(PlayerQuitEvent event) {
-        if (activeGuis.containsKey(event.getPlayer().getUniqueId())) {
-            RecipeViewGui gui = activeGuis.remove(event.getPlayer().getUniqueId());
-            if (gui != null && !gui.closed) {
-                gui.close();
-            }
-        }
-    }
-
     private void close() {
         if (closed) return;
         closed = true;
         GuiTickManager.getInstance(plugin).unregisterCallback(tickCallback);
-        HandlerList.unregisterAll(this);
     }
 
     private void returnToCookingPot(Player player) {
@@ -1480,9 +1472,51 @@ public class RecipeViewGui implements InventoryHolder, Listener {
         }
         activeGuis.clear();
         cachedConfig = null;
+        itemCache.clear();
+    }
+
+    private void ensureListenerRegistered() {
+        if (listenerRegistered) return;
+        synchronized (RecipeViewGui.class) {
+            if (listenerRegistered) return;
+            Bukkit.getPluginManager().registerEvents(new EventDispatcher(), plugin);
+            listenerRegistered = true;
+        }
+    }
+
+    public static class EventDispatcher implements Listener {
+        @EventHandler(priority = EventPriority.HIGHEST)
+        public void onClick(InventoryClickEvent event) {
+            if (event.getView().getTopInventory().getHolder() instanceof RecipeViewGui gui) {
+                gui.onClick(event);
+            }
+        }
+
+        @EventHandler(priority = EventPriority.HIGHEST)
+        public void onDrag(InventoryDragEvent event) {
+            if (event.getView().getTopInventory().getHolder() instanceof RecipeViewGui gui) {
+                gui.onDrag(event);
+            }
+        }
+
+        @EventHandler(priority = EventPriority.MONITOR)
+        public void onClose(InventoryCloseEvent event) {
+            if (event.getView().getTopInventory().getHolder() instanceof RecipeViewGui gui) {
+                gui.onClose(event);
+            }
+        }
+
+        @EventHandler(priority = EventPriority.MONITOR)
+        public void onPlayerQuit(PlayerQuitEvent event) {
+            RecipeViewGui gui = activeGuis.remove(event.getPlayer().getUniqueId());
+            if (gui != null && !gui.closed) {
+                gui.close();
+            }
+        }
     }
 
     public static RecipeViewGui getActiveGui(UUID playerId) {
         return activeGuis.get(playerId);
     }
 }
+

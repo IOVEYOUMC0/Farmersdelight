@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.util;
 
 import com.huidu.farmersdelight.i18n.I18n;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TranslatableComponent;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import net.momirealms.craftengine.bukkit.api.CraftEngineItems;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
@@ -15,6 +16,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -25,31 +27,18 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * Shared helpers for looking up and creating items.
- *
- * <p>This class provides one place to work with:
- * <ul>
- *   <li>CraftEngine custom items</li>
- *   <li>CraftEngine buildable items</li>
- *   <li>Vanilla Minecraft materials</li>
- * </ul>
- *
- * <p>Recipe loading and loot systems should use this helper to avoid
- * duplicating item resolution logic.
- */
 public final class ItemUtils {
 
     private static final Map<Key, List<ItemStack>> vanillaTagCache = new ConcurrentHashMap<>();
     private static final List<Material> ITEM_MATERIALS = new ArrayList<>();
 
     private static final PlainTextComponentSerializer PLAIN_TEXT = PlainTextComponentSerializer.plainText();
-    private static final Pattern L10N_PATTERN = Pattern.compile("<l10n[:;]([^>]+)>");
+    private static final Pattern L10N_PATTERN = Pattern.compile("<(?:l10n|i18n)[:;]([^>:]+)(?::[^>]*)?>");
     private static final Pattern TRANSLATION_KEY_PATTERN = Pattern.compile("^[a-z0-9_]+(?:\\.[a-z0-9_]+)+$");
 
     static {
-        for (Material material : Material.values()) {
-            if (material.isItem()) {
+        for (Material material : Registry.MATERIAL) {
+            if (!material.isLegacy() && material.isItem()) {
                 ITEM_MATERIALS.add(material);
             }
         }
@@ -105,16 +94,10 @@ public final class ItemUtils {
 
         try {
             Key key = Key.of(itemId);
-            var itemManager = BukkitCraftEngine.instance().itemManager();
 
-            var customItem = itemManager.getCustomItem(key).orElse(null);
+            ItemStack customItem = createCustomItem(key);
             if (customItem != null) {
-                return customItem.buildItemStack();
-            }
-
-            var buildableItem = itemManager.getBuildableItem(key).orElse(null);
-            if (buildableItem != null) {
-                return buildableItem.buildItemStack();
+                return customItem;
             }
 
             NamespacedKey materialKey = NamespacedKey.fromString(itemId);
@@ -131,9 +114,96 @@ public final class ItemUtils {
         return null;
     }
 
+    public static boolean isCustomItemLoaded(Key key) {
+        if (key == null) {
+            return false;
+        }
+        return resolveCraftEngineItem(key) != null || resolveLegacyBuildableItem(key) != null;
+    }
+
+    public static Set<Key> getCustomItemTags(Key key) {
+        Object item = resolveCraftEngineItem(key);
+        if (item == null) {
+            item = resolveLegacyBuildableItem(key);
+        }
+        if (item == null) {
+            return Set.of();
+        }
+
+        try {
+            Method settingsMethod = item.getClass().getMethod("settings");
+            Object settings = settingsMethod.invoke(item);
+            if (settings == null) {
+                return Set.of();
+            }
+            Method tagsMethod = settings.getClass().getMethod("tags");
+            Object tags = tagsMethod.invoke(settings);
+            if (tags instanceof Set<?> set) {
+                Set<Key> result = new java.util.HashSet<>();
+                for (Object value : set) {
+                    if (value instanceof Key tagKey) {
+                        result.add(tagKey);
+                    }
+                }
+                return Set.copyOf(result);
+            }
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+        }
+        return Set.of();
+    }
+
     public static ItemStack createItem(Key itemId) {
         if (itemId == null) return null;
         return createItem(itemId.toString());
+    }
+
+    private static ItemStack createCustomItem(Key key) {
+        Object item = resolveCraftEngineItem(key);
+        ItemStack stack = buildItemStack(item);
+        if (stack != null) {
+            return stack;
+        }
+        return buildItemStack(resolveLegacyBuildableItem(key));
+    }
+
+    private static Object resolveCraftEngineItem(Key key) {
+        try {
+            Class<?> api = Class.forName("net.momirealms.craftengine.bukkit.api.CraftEngineItems");
+            Method byId = api.getMethod("byId", Key.class);
+            return byId.invoke(null, key);
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+            return null;
+        }
+    }
+
+    private static Object resolveLegacyBuildableItem(Key key) {
+        try {
+            Object itemManager = BukkitCraftEngine.instance().itemManager();
+            Method method = itemManager.getClass().getMethod("getBuildableItem", Key.class);
+            Object optional = method.invoke(itemManager, key);
+            if (optional instanceof java.util.Optional<?> value) {
+                return value.orElse(null);
+            }
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+        }
+        return null;
+    }
+
+    private static ItemStack buildItemStack(Object item) {
+        if (item == null) {
+            return null;
+        }
+        for (String methodName : List.of("buildBukkitItem", "buildItemStack")) {
+            try {
+                Method method = item.getClass().getMethod(methodName);
+                Object result = method.invoke(item);
+                if (result instanceof ItemStack stack) {
+                    return stack;
+                }
+            } catch (ReflectiveOperationException | LinkageError ignored) {
+            }
+        }
+        return null;
     }
 
     public static boolean isValidItemId(String itemId) {
@@ -160,18 +230,24 @@ public final class ItemUtils {
 
         ItemMeta meta = item.getItemMeta();
         if (meta != null && meta.hasItemName() && meta.itemName() != null) {
-            String resolved = resolveSpecialDisplayText(PLAIN_TEXT.serialize(meta.itemName()), locale);
-            if (resolved != null) {
-                return resolved;
+            String plain = resolveComponentText(meta.itemName(), locale);
+            if (plain != null && !plain.isBlank()) {
+                String resolved = resolveSpecialDisplayText(plain, locale);
+                if (resolved != null) {
+                    return resolved;
+                }
+                return plain;
             }
-            return PLAIN_TEXT.serialize(meta.itemName());
         }
         if (meta != null && meta.displayName() != null) {
-            String resolved = resolveSpecialDisplayText(PLAIN_TEXT.serialize(meta.displayName()), locale);
-            if (resolved != null) {
-                return resolved;
+            String plain = resolveComponentText(meta.displayName(), locale);
+            if (plain != null && !plain.isBlank()) {
+                String resolved = resolveSpecialDisplayText(plain, locale);
+                if (resolved != null) {
+                    return resolved;
+                }
+                return plain;
             }
-            return PLAIN_TEXT.serialize(meta.displayName());
         }
 
         String customItemId = getCustomItemId(item);
@@ -232,6 +308,30 @@ public final class ItemUtils {
         return Component.text(getDisplayName(item, player));
     }
 
+    private static String resolveComponentText(Component component, String locale) {
+        if (component == null) return "";
+        if (component instanceof TranslatableComponent translatable) {
+            String key = translatable.key();
+            String translated = translate(key, locale);
+            if (!translated.equals(key)) {
+                return translated;
+            }
+        }
+        try {
+            java.util.Locale loc = locale != null && !locale.isEmpty()
+                    ? java.util.Locale.forLanguageTag(locale.replace('_', '-'))
+                    : java.util.Locale.getDefault();
+            Component rendered = net.kyori.adventure.translation.GlobalTranslator.render(component, loc);
+            String plain = PLAIN_TEXT.serialize(rendered);
+            if (!plain.isBlank() && !plain.equals(PLAIN_TEXT.serialize(component))) {
+                return plain;
+            }
+            return PLAIN_TEXT.serialize(component);
+        } catch (Exception e) {
+            return PLAIN_TEXT.serialize(component);
+        }
+    }
+
     private static String translate(String key, String locale) {
         String translated;
         if (locale != null) {
@@ -245,6 +345,11 @@ public final class ItemUtils {
 
         translated = I18n.get(key, "en_us");
         if (!translated.equals(key)) {
+            return translated;
+        }
+
+        translated = translateViaCraftEngine(key, locale);
+        if (translated != null && !translated.equals(key)) {
             return translated;
         }
 
@@ -264,6 +369,47 @@ public final class ItemUtils {
         return key;
     }
 
+    private static String translateViaCraftEngine(String key, String locale) {
+        try {
+            Class<?> translationManagerClass = Class.forName(
+                    "net.momirealms.craftengine.core.plugin.locale.TranslationManager");
+            Object manager = translationManagerClass.getMethod("instance").invoke(null);
+            if (manager == null) {
+                return null;
+            }
+
+            Locale loc = locale != null && !locale.isEmpty()
+                    ? Locale.forLanguageTag(locale.replace('_', '-'))
+                    : null;
+
+            try {
+                Method plainTranslation = manager.getClass().getMethod(
+                        "plainTranslation", String.class, Locale.class, String[].class);
+                Object result = plainTranslation.invoke(manager, key, loc, new String[0]);
+                if (result instanceof String text && !text.equals(key)) {
+                    return text;
+                }
+            } catch (NoSuchMethodException ignored) {
+            }
+
+            Method miniMessageTranslation = manager.getClass().getMethod(
+                    "miniMessageTranslation", String.class, Locale.class);
+            Object result = miniMessageTranslation.invoke(manager, key, loc);
+            if (result instanceof String text && !text.equals(key)) {
+                return stripMiniMessageTags(text);
+            }
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+        }
+        return null;
+    }
+
+    private static String stripMiniMessageTags(String text) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+        return text.replaceAll("<[^>]+>", "");
+    }
+
     private static String resolveSpecialDisplayText(String rawText, String locale) {
         if (rawText == null || rawText.isBlank()) {
             return null;
@@ -276,7 +422,6 @@ public final class ItemUtils {
             if (!translated.equals(key)) {
                 return translated;
             }
-            // 如果翻译失败，尝试作为翻译键处理
             return humanizeTranslationKey(key);
         }
         return resolveTranslationKeyText(normalized, locale);
@@ -306,30 +451,51 @@ public final class ItemUtils {
     }
 
     private static Component resolveSpecialDisplayComponent(Component component, Player player) {
+        if (component instanceof TranslatableComponent translatable) {
+            String key = translatable.key();
+            String translated = translate(key, playerLocale(player));
+            if (!translated.equals(key)) {
+                return Component.text(translated);
+            }
+            if (TRANSLATION_KEY_PATTERN.matcher(key).matches()) {
+                return Component.text(humanizeTranslationKey(key));
+            }
+        }
+
         String rawText = PLAIN_TEXT.serialize(component);
         if (rawText == null || rawText.isBlank()) {
             return null;
-        }
-        String locale = null;
-        if (player != null) {
-            locale = player.locale().toString().toLowerCase(Locale.ROOT);
         }
         String normalized = rawText.trim();
         Matcher matcher = L10N_PATTERN.matcher(normalized);
         if (matcher.find()) {
             String key = matcher.group(1);
-            String translated = translate(key, locale);
+            String translated = translate(key, playerLocale(player));
             if (!translated.equals(key)) {
                 return Component.text(translated);
             }
-            // 如果翻译失败，尝试返回可翻译组件
-            return Component.translatable(key);
+            return Component.text(humanizeTranslationKey(key));
         }
-        String translated = resolveTranslationKeyText(normalized, locale);
-        if (translated != null) {
-            return Component.text(translated);
+
+        if (TRANSLATION_KEY_PATTERN.matcher(normalized).matches()) {
+            String translated = translate(normalized, playerLocale(player));
+            if (!translated.equals(normalized)) {
+                return Component.text(translated);
+            }
+            return Component.text(humanizeTranslationKey(normalized));
         }
         return null;
+    }
+
+    private static String playerLocale(Player player) {
+        if (player == null) {
+            return null;
+        }
+        try {
+            return player.locale().toString().toLowerCase(Locale.ROOT);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private static String resolveTranslationKeyText(String rawText, String locale) {
@@ -450,3 +616,4 @@ public final class ItemUtils {
         return item.clone();
     }
 }
+

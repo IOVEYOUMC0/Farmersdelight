@@ -6,7 +6,7 @@ import com.huidu.farmersdelight.manager.StoveManager;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
-import net.momirealms.craftengine.core.block.CustomBlock;
+import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
@@ -26,17 +26,31 @@ import java.util.concurrent.Callable;
 
 public class StoveCookingBlockBehavior extends BlockBehavior {
 
+    @Override
+    public boolean isPathFindable(Object thisBlock, Object[] args) {
+        return false;
+    }
+
+    @Override
+    public void fallOn(Object thisBlock, Object[] args) {
+    }
+
+    @Override
+    public void updateEntityMovementAfterFallOn(Object thisBlock, Object[] args) {
+    }
+
     public static final int SLOT_COUNT = 6;
     private final String crackleSound;
 
-    private StoveCookingBlockBehavior(CustomBlock block, String crackleSound) {
+    private StoveCookingBlockBehavior(BlockDefinition block, String crackleSound) {
         super(block);
         this.crackleSound = crackleSound;
     }
 
     public static final BlockBehaviorFactory<StoveCookingBlockBehavior> FACTORY = new BlockBehaviorFactory<>() {
         @Override
-        public StoveCookingBlockBehavior create(CustomBlock block, Map<String, Object> arguments) {
+        public StoveCookingBlockBehavior create(BlockDefinition block, net.momirealms.craftengine.core.plugin.config.ConfigSection section) {
+            Map<String, Object> arguments = section != null ? section.values() : Map.of();
             String crackleSound = getArgumentString(arguments, "crackle-sound", Constants.SOUND_STOVE_CRACKLE);
             return new StoveCookingBlockBehavior(block, crackleSound);
         }
@@ -115,10 +129,6 @@ public class StoveCookingBlockBehavior extends BlockBehavior {
         }
 
         if (mainHand == null || mainHand.getType().isAir()) {
-            if (manager.handleRetrieve(player, block)) {
-                player.updateInventory();
-                return InteractionResult.SUCCESS_AND_CANCEL;
-            }
             return InteractionResult.PASS;
         }
 
@@ -135,7 +145,7 @@ public class StoveCookingBlockBehavior extends BlockBehavior {
     }
 
     @Override
-    public void tick(Object thisBlock, Object[] args, Callable<Object> superMethod) {
+    public void tick(Object thisBlock, Object[] args) {
         // Managed by StoveManager.
     }
 
@@ -212,3 +222,4 @@ public class StoveCookingBlockBehavior extends BlockBehavior {
         return "minecraft:" + item.getType().name().toLowerCase();
     }
 }
+

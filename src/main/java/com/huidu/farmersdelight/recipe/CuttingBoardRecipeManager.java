@@ -3,11 +3,8 @@ package com.huidu.farmersdelight.recipe;
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.ItemUtils;
-import net.momirealms.craftengine.core.item.CustomItem;
 import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
-import org.bukkit.Registry;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.inventory.ItemStack;
 
@@ -144,31 +141,7 @@ public class CuttingBoardRecipeManager {
     }
 
     private ItemStack createItem(String itemId) {
-        try {
-            Key key = Key.of(itemId);
-            var customItem = plugin.getCraftEngine().itemManager().getCustomItem(key).orElse(null);
-
-            if (customItem != null) {
-                return customItem.buildItemStack();
-            } else {
-                var buildableItem = plugin.getCraftEngine().itemManager().getBuildableItem(key).orElse(null);
-                if (buildableItem != null) {
-                    return buildableItem.buildItemStack();
-                } else {
-                    NamespacedKey materialKey = NamespacedKey.fromString(itemId);
-                    if (materialKey != null) {
-                        Material material = Registry.MATERIAL.get(materialKey);
-                        if (material != null) {
-                            return new ItemStack(material);
-                        }
-                    }
-                }
-            }
-            return null;
-        } catch (Exception e) {
-            plugin.getLogger().warning("Failed to create item: " + itemId + " - " + e.getMessage());
-            return null;
-        }
+        return ItemUtils.createItem(itemId);
     }
 
     public CuttingBoardRecipe matchRecipe(ItemStack input, ItemStack tool) {
@@ -181,6 +154,14 @@ public class CuttingBoardRecipeManager {
         }
 
         return null;
+    }
+
+    public boolean hasAnyRecipeFor(ItemStack input) {
+        if (input == null || input.getType().isAir()) return false;
+        for (CuttingBoardRecipe recipe : recipes.values()) {
+            if (matchesInput(recipe, input)) return true;
+        }
+        return false;
     }
 
     private boolean matchesInput(CuttingBoardRecipe recipe, ItemStack input) {
@@ -279,9 +260,9 @@ public class CuttingBoardRecipeManager {
         }
 
         if (customId != null) {
-            CustomItem<?> customItem = plugin.getCraftEngine().itemManager().getCustomItem(itemKey).orElse(null);
-            if (customItem != null && customItem.settings().tags().contains(tagKey)) {
-                return excludedTags.stream().noneMatch(customItem.settings().tags()::contains);
+            Set<Key> customTags = ItemUtils.getCustomItemTags(itemKey);
+            if (customTags.contains(tagKey)) {
+                return excludedTags.stream().noneMatch(customTags::contains);
             }
         }
 
@@ -354,8 +335,7 @@ public class CuttingBoardRecipeManager {
             }
 
             try {
-                CustomItem<?> customItem = plugin.getCraftEngine().itemManager().getCustomItem(Key.of(toolId)).orElse(null);
-                return customItem != null ? customItem.settings().tags() : Set.of();
+                return ItemUtils.getCustomItemTags(Key.of(toolId));
             } catch (Exception e) {
                 if (plugin.getConfig().getBoolean("debug", false)) {
                     plugin.getLogger().fine("Failed to get custom item tags: " + e.getMessage());
@@ -394,3 +374,4 @@ public class CuttingBoardRecipeManager {
         }
     }
 }
+

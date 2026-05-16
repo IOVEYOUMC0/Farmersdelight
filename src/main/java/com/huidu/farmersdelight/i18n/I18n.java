@@ -93,10 +93,48 @@ public class I18n {
                     backupBrokenLanguage(langFile.toPath());
                     writeBundledLanguage(langFile.toPath(), lang);
                     plugin.getLogger().warning("Detected a corrupted language file and restored the bundled UTF-8 default: " + lang);
+                } else {
+                    mergeMissingBundledLanguageKeys(langFile.toPath(), lang);
                 }
             } catch (IOException e) {
                 plugin.getLogger().warning("Failed to save language file: " + lang + " - " + e.getMessage());
             }
+        }
+    }
+
+    private static void mergeMissingBundledLanguageKeys(Path langFile, String lang) throws IOException {
+        try (InputStream stream = plugin.getResource("lang/" + lang + ".yml")) {
+            if (stream == null) {
+                return;
+            }
+
+            YamlConfiguration bundled = new YamlConfiguration();
+            try (InputStreamReader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
+                bundled.load(reader);
+            }
+
+            YamlConfiguration existing = loadYamlUtf8(langFile.toFile());
+            if (existing == null) {
+                return;
+            }
+
+            boolean changed = false;
+            for (String key : bundled.getKeys(true)) {
+                if (bundled.isConfigurationSection(key)) {
+                    continue;
+                }
+                if (!existing.contains(key)) {
+                    existing.set(key, bundled.get(key));
+                    changed = true;
+                }
+            }
+
+            if (changed) {
+                Files.writeString(langFile, existing.saveToString(), StandardCharsets.UTF_8);
+                plugin.getLogger().info("Merged missing language keys into: " + lang);
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to merge language defaults for " + lang + ": " + e.getMessage());
         }
     }
 
@@ -268,3 +306,4 @@ public class I18n {
         currentLocale = null;
     }
 }
+

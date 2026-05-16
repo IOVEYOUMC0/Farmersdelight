@@ -307,11 +307,10 @@ public class CookingPotRecipeManager {
             }
 
             if (customId != null) {
-                var customItem = plugin.getCraftEngine().itemManager()
-                        .getCustomItem(Key.of(customId)).orElse(null);
-                if (customItem != null && customItem.settings().tags().contains(tagIngredient.key())) {
+                Set<Key> customTags = ItemUtils.getCustomItemTags(Key.of(customId));
+                if (customTags.contains(tagIngredient.key())) {
                     for (Key excludedTag : tagIngredient.excludedTags()) {
-                        if (customItem.settings().tags().contains(excludedTag)) {
+                        if (customTags.contains(excludedTag)) {
                             return false;
                         }
                     }
@@ -376,3 +375,4 @@ public class CookingPotRecipeManager {
         }
     }
 }
+

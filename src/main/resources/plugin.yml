@@ -2,6 +2,7 @@ name: FarmersDelight
 version: ${version}
 main: com.huidu.farmersdelight.FarmersDelightPlugin
 api-version: '1.21'
+depend: [CraftEngine]
 authors:
   - HuiDu_OwO
 description: Farmer's Delight addon for CraftEngine

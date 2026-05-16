@@ -152,3 +152,4 @@ public class SkilletInteractListener implements Listener {
         return block.getType() == Material.TRIPWIRE;
     }
 }
+

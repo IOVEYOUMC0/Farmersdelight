@@ -7,7 +7,6 @@ import net.momirealms.craftengine.core.plugin.network.NetWorkUser;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.entity.EntityType;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -31,14 +30,12 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
 
     private final FarmersDelightPlugin plugin;
     private final BukkitNetworkManager networkManager;
-    private final Object fastNms;
     private final AtomicInteger nextEntityId = new AtomicInteger(2_000_000);
     private final Map<Integer, FakeItemDisplay> displays = new ConcurrentHashMap<>();
     private BukkitTask syncTask;
 
     public FakeItemDisplayManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
-        this.fastNms = resolveFastNms();
         BukkitCraftEngine craftEngine = BukkitCraftEngine.instance();
         if (craftEngine != null) {
             this.networkManager = craftEngine.networkManager();
@@ -53,7 +50,7 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
 
     @Override
     public boolean isAvailable() {
-        return fastNms != null && networkManager != null;
+        return networkManager != null;
     }
 
     @Override
@@ -207,25 +204,25 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
 
     private void spawnForViewer(Player player, FakeItemDisplay display) {
         try {
-            NetWorkUser user = networkManager.getOnlineUser(player);
+            NetWorkUser user = networkManager.getOnlineUser(player.getUniqueId());
             if (user == null || !user.isOnline()) {
                 return;
             }
             user.sendPackets(List.of(createSpawnPacket(display), createMetadataPacket(display)), false);
             display.viewers.add(player.getUniqueId());
         } catch (Exception e) {
-            plugin.getLogger().warning("Failed to spawn CE/FastNMS item display " + display.entityId + " for " + player.getName() + ": " + e.getMessage());
+            plugin.getLogger().warning("Failed to spawn CE proxy item display " + display.entityId + " for " + player.getName() + ": " + e.getMessage());
         }
     }
 
     private void destroyForViewer(Player player, FakeItemDisplay display) {
         try {
-            NetWorkUser user = networkManager.getOnlineUser(player);
+            NetWorkUser user = networkManager.getOnlineUser(player.getUniqueId());
             if (user != null && user.isOnline()) {
                 user.sendPacket(createDestroyPacket(display.entityId), false);
             }
         } catch (Exception e) {
-            plugin.getLogger().warning("Failed to destroy CE/FastNMS item display " + display.entityId + " for " + player.getName() + ": " + e.getMessage());
+            plugin.getLogger().warning("Failed to destroy CE proxy item display " + display.entityId + " for " + player.getName() + ": " + e.getMessage());
         } finally {
             display.viewers.remove(player.getUniqueId());
         }
@@ -244,10 +241,11 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
 
     private Object createSpawnPacket(FakeItemDisplay display) {
         Location location = display.spec.location();
-        Object entityType = invokeFastNms("method$CraftEntityType$toNMSEntityType", EntityType.ITEM_DISPLAY);
-        Object deltaMovement = invokeFastNms("constructor$Vec3", 0.0D, 0.0D, 0.0D);
-        return invokeFastNms(
-                "constructor$ClientboundAddEntityPacket",
+        Object entityType = resolveItemDisplayEntityType();
+        Object deltaMovement = resolveZeroVec3();
+        return invokeStaticProxy(
+                "net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundAddEntityPacketProxy",
+                "newInstance",
                 display.entityId,
                 display.entityUuid,
                 location.getX(),
@@ -262,10 +260,18 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
         );
     }
 
+    private Object resolveItemDisplayEntityType() {
+        return getStaticField("net.momirealms.craftengine.proxy.minecraft.world.entity.EntityTypeProxy", "ITEM_DISPLAY");
+    }
+
+    private Object resolveZeroVec3() {
+        return getStaticField("net.momirealms.craftengine.proxy.minecraft.world.phys.Vec3Proxy", "ZERO");
+    }
+
     private Object createMetadataPacket(FakeItemDisplay display) {
         World world = display.spec.location().getWorld();
         if (world == null) {
-            return invokeFastNms("constructor$ClientboundSetEntityDataPacket", display.entityId, List.of());
+            return createEntityDataPacket(display.entityId, List.of());
         }
 
         Location templateLocation = getTemplateLocation(display.spec.location());
@@ -276,22 +282,47 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
         });
 
         try {
-            Object handle = invokeFastNms("method$CraftEntity$getHandle", temporaryDisplay);
-            Object entityData = invokeFastNms("field$Entity$entityData", handle);
-            List<?> values = (List<?>) invokeFastNms("method$SynchedEntityData$getNonDefaultValues", entityData);
-            return invokeFastNms("constructor$ClientboundSetEntityDataPacket", display.entityId, values);
+            Object handle = invokeStaticProxy(
+                    "net.momirealms.craftengine.proxy.bukkit.craftbukkit.entity.CraftEntityProxy",
+                    "getEntity",
+                    temporaryDisplay
+            );
+            Object entityData = invokeStaticProxy(
+                    "net.momirealms.craftengine.proxy.minecraft.world.entity.EntityProxy",
+                    "getEntityData",
+                    handle
+            );
+            List<?> values = (List<?>) invokeStaticProxy(
+                    "net.momirealms.craftengine.proxy.minecraft.network.syncher.SynchedEntityDataProxy",
+                    "getNonDefaultValues",
+                    entityData
+            );
+            return createEntityDataPacket(display.entityId, values);
         } finally {
             temporaryDisplay.remove();
         }
+    }
+
+    private Object createEntityDataPacket(int entityId, List<?> values) {
+        return invokeStaticProxy(
+                "net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundSetEntityDataPacketProxy",
+                "newInstance",
+                entityId,
+                values
+        );
     }
 
     private Object createDestroyPacket(int entityId) {
         try {
             Class<?> intArrayListClass = Class.forName("it.unimi.dsi.fastutil.ints.IntArrayList");
             Object intList = intArrayListClass.getConstructor(int[].class).newInstance((Object) new int[]{entityId});
-            return invokeFastNms("constructor$ClientboundRemoveEntitiesPacket", intList);
+            return invokeStaticProxy(
+                    "net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacketProxy",
+                    "newInstance",
+                    intList
+            );
         } catch (Exception e) {
-            throw new IllegalStateException("Unable to create CE/FastNMS remove-entity packet", e);
+            throw new IllegalStateException("Unable to create CE proxy remove-entity packet", e);
         }
     }
 
@@ -336,35 +367,32 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
         return new DisplaySpec(location, itemStack, spec.itemTransform(), spec.transformation());
     }
 
-    private Object resolveFastNms() {
+    private Object getStaticField(String className, String fieldName) {
         try {
-            Class<?> fastNmsClass = Class.forName("net.momirealms.craftengine.bukkit.nms.FastNMS");
-            Field instanceField = fastNmsClass.getField("INSTANCE");
-            return instanceField.get(null);
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private Object invokeFastNms(String methodName, Object... args) {
-        if (fastNms == null) {
-            throw new IllegalStateException("CraftEngine FastNMS is not available");
-        }
-
-        Method method = findFastNmsMethod(methodName, args.length);
-        if (method == null) {
-            throw new IllegalStateException("Unable to find FastNMS method: " + methodName);
-        }
-
-        try {
-            return method.invoke(fastNms, args);
+            Class<?> clazz = Class.forName(className);
+            Field field = clazz.getField(fieldName);
+            return field.get(null);
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to invoke FastNMS method: " + methodName, e);
+            throw new IllegalStateException("Unable to resolve " + className + "." + fieldName, e);
         }
     }
 
-    private Method findFastNmsMethod(String methodName, int parameterCount) {
-        for (Method method : fastNms.getClass().getMethods()) {
+    private Object invokeStaticProxy(String className, String methodName, Object... args) {
+        try {
+            Class<?> clazz = Class.forName(className);
+            Object instance = clazz.getField("INSTANCE").get(null);
+            Method method = findMethod(clazz, methodName, args.length);
+            if (method == null) {
+                throw new IllegalStateException("Unable to find proxy method: " + className + "." + methodName);
+            }
+            return method.invoke(instance, args);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to invoke proxy method: " + className + "." + methodName, e);
+        }
+    }
+
+    private Method findMethod(Class<?> clazz, String methodName, int parameterCount) {
+        for (Method method : clazz.getMethods()) {
             if (!method.getName().equals(methodName)) {
                 continue;
             }
@@ -389,3 +417,4 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
         }
     }
 }
+
