@@ -3,7 +3,7 @@ plugins {
     id("io.github.goooler.shadow") version "8.1.7"
 }
 
-group = "fr.ateastudio.farmersdelight"
+group = "com.huidu.farmersdelight"
 version = "1.0.0"
 
 repositories {
