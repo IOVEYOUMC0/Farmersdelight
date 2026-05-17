@@ -6,18 +6,23 @@ import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.item.BukkitItem;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
+import net.momirealms.craftengine.bukkit.world.BukkitContainer;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.util.Direction;
 import net.momirealms.craftengine.core.world.WorldPosition;
 import net.momirealms.craftengine.core.world.WorldlyContainer;
 import net.momirealms.craftengine.proxy.minecraft.world.level.LevelProxy;
+import org.bukkit.entity.HumanEntity;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.BlockFace;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.InventoryHolder;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public final class WorldlyContainerBridge {
@@ -43,7 +48,7 @@ public final class WorldlyContainerBridge {
         if (entity == null) {
             entity = CookingPotBlockBehavior.getOrCreateBlockEntity(context.location);
         }
-        return entity == null ? null : new CookingPotContainer(context, entity);
+        return entity == null ? null : nativeContainer(new CookingPotContainer(context, entity));
     }
 
     public static Object cuttingBoardContainer(Object[] args) {
@@ -64,7 +69,7 @@ public final class WorldlyContainerBridge {
                     new CuttingBoardBlockEntity(context.posKey, context.world)
             );
         }
-        return entity == null ? null : new CuttingBoardContainer(context, entity);
+        return entity == null ? null : nativeContainer(new CuttingBoardContainer(context, entity));
     }
 
     @Nullable
@@ -87,6 +92,10 @@ public final class WorldlyContainerBridge {
         return BukkitAdaptor.adapt(stack.clone());
     }
 
+    private static Object nativeContainer(BaseContainer container) {
+        return CraftEngine.instance().platform().createContainer(container);
+    }
+
     @Nullable
     private static ItemStack unwrap(Item item) {
         if (item == null || item.isEmpty()) {
@@ -106,8 +115,9 @@ public final class WorldlyContainerBridge {
         }
     }
 
-    private abstract static class BaseContainer implements WorldlyContainer {
+    private abstract static class BaseContainer implements BukkitContainer, WorldlyContainer {
         protected final Context context;
+        private final List<HumanEntity> viewers = new ArrayList<>();
 
         BaseContainer(Context context) {
             this.context = context;
@@ -121,6 +131,26 @@ public final class WorldlyContainerBridge {
         @Override
         public void setChanged() {
             save();
+        }
+
+        @Override
+        public void onOpen(HumanEntity player) {
+            viewers.add(player);
+        }
+
+        @Override
+        public void onClose(HumanEntity player) {
+            viewers.remove(player);
+        }
+
+        @Override
+        public List<HumanEntity> getViewers() {
+            return viewers;
+        }
+
+        @Override
+        public @Nullable InventoryHolder getOwner() {
+            return null;
         }
 
         @Override
