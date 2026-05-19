@@ -171,16 +171,7 @@ public class CuttingBoardRecipeManager {
 
         RecipeIngredient ingredient = recipe.getInput();
         if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
-            String inputId = ItemUtils.getCustomItemId(input);
-            if (inputId != null) {
-                if (itemIngredient.key().toString().equals(inputId)) {
-                    return true;
-                }
-                String vanillaId = ItemUtils.getVanillaMaterialItemId(input);
-                return vanillaId != null && itemIngredient.key().toString().equals(vanillaId);
-            }
-            String vanillaId = ItemUtils.getVanillaMaterialItemId(input);
-            return vanillaId != null && itemIngredient.key().toString().equals(vanillaId);
+            return ItemUtils.matchesItemId(input, itemIngredient.key());
         }
 
         if (ingredient instanceof RecipeIngredient.Tag tagIngredient) {
@@ -251,19 +242,14 @@ public class CuttingBoardRecipeManager {
     private boolean matchesTaggedItem(ItemStack item, Key tagKey, Set<Key> excludedItems, Set<Key> excludedTags) {
         String customId = ItemUtils.getCustomItemId(item);
         String vanillaId = ItemUtils.getVanillaMaterialItemId(item);
-        Key itemKey = customId != null
-                ? Key.of(customId)
-                : Key.of(vanillaId);
 
-        if (excludedItems.contains(itemKey)) {
+        if (excludedItems.stream().anyMatch(excluded -> ItemUtils.matchesItemId(item, excluded))) {
             return false;
         }
 
-        if (customId != null) {
-            Set<Key> customTags = ItemUtils.getCustomItemTags(itemKey);
-            if (customTags.contains(tagKey)) {
-                return excludedTags.stream().noneMatch(customTags::contains);
-            }
+        Set<String> itemTags = ItemUtils.getItemTagIds(item);
+        if (itemTags.contains(tagKey.toString())) {
+            return excludedTags.stream().map(Key::toString).noneMatch(itemTags::contains);
         }
 
         boolean matchesBase = vanillaId != null && (plugin.getCraftEngine().itemManager().vanillaItemIdsByTag(tagKey).stream()
@@ -314,7 +300,9 @@ public class CuttingBoardRecipeManager {
             Key itemKey = toolId != null
                     ? Key.of(toolId)
                     : (vanillaId != null ? Key.of(vanillaId) : null);
-            Set<Key> customTags = resolveCustomTags(plugin, toolId);
+            Set<Key> customTags = ItemUtils.getItemTagIds(tool).stream()
+                    .map(Key::of)
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
             return new ToolContext(
                     tool,
                     toolId,
@@ -327,21 +315,6 @@ public class CuttingBoardRecipeManager {
                     isMaterialSuffix(tool, "_SHOVEL"),
                     tool.getType() == Material.SHEARS
             );
-        }
-
-        private static Set<Key> resolveCustomTags(FarmersDelightPlugin plugin, String toolId) {
-            if (toolId == null) {
-                return Set.of();
-            }
-
-            try {
-                return ItemUtils.getCustomItemTags(Key.of(toolId));
-            } catch (Exception e) {
-                if (plugin.getConfig().getBoolean("debug", false)) {
-                    plugin.getLogger().fine("Failed to get custom item tags: " + e.getMessage());
-                }
-                return Set.of();
-            }
         }
 
         private static boolean isKnifeTool(FarmersDelightPlugin plugin, String toolId) {
@@ -362,7 +335,7 @@ public class CuttingBoardRecipeManager {
         }
 
         private boolean matchesItemKey(Key key) {
-            return itemKey != null && itemKey.equals(key);
+            return ItemUtils.matchesItemId(tool, key);
         }
 
         private boolean matchesCustomTag(Key key) {

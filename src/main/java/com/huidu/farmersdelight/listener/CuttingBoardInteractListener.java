@@ -7,6 +7,7 @@ import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
+import com.huidu.farmersdelight.util.WorldGuardCompat;
 import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.GameMode;
 import org.bukkit.Sound;
@@ -54,6 +55,9 @@ public class CuttingBoardInteractListener implements Listener {
 
         Block block = event.getClickedBlock();
         if (!CustomBlockUtils.hasId(block, Constants.BLOCK_CUTTING_BOARD)) {
+            return;
+        }
+        if (!WorldGuardCompat.canUse(player, block) || !WorldGuardCompat.canBuild(player, block)) {
             return;
         }
 

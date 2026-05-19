@@ -168,8 +168,12 @@ public class RopeBlockBehavior extends BlockBehavior {
         return InteractionResult.PASS;
     }
 
-    public static ItemStack buildRopeItemStatic() {
-        return ItemUtils.createItem(Key.of("farmersdelight:rope"));
+    public static ItemStack createItemForRopeBlock(Block block) {
+        ImmutableBlockState state = CraftEngineBlocks.getCustomBlockState(block);
+        if (state == null || state.isEmpty()) {
+            return null;
+        }
+        return ItemUtils.createItem(state.owner().value().id());
     }
 
     private static boolean isRopeAt(World world, BlockPos pos, BlockFace direction) {

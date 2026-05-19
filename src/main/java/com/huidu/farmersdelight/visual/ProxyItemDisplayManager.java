@@ -23,7 +23,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
+public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
 
     private static final double VIEW_DISTANCE = 64.0D;
     private static final double VIEW_DISTANCE_SQUARED = VIEW_DISTANCE * VIEW_DISTANCE;
@@ -31,10 +31,10 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
     private final FarmersDelightPlugin plugin;
     private final BukkitNetworkManager networkManager;
     private final AtomicInteger nextEntityId = new AtomicInteger(2_000_000);
-    private final Map<Integer, FakeItemDisplay> displays = new ConcurrentHashMap<>();
+    private final Map<Integer, ProxyItemDisplay> displays = new ConcurrentHashMap<>();
     private BukkitTask syncTask;
 
-    public FakeItemDisplayManager(FarmersDelightPlugin plugin) {
+    public ProxyItemDisplayManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
         BukkitCraftEngine craftEngine = BukkitCraftEngine.instance();
         if (craftEngine != null) {
@@ -61,7 +61,7 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
 
         DisplaySpec normalizedSpec = normalize(spec);
         int entityId = nextEntityId.getAndIncrement();
-        FakeItemDisplay display = new FakeItemDisplay(entityId, UUID.randomUUID(), normalizedSpec);
+        ProxyItemDisplay display = new ProxyItemDisplay(entityId, UUID.randomUUID(), normalizedSpec);
         displays.put(entityId, display);
         syncDisplay(display);
         return entityId;
@@ -69,7 +69,7 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
 
     @Override
     public void destroyDisplay(int entityId) {
-        FakeItemDisplay removed = displays.remove(entityId);
+        ProxyItemDisplay removed = displays.remove(entityId);
         if (removed != null) {
             destroyForAllViewers(removed);
         }
@@ -82,7 +82,7 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
         }
 
         List<Integer> toRemove = new ArrayList<>();
-        for (Map.Entry<Integer, FakeItemDisplay> entry : displays.entrySet()) {
+        for (Map.Entry<Integer, ProxyItemDisplay> entry : displays.entrySet()) {
             Location location = entry.getValue().spec.location();
             if (location.getWorld() != null && location.getWorld().getUID().equals(worldId)) {
                 toRemove.add(entry.getKey());
@@ -119,7 +119,7 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         UUID playerId = event.getPlayer().getUniqueId();
-        for (FakeItemDisplay display : displays.values()) {
+        for (ProxyItemDisplay display : displays.values()) {
             display.viewers.remove(playerId);
         }
     }
@@ -133,7 +133,7 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
             return;
         }
 
-        for (FakeItemDisplay display : displays.values()) {
+        for (ProxyItemDisplay display : displays.values()) {
             syncDisplay(display);
         }
     }
@@ -143,7 +143,7 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
             return;
         }
 
-        for (FakeItemDisplay display : displays.values()) {
+        for (ProxyItemDisplay display : displays.values()) {
             if (shouldViewerSeeDisplay(player, display)) {
                 if (!display.viewers.contains(player.getUniqueId())) {
                     spawnForViewer(player, display);
@@ -154,7 +154,7 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
         }
     }
 
-    private void syncDisplay(FakeItemDisplay display) {
+    private void syncDisplay(ProxyItemDisplay display) {
         World world = display.spec.location().getWorld();
         if (world == null || !world.isChunkLoaded(display.spec.location().getBlockX() >> 4, display.spec.location().getBlockZ() >> 4)) {
             destroyForAllViewers(display);
@@ -185,7 +185,7 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
         }
     }
 
-    private boolean shouldViewerSeeDisplay(Player player, FakeItemDisplay display) {
+    private boolean shouldViewerSeeDisplay(Player player, ProxyItemDisplay display) {
         if (player == null || !player.isOnline()) {
             return false;
         }
@@ -202,7 +202,7 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
         return player.getLocation().distanceSquared(location) <= VIEW_DISTANCE_SQUARED;
     }
 
-    private void spawnForViewer(Player player, FakeItemDisplay display) {
+    private void spawnForViewer(Player player, ProxyItemDisplay display) {
         try {
             NetWorkUser user = networkManager.getOnlineUser(player.getUniqueId());
             if (user == null || !user.isOnline()) {
@@ -215,7 +215,7 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
         }
     }
 
-    private void destroyForViewer(Player player, FakeItemDisplay display) {
+    private void destroyForViewer(Player player, ProxyItemDisplay display) {
         try {
             NetWorkUser user = networkManager.getOnlineUser(player.getUniqueId());
             if (user != null && user.isOnline()) {
@@ -228,7 +228,7 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
         }
     }
 
-    private void destroyForAllViewers(FakeItemDisplay display) {
+    private void destroyForAllViewers(ProxyItemDisplay display) {
         for (UUID viewerId : new HashSet<>(display.viewers)) {
             Player player = Bukkit.getPlayer(viewerId);
             if (player != null) {
@@ -239,7 +239,7 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
         }
     }
 
-    private Object createSpawnPacket(FakeItemDisplay display) {
+    private Object createSpawnPacket(ProxyItemDisplay display) {
         Location location = display.spec.location();
         Object entityType = resolveItemDisplayEntityType();
         Object deltaMovement = resolveZeroVec3();
@@ -268,7 +268,7 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
         return getStaticField("net.momirealms.craftengine.proxy.minecraft.world.phys.Vec3Proxy", "ZERO");
     }
 
-    private Object createMetadataPacket(FakeItemDisplay display) {
+    private Object createMetadataPacket(ProxyItemDisplay display) {
         World world = display.spec.location().getWorld();
         if (world == null) {
             return createEntityDataPacket(display.entityId, List.of());
@@ -404,17 +404,18 @@ public class FakeItemDisplayManager implements Listener, ItemDisplayManager {
         return null;
     }
 
-    private static final class FakeItemDisplay {
+    private static final class ProxyItemDisplay {
         private final int entityId;
         private final UUID entityUuid;
         private final DisplaySpec spec;
         private final Set<UUID> viewers = new HashSet<>();
 
-        private FakeItemDisplay(int entityId, UUID entityUuid, DisplaySpec spec) {
+        private ProxyItemDisplay(int entityId, UUID entityUuid, DisplaySpec spec) {
             this.entityId = entityId;
             this.entityUuid = entityUuid;
             this.spec = spec;
         }
     }
 }
+
 

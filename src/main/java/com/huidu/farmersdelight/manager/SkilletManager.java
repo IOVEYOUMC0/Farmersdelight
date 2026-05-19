@@ -645,7 +645,7 @@ public class SkilletManager {
                     new Quaternionf()
             );
 
-            ItemDisplayManager visualManager = plugin.getFakeItemDisplayManager();
+            ItemDisplayManager visualManager = plugin.getItemDisplayManager();
             if (visualManager == null || !visualManager.isAvailable()) {
                 debug("spawn display: visual manager unavailable at " + formatLocation(location));
                 continue;
@@ -716,7 +716,7 @@ public class SkilletManager {
             return;
         }
 
-        ItemDisplayManager visualManager = plugin.getFakeItemDisplayManager();
+        ItemDisplayManager visualManager = plugin.getItemDisplayManager();
         if (visualManager == null) {
             skillet.displayEntityIds.clear();
             return;
@@ -816,4 +816,3 @@ public class SkilletManager {
         return ManagerSupport.formatLocation(location);
     }
 }
-

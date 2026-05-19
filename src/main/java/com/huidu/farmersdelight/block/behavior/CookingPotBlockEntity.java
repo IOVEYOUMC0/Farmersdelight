@@ -298,11 +298,7 @@ public class CookingPotBlockEntity {
 
     private boolean matchesIngredient(ItemStack item, RecipeIngredient ingredient) {
         if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
-            String customId = ItemUtils.getCustomItemId(item);
-            if (customId != null) {
-                return customId.equals(itemIngredient.key().toString());
-            }
-            return ("minecraft:" + item.getType().name().toLowerCase()).equals(itemIngredient.key().toString());
+            return ItemUtils.matchesItemId(item, itemIngredient.key());
         }
 
         if (ingredient instanceof RecipeIngredient.Choice choiceIngredient) {
@@ -315,28 +311,22 @@ public class CookingPotBlockEntity {
         }
 
         if (ingredient instanceof RecipeIngredient.Tag tagIngredient) {
-            String customId = ItemUtils.getCustomItemId(item);
-            Key itemKey = customId != null
-                    ? Key.of(customId)
-                    : Key.of("minecraft:" + item.getType().name().toLowerCase());
-
-            if (tagIngredient.excludedItems().contains(itemKey)) {
+            if (tagIngredient.excludedItems().stream().anyMatch(excluded -> ItemUtils.matchesItemId(item, excluded))) {
                 return false;
             }
 
-            if (customId != null) {
-                Set<Key> customTags = ItemUtils.getCustomItemTags(Key.of(customId));
-                if (!customTags.contains(tagIngredient.key())) {
+            Set<String> itemTags = ItemUtils.getItemTagIds(item);
+            if (itemTags.contains(tagIngredient.key().toString())) {
+                boolean blocked = tagIngredient.excludedTags().stream()
+                        .map(Key::toString)
+                        .anyMatch(itemTags::contains);
+                if (blocked) {
                     return false;
-                }
-                for (Key excludedTag : tagIngredient.excludedTags()) {
-                    if (customTags.contains(excludedTag)) {
-                        return false;
-                    }
                 }
                 return true;
             }
 
+            Key itemKey = Key.of("minecraft:" + item.getType().name().toLowerCase());
             boolean matchesBase = FarmersDelightPlugin.getInstance().getCraftEngine().itemManager()
                     .vanillaItemIdsByTag(tagIngredient.key()).stream()
                     .anyMatch(key -> key.toString().equals(itemKey.toString()))

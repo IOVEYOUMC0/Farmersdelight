@@ -35,6 +35,21 @@ public class HeatSourceConfig {
         LOGGER = logger;
     }
 
+    public void loadDefaults() {
+        addCustomBlockTag(Key.of("farmersdelight:heat_sources"));
+        addVanillaBlock("minecraft:magma_block");
+        addVanillaBlock("minecraft:lava_cauldron");
+        addVanillaBlock("minecraft:lava");
+        addVanillaBlock("minecraft:fire");
+        addVanillaBlock("minecraft:soul_fire");
+        addVanillaTag("minecraft:campfires");
+        CustomBlockStateMatcher stove = parseBlockState("farmersdelight:stove[fire:true]");
+        if (stove != null) {
+            customBlockStates.add(stove);
+        }
+        addVanillaConductor("minecraft:hopper");
+    }
+
     public void loadFromConfig(ConfigurationSection section) {
         if (section == null) return;
 

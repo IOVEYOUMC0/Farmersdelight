@@ -80,7 +80,7 @@ public class CuttingBoardBlockEntity {
         removeDisplayEntity();
         if (storedItem == null || world == null) return;
 
-        ItemDisplayManager visualManager = FarmersDelightPlugin.getInstance().getFakeItemDisplayManager();
+        ItemDisplayManager visualManager = FarmersDelightPlugin.getInstance().getItemDisplayManager();
         if (visualManager == null || !visualManager.isAvailable()) return;
 
         boolean isBlockItem = ItemUtils.shouldUseBlockStyleDisplay(storedItem);
@@ -129,7 +129,7 @@ public class CuttingBoardBlockEntity {
         int entityId = displayEntityId;
         displayEntityId = NO_DISPLAY;
 
-        ItemDisplayManager visualManager = FarmersDelightPlugin.getInstance().getFakeItemDisplayManager();
+        ItemDisplayManager visualManager = FarmersDelightPlugin.getInstance().getItemDisplayManager();
         if (visualManager != null) {
             visualManager.destroyDisplay(entityId);
         }
@@ -186,4 +186,3 @@ public class CuttingBoardBlockEntity {
         return item.clone();
     }
 }
-

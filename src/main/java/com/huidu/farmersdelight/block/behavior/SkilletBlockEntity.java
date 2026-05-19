@@ -249,7 +249,7 @@ public class SkilletBlockEntity {
         removeDisplayEntity();
         if (storedItem == null || storedItem.getType().isAir()) return;
 
-        ItemDisplayManager visualManager = FarmersDelightPlugin.getInstance().getFakeItemDisplayManager();
+        ItemDisplayManager visualManager = FarmersDelightPlugin.getInstance().getItemDisplayManager();
         if (visualManager == null || !visualManager.isAvailable()) return;
 
         Location displayLoc = new Location(world, posKey.x() + 0.5, posKey.y() + 0.1, posKey.z() + 0.5);
@@ -288,7 +288,7 @@ public class SkilletBlockEntity {
         int entityId = displayEntityId;
         displayEntityId = NO_DISPLAY;
 
-        ItemDisplayManager visualManager = FarmersDelightPlugin.getInstance().getFakeItemDisplayManager();
+        ItemDisplayManager visualManager = FarmersDelightPlugin.getInstance().getItemDisplayManager();
         if (visualManager != null) {
             visualManager.destroyDisplay(entityId);
         }
@@ -301,4 +301,3 @@ public class SkilletBlockEntity {
         return item.clone();
     }
 }
-

@@ -16,6 +16,7 @@ import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
 import org.bukkit.*;
+import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -27,12 +28,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
-public class CuttingBoardBlockBehavior extends BlockBehavior implements net.momirealms.craftengine.core.block.behavior.WorldlyContainerHolder {
-
-    @Override
-    public Object getContainer(Object thisBlock, Object[] args) {
-        return WorldlyContainerBridge.cuttingBoardContainer(args);
-    }
+public class CuttingBoardBlockBehavior extends BlockBehavior {
 
     @Override
     public boolean isPathFindable(Object thisBlock, Object[] args) {
@@ -366,6 +362,10 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements net.momi
         }
 
         World world = bukkitPlayer.getWorld();
+        Block block = world.getBlockAt(posKey.x(), posKey.y(), posKey.z());
+        if (!WorldGuardCompat.canUse(bukkitPlayer, block) || !WorldGuardCompat.canBuild(bukkitPlayer, block)) {
+            return InteractionResult.PASS;
+        }
         Map<BlockPosKey, CuttingBoardBlockEntity> worldEntities = worldBlockEntities.computeIfAbsent(
                 world.getUID(), k -> new ConcurrentHashMap<>());
         CuttingBoardBlockEntity blockEntity = worldEntities.get(posKey);
@@ -634,13 +634,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements net.momi
     }
 
     private boolean isConfiguredToolItem(ItemStack item) {
-        String customId = ItemUtils.getCustomItemId(item);
-        if (customId != null && toolItems.contains(Key.of(customId))) {
-            return true;
-        }
-
-        String vanillaId = "minecraft:" + item.getType().name().toLowerCase();
-        return toolItems.contains(Key.of(vanillaId));
+        return toolItems.stream().anyMatch(toolItem -> ItemUtils.matchesItemId(item, toolItem));
     }
 
     private boolean processCutting(CuttingBoardBlockEntity blockEntity, ItemStack tool, Player player, 

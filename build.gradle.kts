@@ -3,6 +3,15 @@ plugins {
     id("io.github.goooler.shadow") version "8.1.7"
 }
 
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.guardsquare:proguard-gradle:7.7.0")
+    }
+}
+
 group = "com.huidu.farmersdelight"
 version = "1.0.0"
 
@@ -20,6 +29,10 @@ dependencies {
     compileOnly(files("../Reference/craft-engine-main/bukkit/build/libs/craft-engine-bukkit-26.5.jar"))
     compileOnly(files("../Reference/craft-engine-main/bukkit/proxy/build/libs/proxy.jar"))
 }
+
+val obfuscateBuild = providers.gradleProperty("obfuscate")
+    .map { it.equals("true", ignoreCase = true) }
+    .orElse(false)
 
 java {
     toolchain {
@@ -48,6 +61,37 @@ tasks.shadowJar {
     archiveClassifier.set("")
 }
 
+tasks.register<proguard.gradle.ProGuardTask>("obfuscateJar") {
+    dependsOn(tasks.shadowJar)
+    onlyIf { obfuscateBuild.get() }
+
+    val inputJar = tasks.shadowJar.flatMap { it.archiveFile }
+    val outputJar = layout.buildDirectory.file("libs/farmersdelight-${project.version}-obf.jar")
+
+    injars(inputJar)
+    outjars(outputJar)
+
+    libraryjars("${System.getProperty("java.home")}/jmods/java.base.jmod")
+    libraryjars("${System.getProperty("java.home")}/jmods/java.logging.jmod")
+    libraryjars("${System.getProperty("java.home")}/jmods/java.desktop.jmod")
+    libraryjars(configurations.compileClasspath.get().files)
+
+    keep("public class com.huidu.farmersdelight.FarmersDelightPlugin { public *; protected *; }")
+    keep("class ** extends org.bukkit.plugin.java.JavaPlugin { *; }")
+    keepattributes("*Annotation*,Signature,InnerClasses,EnclosingMethod,RuntimeVisibleAnnotations,RuntimeInvisibleAnnotations")
+
+    dontoptimize()
+    dontshrink()
+    dontwarn()
+    allowaccessmodification()
+    overloadaggressively()
+    repackageclasses("fd")
+    adaptclassstrings()
+}
+
 tasks.build {
     dependsOn(tasks.shadowJar)
+    if (obfuscateBuild.get()) {
+        dependsOn("obfuscateJar")
+    }
 }

@@ -6,6 +6,7 @@ import com.huidu.farmersdelight.manager.SkilletManager;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
+import com.huidu.farmersdelight.util.WorldGuardCompat;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
@@ -123,6 +124,9 @@ public class SkilletBlockBehavior extends BlockBehavior {
 
         if (plugin.isDebugEnabled("skillet")) {
             logDebug(player, block, mainHand, manager.findRecipeId(mainHand));
+        }
+        if (!WorldGuardCompat.canUse(player, block) || !WorldGuardCompat.canBuild(player, block)) {
+            return InteractionResult.PASS;
         }
 
         if (player.isSneaking() && isSkilletItem(mainHand)) {

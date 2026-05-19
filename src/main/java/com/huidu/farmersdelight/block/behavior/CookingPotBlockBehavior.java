@@ -39,12 +39,7 @@ import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class CookingPotBlockBehavior extends BlockBehavior implements net.momirealms.craftengine.core.block.behavior.WorldlyContainerHolder {
-
-    @Override
-    public Object getContainer(Object thisBlock, Object[] args) {
-        return WorldlyContainerBridge.cookingPotContainer(args);
-    }
+public class CookingPotBlockBehavior extends BlockBehavior {
 
     @Override
     public boolean isPathFindable(Object thisBlock, Object[] args) {
@@ -437,7 +432,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements net.momire
     public static void saveBlockEntityData(World world, BlockPosKey posKey) {
         if (world == null || posKey == null) return;
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
-        if (!isCookingPotBlock(world, posKey)) {
+        if (!hasCookingPotBehavior(world, posKey)) {
             removeBlockEntity(world, posKey, true);
             return;
         }
@@ -483,7 +478,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements net.momire
         if (storage == null) return;
 
         Location loc = posKey.toLocation(world);
-        if (!isCookingPotBlock(world, posKey)) {
+        if (!hasCookingPotBehavior(world, posKey)) {
             storage.removeBlockData(loc);
             removeBlockEntity(world, posKey, false);
             return;
@@ -541,6 +536,14 @@ public class CookingPotBlockBehavior extends BlockBehavior implements net.momire
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    public static boolean hasCookingPotBehavior(World world, BlockPosKey posKey) {
+        if (world == null || posKey == null) {
+            return false;
+        }
+        Block block = world.getBlockAt(posKey.x(), posKey.y(), posKey.z());
+        return com.huidu.farmersdelight.util.CustomBlockUtils.hasBehavior(block, CookingPotBlockBehavior.class);
     }
 
     public static final BlockBehaviorFactory<CookingPotBlockBehavior> FACTORY = new BlockBehaviorFactory<CookingPotBlockBehavior>() {
