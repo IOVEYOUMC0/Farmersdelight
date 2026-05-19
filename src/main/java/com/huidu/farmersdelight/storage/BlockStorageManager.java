@@ -31,6 +31,7 @@ public class BlockStorageManager {
     private final AtomicLong dataVersion = new AtomicLong();
     private final AtomicLong lastSavedVersion = new AtomicLong();
     private BukkitTask autoSaveTask;
+    private volatile boolean asyncSaveRunning;
     private boolean legacyItemFormatLoaded;
 
     public BlockStorageManager(FarmersDelightPlugin plugin) {
@@ -43,13 +44,29 @@ public class BlockStorageManager {
     private void startAutoSave() {
         int saveInterval = plugin.getConfig().getInt("storage.auto-save-interval", 300);
         if (saveInterval > 0) {
-            autoSaveTask = Bukkit.getScheduler().runTaskTimer(plugin, this::saveAll,
+            autoSaveTask = Bukkit.getScheduler().runTaskTimer(plugin, this::saveAllAsync,
                     saveInterval * 20L, saveInterval * 20L);
         }
     }
 
     public void saveAllAsync() {
-        Bukkit.getScheduler().runTask(plugin, this::saveAll);
+        if (asyncSaveRunning) {
+            return;
+        }
+
+        SaveSnapshot snapshot = createSaveSnapshot();
+        if (snapshot == null) {
+            return;
+        }
+
+        asyncSaveRunning = true;
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                writeSnapshot(snapshot);
+            } finally {
+                asyncSaveRunning = false;
+            }
+        });
     }
 
     public void saveAllSync() {
@@ -195,9 +212,17 @@ public class BlockStorageManager {
     }
 
     public void saveAll() {
+        SaveSnapshot snapshot = createSaveSnapshot();
+        if (snapshot == null) {
+            return;
+        }
+        writeSnapshot(snapshot);
+    }
+
+    private SaveSnapshot createSaveSnapshot() {
         long currentVersion = dataVersion.get();
         if (currentVersion == lastSavedVersion.get()) {
-            return;
+            return null;
         }
 
         Map<String, Map<String, BlockData>> snapshot;
@@ -205,15 +230,37 @@ public class BlockStorageManager {
         try {
             snapshot = new HashMap<>();
             for (Map.Entry<String, Map<String, BlockData>> entry : worldData.entrySet()) {
-                snapshot.put(entry.getKey(), new HashMap<>(entry.getValue()));
+                Map<String, BlockData> worldSnapshot = new HashMap<>();
+                for (Map.Entry<String, BlockData> blockEntry : entry.getValue().entrySet()) {
+                    BlockData blockData = blockEntry.getValue();
+                    worldSnapshot.put(
+                            blockEntry.getKey(),
+                            new BlockData(blockData.blockType(), copyDataMap(blockData.data()))
+                    );
+                }
+                snapshot.put(entry.getKey(), worldSnapshot);
             }
         } finally {
             dataLock.readLock().unlock();
         }
+        return new SaveSnapshot(currentVersion, snapshot);
+    }
+
+    private Map<String, Object> copyDataMap(Map<String, Object> data) {
+        Map<String, Object> copy = new HashMap<>();
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
+            Object value = entry.getValue();
+            copy.put(entry.getKey(), value instanceof ItemStack itemStack ? itemStack.clone() : value);
+        }
+        return copy;
+    }
+
+    private void writeSnapshot(SaveSnapshot snapshot) {
+        long currentVersion = snapshot.version();
 
         YamlConfiguration config = new YamlConfiguration();
 
-        for (Map.Entry<String, Map<String, BlockData>> worldEntry : snapshot.entrySet()) {
+        for (Map.Entry<String, Map<String, BlockData>> worldEntry : snapshot.worldData().entrySet()) {
             String worldId = worldEntry.getKey();
             ConfigurationSection worldSection = config.createSection("worlds." + worldId);
 
@@ -583,6 +630,9 @@ public class BlockStorageManager {
     }
 
     private record BlockData(String blockType, Map<String, Object> data) {
+    }
+
+    private record SaveSnapshot(long version, Map<String, Map<String, BlockData>> worldData) {
     }
 }
 

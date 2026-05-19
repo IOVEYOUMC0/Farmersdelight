@@ -11,6 +11,7 @@ import net.momirealms.craftengine.core.plugin.context.ContextHolder;
 import net.momirealms.craftengine.core.plugin.context.parameter.DirectContextParameters;
 import net.momirealms.craftengine.core.world.WorldPosition;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -38,13 +39,13 @@ public class UpperHalfLootRelayListener implements Listener {
         }
 
         Block brokenBlock = event.bukkitBlock();
-        if (!behavior.shouldRelayUpperHalfLoot(brokenState, brokenBlock)) {
+        TallCropBlockBehavior tallCrop = TallCropBlockBehavior.getBehavior(brokenState);
+        if (hasImmatureUpperHalf(behavior, tallCrop, brokenState, brokenBlock)) {
+            event.setDropItems(false);
             return;
         }
 
-        TallCropBlockBehavior tallCrop = brokenState.behavior()
-                .getFirst(TallCropBlockBehavior.class);
-        if (tallCrop != null && tallCrop.isUpperHalf(brokenState) && !tallCrop.isUpperMature(brokenState)) {
+        if (!behavior.shouldRelayUpperHalfLoot(brokenState, brokenBlock)) {
             return;
         }
 
@@ -81,6 +82,32 @@ public class UpperHalfLootRelayListener implements Listener {
         for (net.momirealms.craftengine.core.item.Item drop : drops) {
             position.world().dropItemNaturally(position, drop);
         }
+    }
+
+    private boolean hasImmatureUpperHalf(
+            UpperHalfLootRelayBehavior relayBehavior,
+            TallCropBlockBehavior tallCrop,
+            ImmutableBlockState brokenState,
+            Block brokenBlock
+    ) {
+        if (tallCrop == null || brokenBlock == null) {
+            return false;
+        }
+
+        ImmutableBlockState upperState = brokenState;
+        if (tallCrop.isLowerHalf(brokenState)) {
+            BlockFace upperDirection = relayBehavior != null
+                    ? relayBehavior.getUpperHalfDirection()
+                    : BlockFace.UP;
+            Block upperBlock = brokenBlock.getRelative(upperDirection);
+            upperState = CraftEngineBlocks.getCustomBlockState(upperBlock);
+        }
+
+        if (upperState == null || upperState.isEmpty() || !tallCrop.isUpperHalf(upperState)) {
+            return false;
+        }
+
+        return !tallCrop.isUpperMature(upperState);
     }
 }
 

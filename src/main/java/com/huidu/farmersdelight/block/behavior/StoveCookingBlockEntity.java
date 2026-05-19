@@ -242,7 +242,7 @@ public class StoveCookingBlockEntity {
 
         removeDisplayEntity(slotIndex);
 
-        ItemDisplayManager visualManager = FarmersDelightPlugin.getInstance().getFakeItemDisplayManager();
+        ItemDisplayManager visualManager = FarmersDelightPlugin.getInstance().getItemDisplayManager();
         if (visualManager == null || !visualManager.isAvailable()) return;
 
         float[] offset = SLOT_OFFSETS[slotIndex];
@@ -281,7 +281,7 @@ public class StoveCookingBlockEntity {
         if (entityId == NO_DISPLAY) return;
         displayEntityIds[slotIndex] = NO_DISPLAY;
 
-        ItemDisplayManager visualManager = FarmersDelightPlugin.getInstance().getFakeItemDisplayManager();
+        ItemDisplayManager visualManager = FarmersDelightPlugin.getInstance().getItemDisplayManager();
         if (visualManager != null) {
             visualManager.destroyDisplay(entityId);
         }
@@ -339,4 +339,3 @@ public class StoveCookingBlockEntity {
         return entity;
     }
 }
-

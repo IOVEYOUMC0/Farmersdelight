@@ -36,6 +36,7 @@ public class BlockPlaceListener implements Listener {
             Constants.BLOCK_STUFFED_PUMPKIN,
             Constants.BLOCK_HONEY_GLAZED_HAM,
             Constants.BLOCK_SHEPHERDS_PIE,
+            Constants.BLOCK_GLEAMING_SALAD,
             Constants.BLOCK_RICE_ROLL_MEDLEY
     );
     private static final Map<Material, String> VANILLA_CROP_CRITERIA = Map.ofEntries(

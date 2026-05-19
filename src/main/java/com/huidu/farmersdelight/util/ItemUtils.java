@@ -5,7 +5,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TranslatableComponent;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import net.momirealms.craftengine.bukkit.api.CraftEngineItems;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
+import net.momirealms.craftengine.bukkit.item.BukkitItemDefinition;
 import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -90,7 +90,7 @@ public final class ItemUtils {
      * @return the created stack, or null when the id cannot be resolved
      */
     public static ItemStack createItem(String itemId) {
-        if (itemId == null || itemId.isEmpty()) return null;
+        if (isEmptyItemId(itemId)) return null;
 
         try {
             Key key = Key.of(itemId);
@@ -118,38 +118,15 @@ public final class ItemUtils {
         if (key == null) {
             return false;
         }
-        return resolveCraftEngineItem(key) != null || resolveLegacyBuildableItem(key) != null;
+        return CraftEngineItems.byId(key) != null;
     }
 
     public static Set<Key> getCustomItemTags(Key key) {
-        Object item = resolveCraftEngineItem(key);
-        if (item == null) {
-            item = resolveLegacyBuildableItem(key);
-        }
+        BukkitItemDefinition item = CraftEngineItems.byId(key);
         if (item == null) {
             return Set.of();
         }
-
-        try {
-            Method settingsMethod = item.getClass().getMethod("settings");
-            Object settings = settingsMethod.invoke(item);
-            if (settings == null) {
-                return Set.of();
-            }
-            Method tagsMethod = settings.getClass().getMethod("tags");
-            Object tags = tagsMethod.invoke(settings);
-            if (tags instanceof Set<?> set) {
-                Set<Key> result = new java.util.HashSet<>();
-                for (Object value : set) {
-                    if (value instanceof Key tagKey) {
-                        result.add(tagKey);
-                    }
-                }
-                return Set.copyOf(result);
-            }
-        } catch (ReflectiveOperationException | LinkageError ignored) {
-        }
-        return Set.of();
+        return Set.copyOf(item.settings().tags());
     }
 
     public static ItemStack createItem(Key itemId) {
@@ -158,57 +135,27 @@ public final class ItemUtils {
     }
 
     private static ItemStack createCustomItem(Key key) {
-        Object item = resolveCraftEngineItem(key);
-        ItemStack stack = buildItemStack(item);
-        if (stack != null) {
-            return stack;
-        }
-        return buildItemStack(resolveLegacyBuildableItem(key));
-    }
-
-    private static Object resolveCraftEngineItem(Key key) {
-        try {
-            Class<?> api = Class.forName("net.momirealms.craftengine.bukkit.api.CraftEngineItems");
-            Method byId = api.getMethod("byId", Key.class);
-            return byId.invoke(null, key);
-        } catch (ReflectiveOperationException | LinkageError ignored) {
-            return null;
-        }
-    }
-
-    private static Object resolveLegacyBuildableItem(Key key) {
-        try {
-            Object itemManager = BukkitCraftEngine.instance().itemManager();
-            Method method = itemManager.getClass().getMethod("getBuildableItem", Key.class);
-            Object optional = method.invoke(itemManager, key);
-            if (optional instanceof java.util.Optional<?> value) {
-                return value.orElse(null);
-            }
-        } catch (ReflectiveOperationException | LinkageError ignored) {
-        }
-        return null;
-    }
-
-    private static ItemStack buildItemStack(Object item) {
+        BukkitItemDefinition item = CraftEngineItems.byId(key);
         if (item == null) {
             return null;
         }
-        for (String methodName : List.of("buildBukkitItem", "buildItemStack")) {
-            try {
-                Method method = item.getClass().getMethod(methodName);
-                Object result = method.invoke(item);
-                if (result instanceof ItemStack stack) {
-                    return stack;
-                }
-            } catch (ReflectiveOperationException | LinkageError ignored) {
-            }
-        }
-        return null;
+        return item.buildBukkitItem();
     }
 
     public static boolean isValidItemId(String itemId) {
-        if (itemId == null || itemId.isEmpty()) return false;
-        return itemId.matches("^[a-z0-9_]+:[a-z0-9_]+$");
+        if (isEmptyItemId(itemId)) return false;
+        return itemId.matches("^[a-z0-9_]+:[a-z0-9_./-]+$");
+    }
+
+    public static boolean isEmptyItemId(String itemId) {
+        if (itemId == null) return true;
+        String normalized = itemId.trim();
+        return normalized.isEmpty()
+                || normalized.equalsIgnoreCase("none")
+                || normalized.equalsIgnoreCase("null")
+                || normalized.equalsIgnoreCase("empty")
+                || normalized.equalsIgnoreCase("air")
+                || normalized.equalsIgnoreCase("minecraft:air");
     }
 
     public static String getDisplayName(ItemStack item) {
@@ -561,6 +508,64 @@ public final class ItemUtils {
             }
         }
         return true;
+    }
+
+    public static boolean matchesItemId(ItemStack item, String itemId) {
+        if (item == null || item.getType().isAir() || isEmptyItemId(itemId)) {
+            return false;
+        }
+        String normalized = itemId.trim().toLowerCase(Locale.ROOT);
+        return getItemIds(item).stream().anyMatch(id -> id.equalsIgnoreCase(normalized));
+    }
+
+    public static boolean matchesItemId(ItemStack item, Key itemId) {
+        return itemId != null && matchesItemId(item, itemId.toString());
+    }
+
+    public static Set<String> getItemIds(ItemStack item) {
+        if (item == null || item.getType().isAir()) {
+            return Set.of();
+        }
+        java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>();
+        String customId = getCustomItemId(item);
+        if (customId != null) {
+            ids.add(customId);
+        }
+        String vanillaId = getVanillaMaterialItemId(item);
+        if (vanillaId != null) {
+            ids.add(vanillaId);
+        }
+        return Set.copyOf(ids);
+    }
+
+    public static Set<String> getItemTagIds(ItemStack item) {
+        if (item == null || item.getType().isAir()) {
+            return Set.of();
+        }
+        java.util.LinkedHashSet<String> tags = new java.util.LinkedHashSet<>();
+        String customId = getCustomItemId(item);
+        if (customId != null) {
+            for (Key tag : getCustomItemTags(Key.of(customId))) {
+                tags.add(tag.toString());
+            }
+        }
+        return Set.copyOf(tags);
+    }
+
+    public static boolean matchesCustomOrVanillaTag(ItemStack item, String tagId) {
+        if (item == null || item.getType().isAir() || tagId == null || tagId.isBlank()) {
+            return false;
+        }
+        String normalized = tagId.trim();
+        if (normalized.startsWith("#")) {
+            normalized = normalized.substring(1);
+        }
+        Key tagKey = Key.of(normalized);
+        Set<String> customTags = getItemTagIds(item);
+        if (customTags.stream().anyMatch(tag -> tag.equalsIgnoreCase(tagKey.toString()))) {
+            return true;
+        }
+        return matchesVanillaItemTag(item, tagKey, Set.of(), Set.of());
     }
 
     public static List<ItemStack> createVanillaTagDisplayItems(Key tagKey, Set<Key> excludedItems, Set<Key> excludedTags) {

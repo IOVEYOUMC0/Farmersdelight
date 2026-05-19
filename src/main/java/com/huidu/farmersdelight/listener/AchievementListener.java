@@ -5,7 +5,6 @@ import com.huidu.farmersdelight.advancement.AdvancementManager;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.ItemUtils;
 import net.momirealms.craftengine.bukkit.entity.projectile.BukkitProjectileManager;
-import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Raider;
@@ -24,8 +23,15 @@ import java.util.Set;
 
 public class AchievementListener implements Listener {
 
+    private static final Set<String> FD_SEED_IDS = Set.of(
+            Constants.ITEM_CABBAGE_SEEDS,
+            Constants.ITEM_TOMATO_SEEDS,
+            Constants.ITEM_ONION,
+            Constants.ITEM_RICE
+    );
+
     private final Set<String> KNIFE_IDS = new HashSet<>();
-    private final Set<String> FD_SEED_IDS = new HashSet<>();
+
     public AchievementListener() {
         loadConfig();
     }
@@ -36,12 +42,6 @@ public class AchievementListener implements Listener {
 
         KNIFE_IDS.clear();
         KNIFE_IDS.addAll(plugin.getConfig().getStringList("knife-config.items"));
-
-        FD_SEED_IDS.clear();
-        ConfigurationSection nourishmentSection = plugin.getConfig().getConfigurationSection("nourishment-foods.foods");
-        if (nourishmentSection != null) {
-            FD_SEED_IDS.addAll(nourishmentSection.getKeys(false));
-        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

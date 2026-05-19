@@ -514,7 +514,7 @@ public class StoveManager {
         }
 
         double[] offset = getRotatedSlotOffset(slot, facing);
-        ItemDisplayManager visualManager = plugin.getFakeItemDisplayManager();
+        ItemDisplayManager visualManager = plugin.getItemDisplayManager();
         if (visualManager == null || !visualManager.isAvailable()) {
             debug("spawn display: visual manager unavailable for slot=" + slot + ", item=" + formatItem(item)
                     + ", location=" + formatLocation(location));
@@ -574,7 +574,7 @@ public class StoveManager {
         if (entityId < 0) return;
         stove.displayEntities[slot] = -1;
 
-        ItemDisplayManager visualManager = plugin.getFakeItemDisplayManager();
+        ItemDisplayManager visualManager = plugin.getItemDisplayManager();
         if (visualManager != null) {
             visualManager.destroyDisplay(entityId);
         }
@@ -699,4 +699,3 @@ public class StoveManager {
     }
 
 }
-
