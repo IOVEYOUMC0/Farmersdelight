@@ -415,39 +415,47 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
             }
         }
 
-        if (!blockEntity.hasItem() && !mainHand.getType().isAir()) {
-            if (bukkitPlayer.isSneaking() && isTool(mainHand)) {
-                return InteractionResult.PASS;
+        if (!blockEntity.hasItem()) {
+            boolean mainHandEmpty = mainHand == null || mainHand.getType().isAir();
+            boolean offHandEmpty = offHand == null || offHand.getType().isAir();
+            boolean mainHandTool = !mainHandEmpty && isTool(mainHand);
+            boolean offHandTool = !offHandEmpty && isTool(offHand);
+
+            if (allowOffhandInteractions && !offHandEmpty && (mainHandEmpty || mainHandTool) && !offHandTool) {
+                if (bukkitPlayer.isSneaking() && isTool(offHand)) {
+                    return InteractionResult.PASS;
+                }
+                if (tryPlaceOnEmptyBoard(offHand, true, bukkitPlayer, world, posKey, facing, blockEntity)) {
+                    return InteractionResult.SUCCESS_AND_CANCEL;
+                }
             }
 
-            if (tryPlaceOnEmptyBoard(mainHand, false, bukkitPlayer, world, posKey, facing, blockEntity)) {
-                return InteractionResult.SUCCESS_AND_CANCEL;
-            }
-            if (allowOffhandInteractions && tryPlaceOnEmptyBoard(offHand, true, bukkitPlayer, world, posKey, facing, blockEntity)) {
-                return InteractionResult.SUCCESS_AND_CANCEL;
+            if (!mainHandEmpty) {
+                if (bukkitPlayer.isSneaking() && mainHandTool) {
+                    return InteractionResult.PASS;
+                }
+
+                if (tryPlaceOnEmptyBoard(mainHand, false, bukkitPlayer, world, posKey, facing, blockEntity)) {
+                    return InteractionResult.SUCCESS_AND_CANCEL;
+                }
             }
 
-            if (!allowOffhandInteractions || offHand == null || offHand.getType().isAir()
+            if (allowOffhandInteractions && !offHandEmpty && (mainHandEmpty || mainHandTool)) {
+                if (bukkitPlayer.isSneaking() && offHandTool) {
+                    return InteractionResult.PASS;
+                }
+
+                if (tryPlaceOnEmptyBoard(offHand, true, bukkitPlayer, world, posKey, facing, blockEntity)) {
+                    return InteractionResult.SUCCESS_AND_CANCEL;
+                }
+            }
+
+            if (!allowOffhandInteractions || offHandEmpty
                     || !FarmersDelightPlugin.getInstance().getCuttingBoardRecipes().hasAnyRecipeFor(offHand)) {
                 bukkitPlayer.sendActionBar(I18n.getComponent("messages.cutting_board.no_recipe", bukkitPlayer));
                 bukkitPlayer.playSound(bukkitPlayer.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 1.0f);
                 return InteractionResult.SUCCESS_AND_CANCEL;
             }
-        }
-
-        if (!blockEntity.hasItem() && allowOffhandInteractions && (mainHand == null || mainHand.getType().isAir())
-                && offHand != null && !offHand.getType().isAir()) {
-            if (bukkitPlayer.isSneaking() && isTool(offHand)) {
-                return InteractionResult.PASS;
-            }
-
-            if (tryPlaceOnEmptyBoard(offHand, true, bukkitPlayer, world, posKey, facing, blockEntity)) {
-                return InteractionResult.SUCCESS_AND_CANCEL;
-            }
-
-            bukkitPlayer.sendActionBar(I18n.getComponent("messages.cutting_board.no_recipe", bukkitPlayer));
-            bukkitPlayer.playSound(bukkitPlayer.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 1.0f);
-            return InteractionResult.SUCCESS_AND_CANCEL;
         }
 
         if (blockEntity.hasItem() && mainHand.getType().isAir()) {
