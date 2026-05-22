@@ -278,14 +278,7 @@ public class MushroomColonyBehavior extends BlockBehavior {
 
     private boolean matchesLegacyKnifeItem(ItemStack item) {
         String customId = ItemUtils.getCustomItemId(item);
-        if (customId == null) {
-            return false;
-        }
-
-        List<String> knives = FarmersDelightPlugin.getInstance()
-                .getConfig()
-                .getStringList("knife-config.items");
-        return knives.stream().anyMatch(knife -> knife.equalsIgnoreCase(customId));
+        return FarmersDelightPlugin.getInstance().isKnifeItemId(customId);
     }
 
     @Override

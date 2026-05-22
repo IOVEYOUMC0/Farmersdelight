@@ -1,6 +1,7 @@
 package com.huidu.farmersdelight.listener;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
+import com.huidu.farmersdelight.config.PetFoodConfig;
 import com.huidu.farmersdelight.util.ItemUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
@@ -14,20 +15,27 @@ import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class HorseFeedTemptListener implements Listener {
 
-    private static final String HORSE_FEED_ID = "farmersdelight:horse_feed";
-    private static final double TEMPT_RANGE = 10.0D;
-    private static final double TEMPT_RANGE_SQUARED = TEMPT_RANGE * TEMPT_RANGE;
-    private static final double MOVE_SPEED = 1.25D;
-    private static final long TICK_INTERVAL = 10L;
+    private static final long DEFAULT_TICK_INTERVAL = 10L;
+    private static final int DEFAULT_TICK_BUDGET = 64;
 
     private final FarmersDelightPlugin plugin;
     private final Set<UUID> activeTempters = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, PetFoodConfig.PetFoodDefinition> activeTemptDefinitions = new ConcurrentHashMap<>();
+    private final Map<String, PetFoodConfig.PetFoodDefinition> temptFoods = new HashMap<>();
+    private boolean enabled;
+    private long tickInterval;
+    private int tickBudget;
+    private int tickCursor;
     private BukkitTask task;
 
     public HorseFeedTemptListener(FarmersDelightPlugin plugin) {
@@ -35,11 +43,26 @@ public class HorseFeedTemptListener implements Listener {
     }
 
     public void start() {
+        reload();
+    }
+
+    public void reload() {
+        loadConfig();
+        restartTask();
+    }
+
+    private void restartTask() {
         if (task != null) {
+            task.cancel();
+            task = null;
+        }
+        activeTempters.clear();
+        activeTemptDefinitions.clear();
+        if (!enabled) {
             return;
         }
 
-        task = Bukkit.getScheduler().runTaskTimer(plugin, this::tickTemptGoals, TICK_INTERVAL, TICK_INTERVAL);
+        task = Bukkit.getScheduler().runTaskTimer(plugin, this::tickTemptGoals, tickInterval, tickInterval);
     }
 
     public void stop() {
@@ -48,87 +71,151 @@ public class HorseFeedTemptListener implements Listener {
             task = null;
         }
         activeTempters.clear();
+        activeTemptDefinitions.clear();
+    }
+
+    private void loadConfig() {
+        PetFoodConfig config = plugin.getPetFoodConfig();
+        long shortestInterval = Long.MAX_VALUE;
+        temptFoods.clear();
+
+        for (Map.Entry<String, PetFoodConfig.PetFoodDefinition> entry : config.getFoodDefinitions().entrySet()) {
+            PetFoodConfig.PetFoodDefinition definition = entry.getValue();
+            if (!definition.temptEnabled) {
+                continue;
+            }
+            temptFoods.put(entry.getKey().toLowerCase(Locale.ROOT), definition);
+            shortestInterval = Math.min(shortestInterval, definition.temptTickInterval);
+        }
+
+        enabled = !temptFoods.isEmpty();
+        tickInterval = shortestInterval == Long.MAX_VALUE ? DEFAULT_TICK_INTERVAL : shortestInterval;
+        tickBudget = Math.max(1, plugin.getConfig().getInt("performance.pet-tempt-tick-budget", DEFAULT_TICK_BUDGET));
+        plugin.getLogger().info("Loaded pet-food tempt config: enabled=" + enabled
+                + ", foods=" + temptFoods.size()
+                + ", interval=" + tickInterval);
     }
 
     private void refreshTemptStatus(Player player) {
-        if (isHoldingHorseFeed(player)) {
-            activeTempters.add(player.getUniqueId());
+        UUID playerId = player.getUniqueId();
+        if (!enabled) {
+            activeTempters.remove(playerId);
+            activeTemptDefinitions.remove(playerId);
+            return;
+        }
+        PetFoodConfig.PetFoodDefinition definition = getHeldTemptFood(player).orElse(null);
+        if (definition != null) {
+            activeTempters.add(playerId);
+            activeTemptDefinitions.put(playerId, definition);
         } else {
-            activeTempters.remove(player.getUniqueId());
+            activeTempters.remove(playerId);
+            activeTemptDefinitions.remove(playerId);
         }
     }
 
     @EventHandler
     public void onItemHeld(PlayerItemHeldEvent event) {
-        refreshTemptStatus(event.getPlayer());
+        refreshTemptStatusNextTick(event.getPlayer());
     }
 
     @EventHandler
     public void onSwapHand(PlayerSwapHandItemsEvent event) {
-        refreshTemptStatus(event.getPlayer());
+        refreshTemptStatusNextTick(event.getPlayer());
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        activeTempters.remove(event.getPlayer().getUniqueId());
+        UUID playerId = event.getPlayer().getUniqueId();
+        activeTempters.remove(playerId);
+        activeTemptDefinitions.remove(playerId);
     }
 
     private void tickTemptGoals() {
+        if (!enabled) return;
         if (activeTempters.isEmpty()) return;
 
-        for (UUID playerId : activeTempters) {
+        java.util.List<UUID> snapshot = java.util.List.copyOf(activeTempters);
+        int size = snapshot.size();
+        int budget = Math.min(tickBudget, size);
+        int start = tickCursor >= size ? 0 : tickCursor;
+
+        for (int processed = 0; processed < budget; processed++) {
+            UUID playerId = snapshot.get((start + processed) % size);
             Player player = Bukkit.getPlayer(playerId);
             if (player == null || !player.isOnline()) {
                 activeTempters.remove(playerId);
+                activeTemptDefinitions.remove(playerId);
                 continue;
             }
 
-            if (!isHoldingHorseFeed(player)) {
+            PetFoodConfig.PetFoodDefinition definition = activeTemptDefinitions.get(playerId);
+            if (definition == null) {
                 activeTempters.remove(playerId);
+                activeTemptDefinitions.remove(playerId);
                 continue;
             }
 
             Location location = player.getLocation();
-            for (Entity nearby : player.getNearbyEntities(TEMPT_RANGE, TEMPT_RANGE, TEMPT_RANGE)) {
-                if (!(nearby instanceof Mob mob) || !isHorseFeedTempted(mob)) {
+            for (Entity nearby : player.getNearbyEntities(definition.temptRange, definition.temptRange, definition.temptRange)) {
+                if (!(nearby instanceof Mob mob) || !definition.entities.contains(mob.getType())) {
                     continue;
                 }
 
-                if (mob.getLocation().distanceSquared(location) > TEMPT_RANGE_SQUARED) {
+                if (mob.getLocation().distanceSquared(location) > definition.temptRangeSquared) {
                     continue;
                 }
 
-                if (mob.getTarget() == null && mob instanceof AbstractHorse horse && horse.isTamed() && horse.getOwner() == player) {
+                if (definition.temptIgnoreOwnedTamed && mob.getTarget() == null
+                        && mob instanceof AbstractHorse horse && horse.isTamed() && horse.getOwner() == player) {
                     continue;
                 }
 
-                tryMoveToPlayer(mob, player);
+                tryMoveToPlayer(mob, player, definition.temptMoveSpeed);
             }
         }
+        tickCursor = size == 0 ? 0 : (start + Math.max(1, budget)) % size;
     }
 
-    private boolean isHoldingHorseFeed(Player player) {
-        return hasHorseFeed(player.getInventory().getItemInMainHand())
-                || hasHorseFeed(player.getInventory().getItemInOffHand());
+    private boolean isHoldingTemptFood(Player player) {
+        return getHeldTemptFood(player).isPresent();
     }
 
-    private boolean hasHorseFeed(ItemStack item) {
-        return item != null && HORSE_FEED_ID.equals(ItemUtils.getCustomItemId(item));
+    private Optional<PetFoodConfig.PetFoodDefinition> getHeldTemptFood(Player player) {
+        return getTemptFood(player.getInventory().getItemInMainHand())
+                .or(() -> getTemptFood(player.getInventory().getItemInOffHand()));
     }
 
-    private boolean isHorseFeedTempted(Mob mob) {
-        return mob instanceof Horse || mob instanceof Donkey || mob instanceof Mule;
+    private Optional<PetFoodConfig.PetFoodDefinition> getTemptFood(ItemStack item) {
+        String customId = item == null ? null : ItemUtils.getCustomItemId(item);
+        if (customId == null) {
+            return Optional.empty();
+        }
+
+        PetFoodConfig.PetFoodDefinition definition = temptFoods.get(customId.toLowerCase(Locale.ROOT));
+        if (definition == null) {
+            return Optional.empty();
+        }
+        return Optional.of(definition);
     }
 
-    private void tryMoveToPlayer(Mob mob, Player player) {
+    private void tryMoveToPlayer(Mob mob, Player player, double moveSpeed) {
         if (player.getGameMode() == GameMode.SPECTATOR || !player.isValid() || player.isDead()) {
             return;
         }
 
         try {
-            mob.getPathfinder().moveTo(player, MOVE_SPEED);
+            mob.getPathfinder().moveTo(player, moveSpeed);
         } catch (Throwable ignored) {
         }
     }
+
+    private void refreshTemptStatusNextTick(Player player) {
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (player.isOnline()) {
+                refreshTemptStatus(player);
+            }
+        });
+    }
+
 }
 

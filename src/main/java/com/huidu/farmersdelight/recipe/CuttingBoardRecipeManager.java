@@ -64,7 +64,7 @@ public class CuttingBoardRecipeManager {
                 try {
                     count = Integer.parseInt(resultMap.get("count").toString());
                 } catch (NumberFormatException e) {
-                    if (plugin.getConfig().getBoolean("debug", false)) {
+                    if (plugin.isDebugEnabled()) {
                         plugin.getLogger().fine("Invalid count for recipe: " + e.getMessage());
                     }
                 }
@@ -75,7 +75,7 @@ public class CuttingBoardRecipeManager {
                 try {
                     chance = Math.max(0.0d, Math.min(1.0d, Double.parseDouble(resultMap.get("chance").toString())));
                 } catch (NumberFormatException e) {
-                    if (plugin.getConfig().getBoolean("debug", false)) {
+                    if (plugin.isDebugEnabled()) {
                         plugin.getLogger().fine("Invalid chance for recipe: " + e.getMessage());
                     }
                 }
@@ -322,8 +322,7 @@ public class CuttingBoardRecipeManager {
                 return false;
             }
 
-            List<String> configuredKnives = plugin.getConfig().getStringList("knife-config.items");
-            return configuredKnives.stream().anyMatch(id -> id.equalsIgnoreCase(toolId));
+            return plugin.isKnifeItemId(toolId);
         }
 
         private static boolean isMaterialSuffix(ItemStack tool, String suffix) {

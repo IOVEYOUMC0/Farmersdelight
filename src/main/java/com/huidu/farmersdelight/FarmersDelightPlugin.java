@@ -5,6 +5,7 @@ import com.huidu.farmersdelight.block.behavior.*;
 import com.huidu.farmersdelight.listener.*;
 import com.huidu.farmersdelight.command.FarmersDelightCommand;
 import com.huidu.farmersdelight.config.ContainerReturnConfig;
+import com.huidu.farmersdelight.config.CuttingBoardDisplayConfig;
 import com.huidu.farmersdelight.config.HeatSourceConfig;
 import com.huidu.farmersdelight.config.PetFoodConfig;
 import com.huidu.farmersdelight.config.StrawDropConfig;
@@ -14,6 +15,7 @@ import com.huidu.farmersdelight.gui.GuiConfig;
 import com.huidu.farmersdelight.gui.RecipeViewGui;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.loot.KnifeDropHandler;
+import com.huidu.farmersdelight.BuildFlags;
 import com.huidu.farmersdelight.manager.SkilletManager;
 import com.huidu.farmersdelight.manager.StoveManager;
 import com.huidu.farmersdelight.manager.TickManager;
@@ -52,6 +54,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
@@ -117,14 +121,20 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private StrawDropConfig strawDropConfig;
     private PetFoodConfig petFoodConfig;
     private ContainerReturnConfig containerReturnConfig;
+    private CuttingBoardDisplayConfig cuttingBoardDisplayConfig;
     private AdvancementManager advancementManager;
     private boolean advancementsEnabled;
     private boolean debugEnabled;
     private boolean showRecipeNameInProgressDisplay;
-    private boolean cuttingBoardAllowOffhandInteractions;
+    private String cuttingBoardInteractionMode;
     private boolean hopperInteractionsEnabled;
     private boolean cookingPotHopperInteractionsEnabled;
     private boolean cuttingBoardHopperInteractionsEnabled;
+    private boolean skilletConductorsAllowed;
+    private float skilletDisplayScale = 0.5F;
+    private float stoveDisplayScale = 0.375F;
+    private Set<String> knifeItemIds = Set.of();
+    private Set<String> knifeTagIds = Set.of();
     private Set<String> debugCategories = Set.of();
 
     public static FarmersDelightPlugin getInstance() {
@@ -203,12 +213,17 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     public void onEnable() {
         enabled = true;
 
+        if (BuildFlags.DEBUG_TOOLS) {
+            getLogger().warning("This FarmersDelight build includes debug tools and test-only command paths.");
+        }
+
         ensureConfigDefaults();
         I18n.init(this);
 
         blockStorageManager = new BlockStorageManager(this);
 
         loadConfigs();
+        logStartupSummary();
 
         knifeDropHandler = new KnifeDropHandler(this);
         knifeDropHandler.loadConfig();
@@ -243,7 +258,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         horseFeedTemptListener = new HorseFeedTemptListener(this);
         getServer().getPluginManager().registerEvents(horseFeedTemptListener, this);
         horseFeedTemptListener.start();
-        getServer().getPluginManager().registerEvents(new HopperInteractionListener(this), this);
         effectListener = new EffectListener(this);
         effectListener.start();
 
@@ -600,9 +614,17 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         SkilletBlockEntity.clearRecipeCache();
 
         if (stoveManager != null) {
+            stoveManager.reloadConfig();
             stoveManager.reloadRecipeCache();
         }
+        if (tickManager != null) {
+            tickManager.reloadConfig();
+        }
+        if (itemDisplayManager instanceof ProxyItemDisplayManager proxyItemDisplayManager) {
+            proxyItemDisplayManager.reload();
+        }
         if (skilletManager != null) {
+            skilletManager.reloadConfig();
             skilletManager.reloadRecipeCache();
         }
     }
@@ -628,19 +650,31 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             trayManager.reload();
         }
         if (stoveManager != null) {
+            stoveManager.reloadConfig();
             stoveManager.reloadRecipeCache();
         }
+        if (tickManager != null) {
+            tickManager.reloadConfig();
+        }
+        if (itemDisplayManager instanceof ProxyItemDisplayManager proxyItemDisplayManager) {
+            proxyItemDisplayManager.reload();
+        }
         if (skilletManager != null) {
+            skilletManager.reloadConfig();
             skilletManager.reloadRecipeCache();
         }
         if (foodEatListener != null) {
             foodEatListener.reload();
+        }
+        if (horseFeedTemptListener != null) {
+            horseFeedTemptListener.reload();
         }
         if (previousAdvancementsEnabled != advancementsEnabled) {
             refreshAdvancementSystem(true);
         }
         reloadRecipesWhenReady("Reloading recipes...");
 
+        logReloadSummary("Configuration reloaded");
         getLogger().info("Configuration reloaded!");
     }
 
@@ -660,17 +694,29 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             trayManager.reload();
         }
         if (stoveManager != null) {
+            stoveManager.reloadConfig();
             stoveManager.reloadRecipeCache();
         }
+        if (tickManager != null) {
+            tickManager.reloadConfig();
+        }
+        if (itemDisplayManager instanceof ProxyItemDisplayManager proxyItemDisplayManager) {
+            proxyItemDisplayManager.reload();
+        }
         if (skilletManager != null) {
+            skilletManager.reloadConfig();
             skilletManager.reloadRecipeCache();
         }
         if (foodEatListener != null) {
             foodEatListener.reload();
         }
+        if (horseFeedTemptListener != null) {
+            horseFeedTemptListener.reload();
+        }
         if (previousAdvancementsEnabled != advancementsEnabled) {
             refreshAdvancementSystem(true);
         }
+        logReloadSummary("Main configuration reloaded");
         getLogger().info("Main configuration reloaded!");
     }
 
@@ -682,7 +728,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                 ? GuiConfig.fromConfig(cookingPotSection)
                 : GuiConfig.createDefault();
         RecipeViewGui.clearConfigCache();
-        getLogger().info("GUI configuration reloaded!");
+        getLogger().info("GUI configuration reloaded: gui.yml");
     }
 
     public void reloadLanguageFiles() {
@@ -710,6 +756,20 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                 .map(String::toLowerCase)
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toUnmodifiableSet());
+        knifeItemIds = getConfig().getStringList("knife-config.items").stream()
+                .map(String::trim)
+                .map(s -> s.toLowerCase(Locale.ROOT))
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toUnmodifiableSet());
+        knifeTagIds = getConfig().getStringList("knife-config.tags").stream()
+                .map(String::trim)
+                .map(s -> s.startsWith("#") ? s.substring(1) : s)
+                .map(s -> s.toLowerCase(Locale.ROOT))
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toUnmodifiableSet());
+        if (knifeTagIds.isEmpty()) {
+            knifeTagIds = Set.of(Constants.TAG_KNIVES.toLowerCase(Locale.ROOT));
+        }
 
         int autoSaveInterval = getConfig().getInt("storage.auto-save-interval", 300);
         if (autoSaveInterval < 0) {
@@ -751,11 +811,19 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             containerReturnConfig.loadFromConfig(containerReturnSection);
         }
 
+        cuttingBoardDisplayConfig = new CuttingBoardDisplayConfig();
+        cuttingBoardDisplayConfig.loadFromConfig(getConfig().getConfigurationSection("cutting-board"));
+
         showRecipeNameInProgressDisplay = getConfig().getBoolean("cooking-pot-progress-display.show-recipe-name", false);
-        cuttingBoardAllowOffhandInteractions = getConfig().getBoolean("cutting-board.allow-offhand-interactions", false);
+        cuttingBoardInteractionMode = normalizeCuttingBoardInteractionMode(
+                getConfig().getString("cutting-board.interaction-mode", "stacking")
+        );
         hopperInteractionsEnabled = getConfig().getBoolean("hopper-interactions.enabled", false);
         cookingPotHopperInteractionsEnabled = getConfig().getBoolean("hopper-interactions.cooking-pot", true);
         cuttingBoardHopperInteractionsEnabled = getConfig().getBoolean("hopper-interactions.cutting-board", true);
+        skilletConductorsAllowed = getConfig().getBoolean("heat-sources.skillet.allow-conductors", false);
+        skilletDisplayScale = (float) getConfig().getDouble("display-visuals.skillet.scale", 0.5D);
+        stoveDisplayScale = (float) getConfig().getDouble("display-visuals.stove.scale", 0.375D);
     }
 
     public boolean isShowRecipeNameInProgressDisplay() {
@@ -763,7 +831,15 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     }
 
     public boolean isCuttingBoardOffhandInteractionsAllowed() {
-        return cuttingBoardAllowOffhandInteractions;
+        return "offhand".equals(cuttingBoardInteractionMode);
+    }
+
+    public boolean isCuttingBoardStackingEnabled() {
+        return "stacking".equals(cuttingBoardInteractionMode);
+    }
+
+    public String getCuttingBoardInteractionMode() {
+        return cuttingBoardInteractionMode;
     }
 
     public boolean isCookingPotHopperInteractionsEnabled() {
@@ -772,6 +848,22 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     public boolean isCuttingBoardHopperInteractionsEnabled() {
         return hopperInteractionsEnabled && cuttingBoardHopperInteractionsEnabled;
+    }
+
+    public boolean isSkilletConductorsAllowed() {
+        return skilletConductorsAllowed;
+    }
+
+    public boolean isKnifeItemId(String itemId) {
+        return itemId != null && knifeItemIds.contains(itemId.toLowerCase(Locale.ROOT));
+    }
+
+    public Set<String> getKnifeItemIds() {
+        return knifeItemIds;
+    }
+
+    public Set<String> getKnifeTagIds() {
+        return knifeTagIds;
     }
 
     private void ensureConfigDefaults() {
@@ -788,12 +880,12 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             if (!isYamlReadable(configPath)) {
                 backupBrokenConfig(configPath);
                 writeBundledConfig(configPath);
-                getLogger().warning("Detected an unreadable config.yml and restored the bundled UTF-8 default config.");
+                getLogger().warning("Detected an unreadable config.yml; backed up the original as config.yml.<timestamp>.bak and restored the bundled UTF-8 default config.");
             }
             if (!isYamlReadable(guiPath)) {
                 backupBrokenConfig(guiPath);
                 writeBundledResource("gui.yml", guiPath, true);
-                getLogger().warning("Detected an unreadable gui.yml and restored the bundled UTF-8 default gui config.");
+                getLogger().warning("Detected an unreadable gui.yml; backed up the original as gui.yml.<timestamp>.bak and restored the bundled UTF-8 default gui config.");
             }
         } catch (IOException e) {
             getLogger().warning("Failed to prepare configuration files: " + e.getMessage());
@@ -814,7 +906,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     private void backupBrokenConfig(Path configPath) throws IOException {
         String fileName = configPath.getFileName().toString();
-        String backupName = fileName + ".invalid." + System.currentTimeMillis() + ".bak";
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+        String backupName = fileName + "." + timestamp + ".bak";
         Files.copy(configPath, configPath.resolveSibling(backupName), StandardCopyOption.REPLACE_EXISTING);
     }
 
@@ -859,6 +952,9 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         Path guiPath = getDataFolder().toPath().resolve("gui.yml");
         YamlConfiguration yaml = new YamlConfiguration();
         if (Files.notExists(guiPath)) {
+            if (isDebugEnabled("config")) {
+                getLogger().info("gui.yml is missing, using bundled defaults in memory until reload writes it back.");
+            }
             return yaml;
         }
         try (InputStreamReader reader = new InputStreamReader(Files.newInputStream(guiPath), StandardCharsets.UTF_8)) {
@@ -984,6 +1080,13 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         return containerReturnConfig;
     }
 
+    public CuttingBoardDisplayConfig getCuttingBoardDisplayConfig() {
+        if (cuttingBoardDisplayConfig == null) {
+            cuttingBoardDisplayConfig = new CuttingBoardDisplayConfig();
+        }
+        return cuttingBoardDisplayConfig;
+    }
+
     public TrayManager getTrayManager() {
         return trayManager;
     }
@@ -1009,11 +1112,40 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     }
 
     public float getSkilletDisplayScale() {
-        return (float) getConfig().getDouble("display-visuals.skillet.scale", 0.5D);
+        return skilletDisplayScale;
     }
 
     public float getStoveDisplayScale() {
-        return (float) getConfig().getDouble("display-visuals.stove.scale", 0.375D);
+        return stoveDisplayScale;
+    }
+
+    private String normalizeCuttingBoardInteractionMode(String value) {
+        String mode = value == null ? "stacking" : value.trim().toLowerCase(Locale.ROOT);
+        if (!mode.equals("stacking") && !mode.equals("offhand")) {
+            getLogger().warning("Invalid cutting-board.interaction-mode '" + value + "', falling back to stacking.");
+            return "stacking";
+        }
+        return mode;
+    }
+
+    private void logStartupSummary() {
+        getLogger().info(
+                "Startup config: cutting-board mode=" + cuttingBoardInteractionMode
+                        + ", hopper=" + hopperInteractionsEnabled
+                        + ", cooking-pot-hopper=" + cookingPotHopperInteractionsEnabled
+                        + ", cutting-board-hopper=" + cuttingBoardHopperInteractionsEnabled
+                        + ", advancements=" + advancementsEnabled
+        );
+    }
+
+    private void logReloadSummary(String label) {
+        getLogger().info(
+                label + ": cutting-board mode=" + cuttingBoardInteractionMode
+                        + ", hopper=" + hopperInteractionsEnabled
+                        + ", cooking-pot-hopper=" + cookingPotHopperInteractionsEnabled
+                        + ", cutting-board-hopper=" + cuttingBoardHopperInteractionsEnabled
+                        + ", advancements=" + advancementsEnabled
+        );
     }
 
     public TickManager getTickManager() {

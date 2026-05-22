@@ -591,7 +591,7 @@ public class BlockStorageManager {
             String posKey = entry.getKey();
             ParsedPos pos = parsePosKey(posKey);
             if (pos == null) {
-                if (plugin.getConfig().getBoolean("debug", false)) {
+                if (plugin.isDebugEnabled()) {
                     plugin.getLogger().fine("Invalid position format in block data: " + posKey);
                 }
                 continue;
@@ -615,7 +615,7 @@ public class BlockStorageManager {
             String posKey = entry.getKey();
             ParsedPos pos = parsePosKey(posKey);
             if (pos == null) {
-                if (plugin.getConfig().getBoolean("debug", false)) {
+                if (plugin.isDebugEnabled()) {
                     plugin.getLogger().fine("Invalid position format in block data: " + posKey);
                 }
                 continue;

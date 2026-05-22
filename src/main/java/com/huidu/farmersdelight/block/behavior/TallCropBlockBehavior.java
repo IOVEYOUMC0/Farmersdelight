@@ -649,16 +649,12 @@ public class TallCropBlockBehavior extends BlockBehavior {
 
     private boolean matchesLegacyKnife(ItemStack item) {
         String customId = ItemUtils.getCustomItemId(item);
-        if (customId != null) {
-            List<String> configuredKnives = FarmersDelightPlugin.getInstance()
-                    .getConfig()
-                    .getStringList("knife-config.items");
-            if (configuredKnives.stream().anyMatch(knife -> knife.equalsIgnoreCase(customId))) {
-                return true;
-            }
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        if (plugin.isKnifeItemId(customId)) {
+            return true;
         }
 
-        for (String configuredTag : FarmersDelightPlugin.getInstance().getConfig().getStringList("knife-config.tags")) {
+        for (String configuredTag : plugin.getKnifeTagIds()) {
             Key key = Key.of(configuredTag.startsWith("#") ? configuredTag.substring(1) : configuredTag);
             if (ItemUtils.matchesVanillaItemTag(item, key, Collections.emptySet(), Collections.emptySet())) {
                 return true;

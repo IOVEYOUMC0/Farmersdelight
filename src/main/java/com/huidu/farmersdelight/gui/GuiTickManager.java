@@ -46,7 +46,7 @@ public class GuiTickManager {
                 try {
                     callback.accept(null);
                 } catch (Exception e) {
-                    if (plugin.getConfig().getBoolean("debug", false)) {
+                    if (plugin.isDebugEnabled()) {
                         plugin.getLogger().warning("Error in GUI tick callback: " + e.getMessage());
                     }
                 }

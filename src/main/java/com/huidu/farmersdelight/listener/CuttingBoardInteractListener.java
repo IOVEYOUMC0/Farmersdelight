@@ -8,7 +8,6 @@ import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
 import com.huidu.farmersdelight.util.WorldGuardCompat;
-import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.GameMode;
 import org.bukkit.Sound;
 import org.bukkit.block.Block;
@@ -22,22 +21,9 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.List;
 import java.util.Set;
 
 public class CuttingBoardInteractListener implements Listener {
-
-    private final List<Key> toolTags;
-
-    public CuttingBoardInteractListener() {
-        this.toolTags = FarmersDelightPlugin.getInstance()
-                .getConfig()
-                .getStringList("blocks.cutting-board.tool-tags")
-                .stream()
-                .map(tag -> tag != null && tag.startsWith("#") ? tag.substring(1) : tag)
-                .map(Key::of)
-                .toList();
-    }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onSneakInsertTool(PlayerInteractEvent event) {
@@ -113,8 +99,8 @@ public class CuttingBoardInteractListener implements Listener {
 
         String customId = ItemUtils.getCustomItemId(item);
         if (customId != null) {
-            Set<Key> itemTags = ItemUtils.getCustomItemTags(Key.of(customId));
-            for (Key tag : toolTags) {
+            Set<String> itemTags = ItemUtils.getItemTagIds(item);
+            for (String tag : FarmersDelightPlugin.getInstance().getKnifeTagIds()) {
                 if (itemTags.contains(tag)) {
                     return true;
                 }
@@ -126,15 +112,7 @@ public class CuttingBoardInteractListener implements Listener {
 
     private boolean isKnifeTool(ItemStack item) {
         String customId = ItemUtils.getCustomItemId(item);
-        if (customId == null) {
-            return false;
-        }
-
-        return FarmersDelightPlugin.getInstance()
-                .getConfig()
-                .getStringList("knife-config.items")
-                .stream()
-                .anyMatch(id -> id.equalsIgnoreCase(customId));
+        return FarmersDelightPlugin.getInstance().isKnifeItemId(customId);
     }
 }
 

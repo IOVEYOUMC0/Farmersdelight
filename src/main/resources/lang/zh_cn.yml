@@ -44,8 +44,6 @@ gui:
     more_items: "&7以及另外 {count} 个"
     no_matching_items: "没有找到匹配物品"
     unknown: "未知"
-  packed_pot:
-    contains: "包含 {amount} 份 {item}"
   cooking_pot:
     pending_container_hint: "&7容器: &f{container}"
 command:

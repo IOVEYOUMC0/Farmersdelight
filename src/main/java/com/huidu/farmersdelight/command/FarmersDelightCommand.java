@@ -1,6 +1,7 @@
 package com.huidu.farmersdelight.command;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
+import com.huidu.farmersdelight.BuildFlags;
 import com.huidu.farmersdelight.gui.RecipeViewGui;
 import com.huidu.farmersdelight.i18n.I18n;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -29,10 +30,12 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
             "recipes",
             "advancements"
     );
+    private static final String DEBUG_TOOLS_CLASS = "com.huidu.farmersdelight.debug.DebugToolsCommand";
 
     private final FarmersDelightPlugin plugin;
     private final Map<String, SubCommand> commands = new LinkedHashMap<>();
     private final List<SubCommand> commandList = new ArrayList<>();
+    private Object debugToolsCommand;
 
     public FarmersDelightCommand(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
@@ -99,6 +102,19 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
                 (sender, label, args) -> sendHelp(sender),
                 (sender, args) -> List.of()
         ));
+        if (BuildFlags.DEBUG_TOOLS) {
+            debugToolsCommand = createDebugToolsCommand();
+            if (debugToolsCommand != null) {
+                register(new SubCommand(
+                        "debugtools",
+                        List.of("debug", "perf"),
+                        "farmersdelight.admin",
+                        "literal:debug performance tools",
+                        this::executeDebugTools,
+                        this::completeDebugTools
+                ));
+            }
+        }
     }
 
     private void register(SubCommand command) {
@@ -154,25 +170,27 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
     private void executeCleanup(CommandSender sender, String label, String[] args) {
         int removed = 0;
 
-        for (org.bukkit.World world : Bukkit.getWorlds()) {
-            for (org.bukkit.entity.Entity entity : world.getEntities()) {
-                if (entity instanceof org.bukkit.entity.ItemDisplay display) {
-                    @SuppressWarnings("deprecation")
-                    String customName = display.getCustomName();
-                    if (customName != null && (customName.contains("farmersdelight") || customName.contains("fd_"))) {
-                        display.remove();
-                        removed++;
-                    }
-                }
-            }
-        }
-
         var displayManager = plugin.getItemDisplayManager();
         if (displayManager != null) {
-            displayManager.cleanup();
+            removed += displayManager.cleanup();
+        }
+
+        var trayManager = plugin.getTrayManager();
+        if (trayManager != null) {
+            removed += trayManager.cleanupInvalidAutoTrays();
         }
 
         sender.sendMessage(I18n.get("command.cleanup_done").replace("{count}", String.valueOf(removed)));
+    }
+
+    private void executeDebugTools(CommandSender sender, String label, String[] args) {
+        try {
+            debugToolsCommand.getClass()
+                    .getMethod("execute", CommandSender.class, String.class, String[].class)
+                    .invoke(debugToolsCommand, sender, label, args);
+        } catch (ReflectiveOperationException e) {
+            sender.sendMessage(MINI_MESSAGE.deserialize("<red>Debug tools are not available in this build.</red>"));
+        }
     }
 
     private void sendHelp(CommandSender sender) {
@@ -182,9 +200,13 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
                 continue;
             }
             sender.sendMessage(MINI_MESSAGE.deserialize(
-                    "<yellow>/fd " + command.name() + "</yellow> <gray>-</gray> " + I18n.get(command.helpKey())
+                    "<yellow>/fd " + command.name() + "</yellow> <gray>-</gray> " + resolveHelpText(command)
             ));
         }
+    }
+
+    private void sendDebugUsage(CommandSender sender) {
+        sender.sendMessage(MINI_MESSAGE.deserialize("<yellow>/fd debugtools <place|activate> <cooking_pot|skillet|both> [count] [spacing] [layers]</yellow>"));
     }
 
     @Override
@@ -242,6 +264,35 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
         return completions;
     }
 
+    private List<String> completeDebugTools(CommandSender sender, String[] args) {
+        try {
+            Object result = debugToolsCommand.getClass()
+                    .getMethod("tabComplete", CommandSender.class, String[].class)
+                    .invoke(debugToolsCommand, sender, args);
+            if (result instanceof List<?> list) {
+                List<String> completions = new ArrayList<>();
+                for (Object item : list) {
+                    if (item instanceof String text) {
+                        completions.add(text);
+                    }
+                }
+                return completions;
+            }
+        } catch (ReflectiveOperationException ignored) {
+        }
+        return List.of();
+    }
+
+    private Object createDebugToolsCommand() {
+        try {
+            Class<?> type = Class.forName(DEBUG_TOOLS_CLASS);
+            return type.getConstructor(FarmersDelightPlugin.class).newInstance(plugin);
+        } catch (ReflectiveOperationException e) {
+            plugin.getLogger().warning("Debug tools were requested by the build flag, but the debug tools class is missing.");
+            return null;
+        }
+    }
+
     private void sendReloadUsage(CommandSender sender) {
         sender.sendMessage(MINI_MESSAGE.deserialize(
                 "<yellow>/fd reload <all|config|gui|lang|recipes|advancements></yellow>"
@@ -254,6 +305,14 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
         } else {
             sender.sendMessage(I18n.get("general.no_permission"));
         }
+    }
+
+    private String resolveHelpText(SubCommand command) {
+        String helpKey = command.helpKey();
+        if (helpKey.startsWith("literal:")) {
+            return helpKey.substring("literal:".length());
+        }
+        return I18n.get(helpKey);
     }
 
     private String normalize(String value) {

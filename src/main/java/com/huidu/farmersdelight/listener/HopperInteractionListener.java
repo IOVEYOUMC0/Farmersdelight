@@ -23,6 +23,10 @@ import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Arrays;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 public class HopperInteractionListener implements Listener {
 
     private static final int[] COOKING_POT_INGREDIENT_SLOTS = {0, 1, 2, 3, 4, 5};
@@ -31,6 +35,7 @@ public class HopperInteractionListener implements Listener {
     private static final int[] CUTTING_BOARD_SLOT = {0};
 
     private final FarmersDelightPlugin plugin;
+    private final Map<HopperViewKey, HopperViewHolder> viewCache = new ConcurrentHashMap<>();
 
     public HopperInteractionListener(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
@@ -67,6 +72,10 @@ public class HopperInteractionListener implements Listener {
             return;
         }
 
+        if (source != null && destination != null) {
+            moveBetweenCustomContainers(source, destination, item);
+            return;
+        }
         if (destination != null && source == null) {
             moveIntoCustomContainer(event.getSource(), destination, item);
             return;
@@ -104,16 +113,13 @@ public class HopperInteractionListener implements Listener {
 
         int[] slots = cookingPotSlots(block, type);
         if (slots.length == 0) {
+            debug("Rejected cooking pot hopper view at " + format(block) + " because slot mapping was empty.");
             return null;
         }
 
-        HopperViewHolder holder = new HopperViewHolder(ViewType.COOKING_POT, world, posKey, slots);
-        Inventory inventory = plugin.getServer().createInventory(holder, 9);
-        holder.inventory = inventory;
-        for (int i = 0; i < slots.length; i++) {
-            inventory.setItem(i, entity.getInventorySlot(slots[i]));
-        }
-        return inventory;
+        HopperViewHolder holder = holder(ViewType.COOKING_POT, world, posKey, slots);
+        refreshCookingPotView(holder, entity);
+        return holder.getInventory();
     }
 
     private int[] cookingPotSlots(Block block, HopperInventorySearchEvent.ContainerType type) {
@@ -144,11 +150,9 @@ public class HopperInteractionListener implements Listener {
             return null;
         }
 
-        HopperViewHolder holder = new HopperViewHolder(ViewType.CUTTING_BOARD, world, posKey, CUTTING_BOARD_SLOT);
-        Inventory inventory = plugin.getServer().createInventory(holder, 9);
-        holder.inventory = inventory;
-        inventory.setItem(0, entity.getStoredItem());
-        return inventory;
+        HopperViewHolder holder = holder(ViewType.CUTTING_BOARD, world, posKey, CUTTING_BOARD_SLOT);
+        refreshCuttingBoardView(holder, entity);
+        return holder.getInventory();
     }
 
     private void moveIntoCustomContainer(Inventory source, HopperViewHolder destination, ItemStack item) {
@@ -159,6 +163,7 @@ public class HopperInteractionListener implements Listener {
             return;
         }
         removeSimilar(source, item, moved);
+        refreshView(destination);
     }
 
     private void moveOutOfCustomContainer(HopperViewHolder source, Inventory destination, ItemStack requested) {
@@ -175,6 +180,33 @@ public class HopperInteractionListener implements Listener {
         }
 
         destination.addItem(extracted);
+        refreshView(source);
+    }
+
+    private void moveBetweenCustomContainers(HopperViewHolder source, HopperViewHolder destination, ItemStack item) {
+        int fit = fitAmount(destination.getInventory(), item);
+        if (fit <= 0) {
+            return;
+        }
+
+        ItemStack transfer = item.clone();
+        transfer.setAmount(Math.min(transfer.getAmount(), fit));
+        int moved = destination.type == ViewType.COOKING_POT
+                ? insertIntoCookingPot(destination, transfer)
+                : insertIntoCuttingBoard(destination, transfer);
+        if (moved <= 0) {
+            return;
+        }
+
+        ItemStack extracted = source.type == ViewType.COOKING_POT
+                ? extractFromCookingPot(source, moved)
+                : extractFromCuttingBoard(source, moved);
+        if (extracted == null || extracted.getType().isAir()) {
+            return;
+        }
+
+        refreshView(source);
+        refreshView(destination);
     }
 
     private HopperViewHolder holder(Inventory inventory) {
@@ -277,6 +309,46 @@ public class HopperInteractionListener implements Listener {
         }
     }
 
+    private void refreshView(HopperViewHolder holder) {
+        if (holder == null) {
+            return;
+        }
+        if (holder.type == ViewType.COOKING_POT) {
+            CookingPotBlockEntity entity = CookingPotBlockBehavior.getBlockEntity(holder.world, holder.posKey);
+            if (entity != null) {
+                refreshCookingPotView(holder, entity);
+            }
+            return;
+        }
+        CuttingBoardBlockEntity entity = CuttingBoardBlockBehavior.getBlockEntity(holder.world, holder.posKey);
+        if (entity != null) {
+            refreshCuttingBoardView(holder, entity);
+        }
+    }
+
+    private void refreshCookingPotView(HopperViewHolder holder, CookingPotBlockEntity entity) {
+        Inventory inventory = holder.getInventory();
+        inventory.clear();
+        for (int i = 0; i < holder.slots.length && i < inventory.getSize(); i++) {
+            inventory.setItem(i, entity.getInventorySlot(holder.slots[i]));
+        }
+    }
+
+    private void refreshCuttingBoardView(HopperViewHolder holder, CuttingBoardBlockEntity entity) {
+        Inventory inventory = holder.getInventory();
+        inventory.clear();
+        inventory.setItem(0, entity.getStoredItem());
+    }
+
+    private HopperViewHolder holder(ViewType type, World world, BlockPosKey posKey, int[] slots) {
+        HopperViewKey key = new HopperViewKey(type, world.getUID(), posKey, Arrays.toString(slots));
+        HopperViewHolder holder = viewCache.computeIfAbsent(key, ignored -> new HopperViewHolder(type, world, posKey, slots.clone()));
+        if (holder.inventory == null) {
+            holder.inventory = plugin.getServer().createInventory(holder, 9);
+        }
+        return holder;
+    }
+
     private BlockFace facing(HopperViewHolder holder) {
         return CustomBlockUtils.getFacing(holder.posKey.toLocation(holder.world).getBlock());
     }
@@ -370,6 +442,9 @@ public class HopperInteractionListener implements Listener {
     private enum ViewType {
         COOKING_POT,
         CUTTING_BOARD
+    }
+
+    private record HopperViewKey(ViewType type, java.util.UUID worldId, BlockPosKey posKey, String slotsKey) {
     }
 
     private static final class HopperViewHolder implements InventoryHolder {

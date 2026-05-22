@@ -33,6 +33,9 @@ dependencies {
 val obfuscateBuild = providers.gradleProperty("obfuscate")
     .map { it.equals("true", ignoreCase = true) }
     .orElse(false)
+val debugToolsBuild = providers.gradleProperty("debugTools")
+    .map { it.equals("true", ignoreCase = true) }
+    .orElse(false)
 
 java {
     toolchain {
@@ -56,9 +59,54 @@ tasks.processResources {
     }
 }
 
+sourceSets {
+    named("main") {
+        java.srcDir(layout.buildDirectory.dir("generated/sources/buildFlags"))
+        if (debugToolsBuild.get()) {
+            java.srcDir("src/debugTools/java")
+        }
+    }
+}
+
+val writeBuildFlags = tasks.register("writeBuildFlags") {
+    val outputDir = layout.buildDirectory.dir("generated/sources/buildFlags/com/huidu/farmersdelight")
+    inputs.property("debugTools", debugToolsBuild)
+    outputs.dir(outputDir)
+    doLast {
+        val file = outputDir.get().file("BuildFlags.java").asFile
+        file.parentFile.mkdirs()
+        file.writeText(
+            """
+            package com.huidu.farmersdelight;
+
+            public final class BuildFlags {
+
+                public static final boolean DEBUG_TOOLS = ${debugToolsBuild.get()};
+
+                private BuildFlags() {
+                }
+            }
+            """.trimIndent(),
+            Charsets.UTF_8
+        )
+    }
+}
+
+tasks.compileJava {
+    dependsOn(writeBuildFlags)
+    doFirst {
+        if (!debugToolsBuild.get()) {
+            delete(layout.buildDirectory.dir("classes/java/main/com/huidu/farmersdelight/debug"))
+        }
+    }
+}
+
 tasks.shadowJar {
     archiveBaseName.set("farmersdelight")
     archiveClassifier.set("")
+    if (!debugToolsBuild.get()) {
+        exclude("com/huidu/farmersdelight/debug/**")
+    }
 }
 
 tasks.register<proguard.gradle.ProGuardTask>("obfuscateJar") {
