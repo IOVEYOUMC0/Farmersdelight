@@ -142,7 +142,7 @@ public class KnifeDropHandler implements Listener {
                 }
             }
 
-            if (plugin.getConfig().getBoolean("debug", false)) {
+            if (plugin.isDebugEnabled()) {
                 plugin.getLogger().info("Dropped " + itemId + " from " + entity.getType().name() + " at " + entity.getLocation());
             }
         }

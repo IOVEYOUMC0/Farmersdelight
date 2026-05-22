@@ -1,9 +1,18 @@
 package com.huidu.farmersdelight.visual;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
+import it.unimi.dsi.fastutil.ints.IntList;
+import net.momirealms.craftengine.bukkit.entity.data.BaseEntityData;
+import net.momirealms.craftengine.bukkit.entity.data.DisplayData;
+import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.network.BukkitNetworkManager;
 import net.momirealms.craftengine.core.plugin.network.NetWorkUser;
+import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundAddEntityPacketProxy;
+import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacketProxy;
+import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundSetEntityDataPacketProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.entity.EntityTypeProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.phys.Vec3Proxy;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -17,8 +26,6 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitTask;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -27,12 +34,17 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
 
     private static final double VIEW_DISTANCE = 64.0D;
     private static final double VIEW_DISTANCE_SQUARED = VIEW_DISTANCE * VIEW_DISTANCE;
+    private static final int DEFAULT_SYNC_INTERVAL_TICKS = 20;
+    private static final int DEFAULT_SYNC_BATCH_SIZE = 256;
 
     private final FarmersDelightPlugin plugin;
     private final BukkitNetworkManager networkManager;
     private final AtomicInteger nextEntityId = new AtomicInteger(2_000_000);
     private final Map<Integer, ProxyItemDisplay> displays = new ConcurrentHashMap<>();
     private BukkitTask syncTask;
+    private int syncIntervalTicks = DEFAULT_SYNC_INTERVAL_TICKS;
+    private int syncBatchSize = DEFAULT_SYNC_BATCH_SIZE;
+    private int syncCursor;
 
     public ProxyItemDisplayManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
@@ -44,6 +56,7 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         }
         if (isAvailable()) {
             Bukkit.getPluginManager().registerEvents(this, plugin);
+            reload();
             startSyncTask();
         }
     }
@@ -51,6 +64,18 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
     @Override
     public boolean isAvailable() {
         return networkManager != null;
+    }
+
+    public void reload() {
+        syncIntervalTicks = Math.max(1, plugin.getConfig().getInt(
+                "performance.proxy-item-display-sync-interval-ticks", DEFAULT_SYNC_INTERVAL_TICKS));
+        syncBatchSize = Math.max(1, plugin.getConfig().getInt(
+                "performance.proxy-item-display-sync-batch-size", DEFAULT_SYNC_BATCH_SIZE));
+        if (syncTask != null) {
+            syncTask.cancel();
+            syncTask = null;
+            startSyncTask();
+        }
     }
 
     @Override
@@ -95,15 +120,17 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
     }
 
     @Override
-    public void cleanup() {
+    public int cleanup() {
         if (syncTask != null) {
             syncTask.cancel();
             syncTask = null;
         }
 
+        int removed = displays.size();
         for (Integer entityId : new ArrayList<>(displays.keySet())) {
             destroyDisplay(entityId);
         }
+        return removed;
     }
 
     @EventHandler
@@ -125,17 +152,40 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
     }
 
     private void startSyncTask() {
-        syncTask = Bukkit.getScheduler().runTaskTimer(plugin, this::syncAll, 20L, 20L);
+        syncTask = Bukkit.getScheduler().runTaskTimer(plugin, this::syncAll, syncIntervalTicks, syncIntervalTicks);
     }
 
     private void syncAll() {
         if (!isAvailable()) {
             return;
         }
-
-        for (ProxyItemDisplay display : displays.values()) {
-            syncDisplay(display);
+        if (displays.isEmpty()) {
+            return;
         }
+
+        List<ProxyItemDisplay> snapshot = new ArrayList<>(displays.values());
+        int size = snapshot.size();
+        if (size == 0) {
+            syncCursor = 0;
+            return;
+        }
+
+        Map<UUID, List<Player>> playersByWorld = new HashMap<>();
+        for (World world : Bukkit.getWorlds()) {
+            playersByWorld.put(world.getUID(), List.copyOf(world.getPlayers()));
+        }
+
+        int budget = Math.min(syncBatchSize, size);
+        int start = syncCursor >= size ? 0 : syncCursor;
+        int processed = 0;
+        for (int i = 0; i < budget; i++) {
+            ProxyItemDisplay display = snapshot.get((start + i) % size);
+            World world = display.spec.location().getWorld();
+            List<Player> players = world == null ? List.of() : playersByWorld.getOrDefault(world.getUID(), List.of());
+            syncDisplay(display, players);
+            processed++;
+        }
+        syncCursor = (start + Math.max(1, processed)) % size;
     }
 
     private void syncPlayer(Player player) {
@@ -156,13 +206,19 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
 
     private void syncDisplay(ProxyItemDisplay display) {
         World world = display.spec.location().getWorld();
+        List<Player> players = world == null ? List.of() : List.copyOf(world.getPlayers());
+        syncDisplay(display, players);
+    }
+
+    private void syncDisplay(ProxyItemDisplay display, List<Player> players) {
+        World world = display.spec.location().getWorld();
         if (world == null || !world.isChunkLoaded(display.spec.location().getBlockX() >> 4, display.spec.location().getBlockZ() >> 4)) {
             destroyForAllViewers(display);
             return;
         }
 
         Set<UUID> desiredViewers = new HashSet<>();
-        for (Player player : world.getPlayers()) {
+        for (Player player : players) {
             if (!shouldViewerSeeDisplay(player, display)) {
                 continue;
             }
@@ -241,11 +297,7 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
 
     private Object createSpawnPacket(ProxyItemDisplay display) {
         Location location = display.spec.location();
-        Object entityType = resolveItemDisplayEntityType();
-        Object deltaMovement = resolveZeroVec3();
-        return invokeStaticProxy(
-                "net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundAddEntityPacketProxy",
-                "newInstance",
+        return ClientboundAddEntityPacketProxy.INSTANCE.newInstance(
                 display.entityId,
                 display.entityUuid,
                 location.getX(),
@@ -253,111 +305,60 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
                 location.getZ(),
                 0.0F,
                 0.0F,
-                entityType,
+                EntityTypeProxy.ITEM_DISPLAY,
                 0,
-                deltaMovement,
+                Vec3Proxy.ZERO,
                 0.0D
         );
     }
 
-    private Object resolveItemDisplayEntityType() {
-        return getStaticField("net.momirealms.craftengine.proxy.minecraft.world.entity.EntityTypeProxy", "ITEM_DISPLAY");
-    }
-
-    private Object resolveZeroVec3() {
-        return getStaticField("net.momirealms.craftengine.proxy.minecraft.world.phys.Vec3Proxy", "ZERO");
-    }
-
     private Object createMetadataPacket(ProxyItemDisplay display) {
-        World world = display.spec.location().getWorld();
-        if (world == null) {
-            return createEntityDataPacket(display.entityId, List.of());
+        List<Object> values = new ArrayList<>();
+        BaseEntityData.NoGravity.addEntityData(true, values);
+        BaseEntityData.Silent.addEntityData(true, values);
+
+        var wrappedItem = BukkitItemManager.instance().wrap(display.spec.itemStack());
+        if (wrappedItem != null && !wrappedItem.isEmpty()) {
+            DisplayData.ItemDisplayData.ItemStack.addEntityData(wrappedItem.minecraftItem(), values);
         }
 
-        Location templateLocation = getTemplateLocation(display.spec.location());
-        ItemDisplay temporaryDisplay = world.spawn(templateLocation, ItemDisplay.class, entity -> {
-            applySpec(entity, display.spec);
-            entity.setVisibleByDefault(false);
-            entity.setPersistent(false);
-        });
-
-        try {
-            Object handle = invokeStaticProxy(
-                    "net.momirealms.craftengine.proxy.bukkit.craftbukkit.entity.CraftEntityProxy",
-                    "getEntity",
-                    temporaryDisplay
-            );
-            Object entityData = invokeStaticProxy(
-                    "net.momirealms.craftengine.proxy.minecraft.world.entity.EntityProxy",
-                    "getEntityData",
-                    handle
-            );
-            List<?> values = (List<?>) invokeStaticProxy(
-                    "net.momirealms.craftengine.proxy.minecraft.network.syncher.SynchedEntityDataProxy",
-                    "getNonDefaultValues",
-                    entityData
-            );
-            return createEntityDataPacket(display.entityId, values);
-        } finally {
-            temporaryDisplay.remove();
-        }
+        var transformation = display.spec.transformation();
+        DisplayData.ItemDisplayData.Translation.addEntityData(transformation.getTranslation(), values);
+        DisplayData.ItemDisplayData.Scale.addEntityData(transformation.getScale(), values);
+        DisplayData.ItemDisplayData.LeftRotation.addEntityData(transformation.getLeftRotation(), values);
+        DisplayData.ItemDisplayData.RightRotation.addEntityData(transformation.getRightRotation(), values);
+        DisplayData.ItemDisplayData.ItemTransform.addEntityData(toCeDisplayContext(display.spec.itemTransform()), values);
+        DisplayData.ItemDisplayData.ShadowRadius.addEntityData(0.0F, values);
+        DisplayData.ItemDisplayData.ShadowStrength.addEntityData(0.0F, values);
+        DisplayData.ItemDisplayData.Width.addEntityData(0.0F, values);
+        DisplayData.ItemDisplayData.Height.addEntityData(0.0F, values);
+        DisplayData.ItemDisplayData.ViewRange.addEntityData(1.0F, values);
+        return createEntityDataPacket(display.entityId, values);
     }
 
     private Object createEntityDataPacket(int entityId, List<?> values) {
-        return invokeStaticProxy(
-                "net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundSetEntityDataPacketProxy",
-                "newInstance",
-                entityId,
-                values
-        );
+        return ClientboundSetEntityDataPacketProxy.INSTANCE.newInstance(entityId, values);
     }
 
     private Object createDestroyPacket(int entityId) {
-        try {
-            Class<?> intArrayListClass = Class.forName("it.unimi.dsi.fastutil.ints.IntArrayList");
-            Object intList = intArrayListClass.getConstructor(int[].class).newInstance((Object) new int[]{entityId});
-            return invokeStaticProxy(
-                    "net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacketProxy",
-                    "newInstance",
-                    intList
-            );
-        } catch (Exception e) {
-            throw new IllegalStateException("Unable to create CE proxy remove-entity packet", e);
-        }
+        return ClientboundRemoveEntitiesPacketProxy.INSTANCE.newInstance(IntList.of(entityId));
     }
 
-    private Location getTemplateLocation(Location origin) {
-        World world = origin.getWorld();
-        if (world == null) {
-            return origin.clone();
+    private byte toCeDisplayContext(ItemDisplay.ItemDisplayTransform transform) {
+        if (transform == null) {
+            return 0;
         }
-
-        int minY = world.getMinHeight();
-        int maxY = world.getMaxHeight() - 1;
-        double distanceToMin = Math.abs(origin.getY() - minY);
-        double distanceToMax = Math.abs(maxY - origin.getY());
-        double templateY = maxY;
-        if (distanceToMin > distanceToMax) {
-            templateY = minY;
-        }
-        return new Location(world, origin.getX(), templateY, origin.getZ(), origin.getYaw(), origin.getPitch());
-    }
-
-    private void applySpec(ItemDisplay display, DisplaySpec spec) {
-        display.setGravity(false);
-        display.setInvulnerable(true);
-        display.setSilent(true);
-        display.setNoPhysics(true);
-        display.setInterpolationDelay(0);
-        display.setInterpolationDuration(0);
-        display.setTeleportDuration(0);
-        display.setViewRange(1.0F);
-        display.setShadowRadius(0.0F);
-        display.setDisplayWidth(0.0F);
-        display.setDisplayHeight(0.0F);
-        display.setItemDisplayTransform(spec.itemTransform());
-        display.setTransformation(spec.transformation());
-        display.setItemStack(spec.itemStack());
+        return switch (transform) {
+            case THIRDPERSON_LEFTHAND -> 1;
+            case THIRDPERSON_RIGHTHAND -> 2;
+            case FIRSTPERSON_LEFTHAND -> 3;
+            case FIRSTPERSON_RIGHTHAND -> 4;
+            case HEAD -> 5;
+            case GUI -> 6;
+            case GROUND -> 7;
+            case FIXED -> 8;
+            default -> 0;
+        };
     }
 
     private DisplaySpec normalize(DisplaySpec spec) {
@@ -365,43 +366,6 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         ItemStack itemStack = spec.itemStack().clone();
         itemStack.setAmount(1);
         return new DisplaySpec(location, itemStack, spec.itemTransform(), spec.transformation());
-    }
-
-    private Object getStaticField(String className, String fieldName) {
-        try {
-            Class<?> clazz = Class.forName(className);
-            Field field = clazz.getField(fieldName);
-            return field.get(null);
-        } catch (Exception e) {
-            throw new IllegalStateException("Unable to resolve " + className + "." + fieldName, e);
-        }
-    }
-
-    private Object invokeStaticProxy(String className, String methodName, Object... args) {
-        try {
-            Class<?> clazz = Class.forName(className);
-            Object instance = clazz.getField("INSTANCE").get(null);
-            Method method = findMethod(clazz, methodName, args.length);
-            if (method == null) {
-                throw new IllegalStateException("Unable to find proxy method: " + className + "." + methodName);
-            }
-            return method.invoke(instance, args);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to invoke proxy method: " + className + "." + methodName, e);
-        }
-    }
-
-    private Method findMethod(Class<?> clazz, String methodName, int parameterCount) {
-        for (Method method : clazz.getMethods()) {
-            if (!method.getName().equals(methodName)) {
-                continue;
-            }
-            if (method.getParameterCount() != parameterCount) {
-                continue;
-            }
-            return method;
-        }
-        return null;
     }
 
     private static final class ProxyItemDisplay {

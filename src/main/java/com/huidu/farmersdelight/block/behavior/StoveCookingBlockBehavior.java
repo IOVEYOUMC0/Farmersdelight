@@ -153,6 +153,35 @@ public class StoveCookingBlockBehavior extends BlockBehavior {
         // Managed by StoveManager.
     }
 
+    @Override
+    public void affectNeighborsAfterRemoval(Object thisBlock, Object[] args) {
+        handleStateRemoval(args);
+    }
+
+    @Override
+    public void spawnAfterBreak(Object thisBlock, Object[] args) {
+        handleStateRemoval(args);
+    }
+
+    private static void handleStateRemoval(Object[] args) {
+        if (args == null || args.length < 3) {
+            return;
+        }
+        Object worldObj = args[1];
+        Object posObj = args[2];
+        if (!(worldObj instanceof net.momirealms.craftengine.core.world.World ceWorld) || !(posObj instanceof BlockPos pos)) {
+            return;
+        }
+        World world = Bukkit.getWorld(ceWorld.uuid());
+        StoveManager manager = getManager();
+        if (world == null || manager == null) {
+            return;
+        }
+        Location location = new Location(world, pos.x(), pos.y(), pos.z());
+        manager.saveWorldData(world);
+        manager.breakStove(location, location.clone().add(0.5, 0.5, 0.5), false);
+    }
+
     public static void cleanupAll() {
         StoveManager manager = getManager();
         if (manager != null) {

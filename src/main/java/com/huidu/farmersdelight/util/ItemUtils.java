@@ -76,11 +76,7 @@ public final class ItemUtils {
         }
 
         String customItemId = getCustomItemId(item);
-        if (customItemId == null) {
-            return item.getType().isBlock();
-        }
-
-        return isKnownBlockLikeCustomItem(customItemId);
+        return customItemId == null && item.getType().isBlock();
     }
 
     /**
@@ -372,29 +368,6 @@ public final class ItemUtils {
             return humanizeTranslationKey(key);
         }
         return resolveTranslationKeyText(normalized, locale);
-    }
-
-    private static boolean isKnownBlockLikeCustomItem(String customItemId) {
-        String path = customItemId;
-        int separator = customItemId.indexOf(':');
-        if (separator >= 0 && separator + 1 < customItemId.length()) {
-            path = customItemId.substring(separator + 1);
-        }
-
-        return path.endsWith("_crate")
-                || path.endsWith("_cabinet")
-                || path.endsWith("_basket")
-                || path.endsWith("_bale")
-                || path.endsWith("_bag")
-                || path.endsWith("_tray")
-                || path.endsWith("_rug")
-                || path.endsWith("_tatami")
-                || path.endsWith("_mat")
-                || path.endsWith("_soil")
-                || path.endsWith("_farmland")
-                || path.endsWith("_compost")
-                || path.endsWith("_block")
-                || path.equals("rope");
     }
 
     private static Component resolveSpecialDisplayComponent(Component component, Player player) {

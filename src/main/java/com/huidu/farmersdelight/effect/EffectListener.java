@@ -70,6 +70,7 @@ public class EffectListener implements Listener {
             effectTask = null;
         }
         playersWithEffects.clear();
+        EffectManager.clearAll();
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -83,6 +84,7 @@ public class EffectListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(PlayerQuitEvent event) {
         untrackPlayer(event.getPlayer().getUniqueId());
+        EffectManager.clearPlayer(event.getPlayer());
     }
 }
 

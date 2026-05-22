@@ -8,7 +8,6 @@ import com.huidu.farmersdelight.block.behavior.CuttingBoardBlockEntity;
 import com.huidu.farmersdelight.manager.StoveManager;
 import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
-import com.huidu.farmersdelight.util.CookingPotItemDataHelper;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import net.momirealms.craftengine.bukkit.api.event.CustomBlockAttemptPlaceEvent;
 import net.momirealms.craftengine.bukkit.api.event.CustomBlockPlaceEvent;
@@ -150,13 +149,7 @@ public class BlockPlaceListener implements Listener {
 
         if (customBlockId.equals(Constants.BLOCK_COOKING_POT)) {
             CookingPotBlockBehavior.markRecentlyPlaced(blockLocation);
-            boolean restoredPackedData = false;
-            if (CookingPotItemDataHelper.isEnabled() && placedItem != null && !placedItem.getType().isAir()) {
-                restoredPackedData = CookingPotItemDataHelper.restorePackedData(blockLocation, placedItem);
-            }
-            if (!restoredPackedData) {
-                CookingPotBlockBehavior.getOrCreateBlockEntity(blockLocation);
-            }
+            CookingPotBlockBehavior.getOrCreateBlockEntity(blockLocation);
             am.award(player, "place_cooking_pot");
         }
 

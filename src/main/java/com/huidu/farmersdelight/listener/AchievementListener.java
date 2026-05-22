@@ -18,7 +18,6 @@ import org.bukkit.event.inventory.SmithItemEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.HashSet;
 import java.util.Set;
 
 public class AchievementListener implements Listener {
@@ -29,20 +28,6 @@ public class AchievementListener implements Listener {
             Constants.ITEM_ONION,
             Constants.ITEM_RICE
     );
-
-    private final Set<String> KNIFE_IDS = new HashSet<>();
-
-    public AchievementListener() {
-        loadConfig();
-    }
-
-    public void loadConfig() {
-        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
-        if (plugin == null) return;
-
-        KNIFE_IDS.clear();
-        KNIFE_IDS.addAll(plugin.getConfig().getStringList("knife-config.items"));
-    }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onCraftItem(CraftItemEvent event) {
@@ -102,7 +87,7 @@ public class AchievementListener implements Listener {
         AdvancementManager am = FarmersDelightPlugin.getInstance().getAdvancementManager();
         if (am == null) return;
 
-        if (KNIFE_IDS.contains(customItemId)) {
+        if (FarmersDelightPlugin.getInstance().isKnifeItemId(customItemId)) {
             am.award(player, "craft_knife");
         }
 

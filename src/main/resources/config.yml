@@ -3,17 +3,10 @@
 # 物品 ID 支持 CraftEngine 物品和原版物品，例如 farmersdelight:flint_knife、minecraft:bowl。
 # 可选物品输出可写成 ""、none、null、empty、air、minecraft:air 来清空。
 
-# 语言文件。内置 zh_cn / en_us。
-language: zh_cn
-
-# 调试日志。正常使用请保持关闭。
-debug:
-  enabled: false
-  # 可用示例: interact-probe, stove, skillet, storage, all
-  categories:
-    - interact-probe
-    - stove
-    - skillet
+# 服务端日志和控制台文本语言。
+# 留空会跟随 JVM/系统语言；可填 zh_cn、en_us 强制指定。
+# 这里只影响插件日志、控制台文本和无玩家上下文的文本；玩家 GUI/消息仍优先使用玩家客户端语言。
+language: ''
 
 # 进度系统。关闭后不会同步内置进度数据包。
 advancements:
@@ -23,8 +16,17 @@ advancements:
 storage:
   auto-save-interval: 300
 
+# 性能预算。世界、实体、粒子和发包相关 API 仍在主线程执行；这些选项用于把高频维护分批摊开。
+performance:
+  # 每 4 tick 最多处理多少个活跃厨锅。调大响应更快，调小压测时更稳。
+  cooking-pot-tick-budget: 512
+  # 代理 ItemDisplay 可见性同步间隔和每批处理数量。影响煎锅/炉灶食物显示的远近可见性维护。
+  proxy-item-display-sync-interval-ticks: 20
+  proxy-item-display-sync-batch-size: 256
+
 # 漏斗与插件方块的原版容器交互。
-# 当前 CraftEngine 26.x 的方块容器桥接仍在适配中，默认关闭以避免漏斗吞物品或写入异常。
+# enabled=false 时完全关闭插件方块的漏斗容器桥接，避免漏斗吞物品、重复创建容器或写入异常。
+# 当前默认关闭；需要测试厨锅/砧板漏斗时再开启，并建议先在测试服验证。
 hopper-interactions:
   enabled: false
   cooking-pot: true
@@ -32,8 +34,22 @@ hopper-interactions:
 
 # 砧板交互。
 cutting-board:
-  # 原模组默认只处理主手工具。开启后允许副手小刀 + 主手物品，或主手小刀 + 副手物品。
-  allow-offhand-interactions: false
+  # 砧板交互模式：
+  # stacking = 启用 64 堆叠，关闭副手交互
+  # offhand  = 启用副手交互，关闭 64 堆叠
+  interaction-mode: stacking
+  # Per-item visual overrides for the item shown on cutting boards.
+  # Keys are stored item ids. Values follow CraftEngine-style vector syntax.
+  # Example:
+  # display-overrides:
+  #   farmersdelight:tomato:
+  #     display-item: farmersdelight:tomato_display
+  #     style: item
+  #     position: 0,0.02,0
+  #     translation: 0,0,0
+  #     rotation: 90,180,0
+  #     scale: 0.55
+  display-overrides: {}
 
 # 小刀识别。建议同时保留标签和具体物品，标签用于 CE 资源侧扩展，具体物品用于兜底。
 knife-config:
@@ -45,15 +61,6 @@ knife-config:
     - farmersdelight:golden_knife
     - farmersdelight:diamond_knife
     - farmersdelight:netherite_knife
-
-# 厨锅作为物品掉落时是否保存内部内容，并用耐久条显示内容量。
-cooking-pot-packed-drop:
-  enabled: true
-  durability-bar:
-    enabled: true
-  hide-advanced-durability-tooltip:
-    # 开启后隐藏“耐久度: x / y”这种高级提示，只保留本插件的内容描述。
-    enabled: true
 
 # 厨锅烹饪中的悬浮显示。
 cooking-pot-progress-display:
@@ -76,6 +83,7 @@ heat-sources:
   vanilla-tags:
     - minecraft:campfires
   # CraftEngine 自定义方块 ID，可带状态条件。
+  # 写法示例: namespace:block 或 namespace:block[key:value,key2:value2]
   custom-blocks:
     - farmersdelight:stove[fire:true]
   # 原版导热方块。厨锅可隔着这些方块找热源。
@@ -89,14 +97,20 @@ heat-sources:
 
 # 厨锅打开时自动放置的托盘家具，用于承载 CE 显示效果。
 tray:
+  # true = 打开/同步厨锅时自动确保下方托盘存在；false = 不自动生成托盘，厨锅内容显示可能不完整。
   enabled: true
+  # CraftEngine 托盘方块/家具 ID。资源侧改名后这里也要同步修改。
   tray-block-id: farmersdelight:tray
+  # 托盘相对厨锅方块坐标的偏移，通常不用改。
   x-offset: 0.5
   y-offset: -1.0
   z-offset: 0.5
+  # true = 只有支撑方块不是完整方块时才自动放托盘，用于避免覆盖普通实体方块。
   require-non-full-support: true
+  # 托盘批量同步间隔和每批处理数量。TPS 紧张时可调大间隔或调小 batch。
   sync-interval-ticks: 100
   sync-batch-size: 32
+  # 托盘标记键，已放置世界不建议随意修改；改了会导致旧托盘无法被识别为自动托盘。
   marker-key: auto_tray_marker
 
 # 厨锅世界粒子效果。
@@ -225,6 +239,8 @@ straw-drops:
     max-amount: 2
 
 # 宠物食物。玩家右键对应实体时给予效果，可继续按同格式添加更多食物。
+# 每个键都是物品 ID，支持 CraftEngine 物品和原版物品。
+# 如果某个食物只想用于“手持吸引”而不想右键消耗，可以把 restore-health 设为 false、effects 写 []，仍然保留 sound/particles 或按需关闭。
 pet-foods:
   farmersdelight:dog_food:
     entities:
@@ -248,6 +264,34 @@ pet-foods:
     particles: true
     particle-type: END_ROD
     particle-count: 5
+  farmersdelight:horse_feed:
+    # Bukkit EntityType 名称。可按同格式加入 LLAMA、CAMEL 等实体；写错会在日志中跳过。
+    entities:
+      - HORSE
+      - DONKEY
+      - MULE
+    # true = 右键喂食时要求目标已经被驯服；false = 未驯服实体也能触发右键食物效果。
+    require-tamed: false
+    restore-health: true
+    effects: []
+    sound: ENTITY_GENERIC_EAT
+    sound-volume: 0.8
+    sound-pitch: 0.8
+    particles: true
+    particle-type: HEART
+    particle-count: 4
+    # 手持该食物时吸引上方 entities 中的实体靠近。
+    tempt:
+      # false = 该食物不参与手持吸引，只保留右键喂食效果。
+      enabled: true
+      # 吸引搜索半径，单位方块。
+      range: 10.0
+      # Pathfinder 移动速度倍率，太高会显得实体移动不自然。
+      move-speed: 1.25
+      # 吸引任务间隔，单位 tick。10 tick = 0.5 秒；调大可降低开销但响应会慢一些。
+      tick-interval: 10
+      # true = 已驯服且主人就是当前玩家的马不会被自己的马食继续拉扯。
+      ignore-owned-tamed: true
 
 # 营养效果。默认关闭；开启后吃下列表食物会给玩家 Nourishment。
 nourishment-foods:

@@ -10,6 +10,7 @@ import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
+import net.momirealms.craftengine.core.block.behavior.WorldlyContainerHolder;
 import net.momirealms.craftengine.core.block.property.Property;
 import net.momirealms.craftengine.core.entity.player.InteractionResult;
 import net.momirealms.craftengine.core.util.Key;
@@ -28,7 +29,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
-public class CuttingBoardBlockBehavior extends BlockBehavior {
+public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyContainerHolder {
 
     @Override
     public boolean isPathFindable(Object thisBlock, Object[] args) {
@@ -287,7 +288,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
                     .toList();
 
             String knifeSound = getArgumentString(arguments, "knife-sound", Constants.SOUND_CUTTING_BOARD_KNIFE);
-            boolean enableStacking = getBooleanValue(arguments, "enable-stacking", true);
+            boolean enableStacking = FarmersDelightPlugin.getInstance().isCuttingBoardStackingEnabled();
             int maxStackAmount = getIntValue(arguments, "max-stack-amount", 64);
             return new CuttingBoardBlockBehavior(block, facingProperty, toolTags, toolItems, knifeSound, enableStacking, maxStackAmount);
         }
@@ -381,7 +382,15 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
         ItemStack mainHand = bukkitPlayer.getInventory().getItemInMainHand();
         ItemStack offHand = bukkitPlayer.getInventory().getItemInOffHand();
         boolean allowOffhandInteractions = FarmersDelightPlugin.getInstance().isCuttingBoardOffhandInteractionsAllowed();
+        boolean stackingEnabled = FarmersDelightPlugin.getInstance().isCuttingBoardStackingEnabled();
         BlockFace facing = getFacing(state);
+        debug("useOnBlock mode=" + FarmersDelightPlugin.getInstance().getCuttingBoardInteractionMode()
+                + ", hasItem=" + blockEntity.hasItem()
+                + ", main=" + formatItem(mainHand)
+                + ", off=" + formatItem(offHand)
+                + ", allowOffhand=" + allowOffhandInteractions
+                + ", stacking=" + stackingEnabled
+                + ", pos=" + posKey);
 
         if (blockEntity.hasItem()) {
             ItemStack tool = findMatchingTool(blockEntity, mainHand, offHand, allowOffhandInteractions);
@@ -548,6 +557,65 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
         // Managed by interaction and block entity state.
     }
 
+    @Override
+    public void affectNeighborsAfterRemoval(Object thisBlock, Object[] args) {
+        handleStateRemoval(args);
+    }
+
+    @Override
+    public void spawnAfterBreak(Object thisBlock, Object[] args) {
+        handleStateRemoval(args);
+    }
+
+    private static void handleStateRemoval(Object[] args) {
+        if (args == null || args.length < 3) {
+            return;
+        }
+        Object worldObj = args[1];
+        Object posObj = args[2];
+        if (!(worldObj instanceof net.momirealms.craftengine.core.world.World ceWorld) || !(posObj instanceof BlockPos pos)) {
+            return;
+        }
+        World world = Bukkit.getWorld(ceWorld.uuid());
+        if (world == null) {
+            return;
+        }
+        BlockPosKey posKey = new BlockPosKey(pos);
+        CuttingBoardBlockEntity entity = getBlockEntity(world, posKey);
+        if (entity == null) {
+            return;
+        }
+        saveBlockEntityData(world, posKey);
+        entity.removeDisplayEntity();
+        removeBlockEntity(world, posKey, false);
+    }
+
+    @Override
+    public Object getContainer(Object thisBlock, Object[] args) {
+        Object worldObj = args[1];
+        Object posObj = args[2];
+        if (!(worldObj instanceof net.momirealms.craftengine.core.world.World ceWorld) || !(posObj instanceof BlockPos pos)) {
+            return null;
+        }
+
+        World world = Bukkit.getWorld(ceWorld.uuid());
+        if (world == null) {
+            return null;
+        }
+
+        BlockPosKey posKey = new BlockPosKey(pos);
+        CuttingBoardBlockEntity blockEntity = getBlockEntity(world, posKey);
+        if (blockEntity == null) {
+            loadBlockEntity(world, posKey);
+            blockEntity = getBlockEntity(world, posKey);
+        }
+        if (blockEntity == null) {
+            return null;
+        }
+
+        return blockEntity.getWorldlyContainer(FarmersDelightPlugin.getInstance(), ceWorld, world).nmsContainer();
+    }
+
     private ItemStack findMatchingTool(CuttingBoardBlockEntity blockEntity, ItemStack mainHand, ItemStack offHand,
                                        boolean allowOffhandInteractions) {
         ItemStack storedItem = blockEntity.getStoredItem();
@@ -568,7 +636,9 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
         if (tool == null || tool.getType().isAir()) {
             return false;
         }
-        return FarmersDelightPlugin.getInstance().getCuttingBoardRecipes().matchRecipe(storedItem, tool) != null;
+        ItemStack singleItem = storedItem.clone();
+        singleItem.setAmount(1);
+        return FarmersDelightPlugin.getInstance().getCuttingBoardRecipes().matchRecipe(singleItem, tool) != null;
     }
 
     private BlockFace getFacing(ImmutableBlockState state) {
@@ -622,15 +692,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
 
     private boolean isKnifeTool(ItemStack item) {
         String customId = ItemUtils.getCustomItemId(item);
-        if (customId != null) {
-            List<String> configuredKnives = FarmersDelightPlugin.getInstance()
-                    .getConfig()
-                    .getStringList("knife-config.items");
-            if (configuredKnives.stream().anyMatch(id -> id.equalsIgnoreCase(customId))) {
-                return true;
-            }
-        }
-        return false;
+        return FarmersDelightPlugin.getInstance().isKnifeItemId(customId);
     }
 
     private boolean isAxeTool(ItemStack item) {
@@ -650,8 +712,10 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
         ItemStack storedItem = blockEntity.getStoredItem();
         if (storedItem == null) return false;
 
+        ItemStack recipeInput = storedItem.clone();
+        recipeInput.setAmount(1);
         CuttingBoardRecipe recipe = FarmersDelightPlugin.getInstance().getCuttingBoardRecipes()
-                .matchRecipe(storedItem, tool);
+                .matchRecipe(recipeInput, tool);
 
         if (recipe == null) return false;
 
@@ -802,6 +866,21 @@ public class CuttingBoardBlockBehavior extends BlockBehavior {
             try { return Integer.parseInt(s); } catch (NumberFormatException ignored) {}
         }
         return defaultValue;
+    }
+
+    private void debug(String message) {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        if (plugin != null && plugin.isDebugEnabled("interact")) {
+            plugin.getLogger().info("[cutting-board] " + message);
+        }
+    }
+
+    private String formatItem(ItemStack item) {
+        if (item == null || item.getType().isAir()) {
+            return "air";
+        }
+        String customId = ItemUtils.getCustomItemId(item);
+        return customId != null ? customId + " x" + item.getAmount() : item.getType().name() + " x" + item.getAmount();
     }
 }
 

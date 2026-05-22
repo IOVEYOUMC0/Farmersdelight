@@ -154,7 +154,7 @@ public class TrayManager {
             trayFurnitureCache.put(trayPos, furniture);
             worldTrays.put(potPos, trayPos);
 
-            if (plugin.getConfig().getBoolean("debug", false)) {
+            if (plugin.isDebugEnabled()) {
                 plugin.getLogger().info("Auto-placed tray at " + trayLoc + " for cooking pot at " + potPos);
             }
         } catch (Exception e) {
@@ -251,6 +251,10 @@ public class TrayManager {
         syncCookingPotTrays(world, validPotPositions, batched);
         syncSkilletTrays(world, validPotPositions, batched);
 
+        if (batched) {
+            return;
+        }
+
         Map<BlockPos, BlockPos> worldTrays = cookingPotTrays.get(world.getUID());
         if (worldTrays == null || worldTrays.isEmpty()) {
             return;
@@ -266,7 +270,8 @@ public class TrayManager {
 
     private void syncCookingPotTrays(World world, Set<BlockPos> validPositions, boolean batched) {
         List<Map.Entry<BlockPosKey, com.huidu.farmersdelight.block.behavior.CookingPotBlockEntity>> entries =
-                List.copyOf(CookingPotBlockBehavior.getBlockEntityEntries(world));
+                new ArrayList<>(CookingPotBlockBehavior.getBlockEntityEntries(world));
+        entries.sort(Comparator.comparing(Map.Entry::getKey, TrayManager::compareBlockPosKey));
         int start = nextBatchStart(cookingPotSyncOffsets, world, entries.size(), batched);
         int limit = batched ? Math.min(entries.size(), start + syncBatchSize) : entries.size();
 
@@ -290,7 +295,11 @@ public class TrayManager {
             return;
         }
 
-        List<Location> locations = List.copyOf(skilletManager.getTrackedLocations(world));
+        List<Location> locations = new ArrayList<>(skilletManager.getTrackedLocations(world));
+        locations.sort(Comparator
+                .comparingInt(Location::getBlockX)
+                .thenComparingInt(Location::getBlockY)
+                .thenComparingInt(Location::getBlockZ));
         int start = nextBatchStart(skilletSyncOffsets, world, locations.size(), batched);
         int limit = batched ? Math.min(locations.size(), start + syncBatchSize) : locations.size();
 
@@ -309,6 +318,18 @@ public class TrayManager {
                 removeTrayIfAutoPlaced(world, skilletPos);
             }
         }
+    }
+
+    private static int compareBlockPosKey(BlockPosKey first, BlockPosKey second) {
+        int x = Integer.compare(first.x(), second.x());
+        if (x != 0) {
+            return x;
+        }
+        int y = Integer.compare(first.y(), second.y());
+        if (y != 0) {
+            return y;
+        }
+        return Integer.compare(first.z(), second.z());
     }
 
     private int nextBatchStart(Map<UUID, Integer> offsets, World world, int size, boolean batched) {
@@ -390,6 +411,42 @@ public class TrayManager {
                 && entity.getPersistentDataContainer().has(trayMarkerKey, PersistentDataType.BYTE);
     }
 
+    public int cleanupInvalidAutoTrays() {
+        int removed = 0;
+        for (World world : Bukkit.getWorlds()) {
+            Map<BlockPos, BlockPos> worldTrays = cookingPotTrays.get(world.getUID());
+            if (worldTrays == null || worldTrays.isEmpty()) {
+                continue;
+            }
+            for (var entry : List.copyOf(worldTrays.entrySet())) {
+                BlockPos ownerPos = entry.getKey();
+                BlockPos trayPos = entry.getValue();
+                if (trayPos == null) {
+                    worldTrays.remove(ownerPos);
+                    continue;
+                }
+                if (isValidAutoTrayOwner(world, ownerPos)) {
+                    cookingPotTrays.computeIfAbsent(world.getUID(), ignored -> new ConcurrentHashMap<>())
+                            .put(ownerPos, trayPos);
+                    continue;
+                }
+
+                try {
+                    removeTrayAt(world, trayPos);
+                    worldTrays.remove(ownerPos);
+                    removed++;
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Failed to cleanup invalid auto tray at " + trayPos + ": " + e.getMessage());
+                }
+            }
+        }
+        return removed;
+    }
+
+    private boolean isValidAutoTrayOwner(World world, BlockPos ownerPos) {
+        return ownerPos != null && isPotOrSkilletAt(world, ownerPos) && shouldHaveTray(world, ownerPos);
+    }
+
     private void removeTrayAt(World world, BlockPos trayPos) {
         try {
             BukkitFurniture furniture = trayFurnitureCache.remove(trayPos);
@@ -407,7 +464,7 @@ public class TrayManager {
                 CraftEngineFurniture.remove(entity, false, false);
             }
 
-            if (plugin.getConfig().getBoolean("debug", false)) {
+            if (plugin.isDebugEnabled()) {
                 plugin.getLogger().info("Removed auto-placed tray at " + trayPos);
             }
         } catch (Exception e) {

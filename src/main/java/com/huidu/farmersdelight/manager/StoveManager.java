@@ -30,15 +30,19 @@ public class StoveManager {
     private static final int SLOT_COUNT = 6;
     private static final int DEFAULT_COOK_TIME = 600;
     private static final int HEARTBEAT_LOG_INTERVAL = 20;
+    private static final int DEFAULT_TICK_BUDGET = 512;
 
     private final FarmersDelightPlugin plugin;
     private final Map<Location, StoveData> stoves = new ConcurrentHashMap<>();
+    private final Map<UUID, Set<Location>> stovesByWorld = new ConcurrentHashMap<>();
     private final Map<Location, Boolean> blockedAboveCache = new ConcurrentHashMap<>();
     private static final long BLOCKED_CACHE_TTL_MS = 30_000;
     private long lastBlockedCacheCleanup;
     private final CampfireRecipeCache campfireRecipes = new CampfireRecipeCache("stove", this::debug);
     private BukkitTask tickTask;
     private int heartbeatTicks;
+    private int tickCursor;
+    private int tickBudget;
     private volatile Property<?> fireProperty;
 
     private final double[][] slotOffsets = {
@@ -62,7 +66,13 @@ public class StoveManager {
 
     public StoveManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
+        reloadConfig();
         campfireRecipes.rebuild();
+    }
+
+    public void reloadConfig() {
+        this.tickBudget = Math.max(1, plugin.getConfig().getInt(
+                "performance.stove-tick-budget", DEFAULT_TICK_BUDGET));
     }
 
     private void ensureTaskRunning() {
@@ -90,7 +100,18 @@ public class StoveManager {
     public StoveData getOrCreateStove(Location location) {
         ensureTaskRunning();
         Location normalized = ManagerSupport.normalize(location);
-        return stoves.computeIfAbsent(normalized, StoveData::new);
+        StoveData existing = stoves.get(normalized);
+        if (existing != null) {
+            return existing;
+        }
+
+        StoveData created = new StoveData(normalized);
+        StoveData previous = stoves.putIfAbsent(normalized, created);
+        if (previous != null) {
+            return previous;
+        }
+        indexStove(normalized);
+        return created;
     }
 
     public boolean handleInteract(Player player, Block block, ItemStack itemInHand) {
@@ -171,7 +192,7 @@ public class StoveManager {
 
     public void breakStove(Location blockLocation, Location dropLocation, boolean shouldDropItems) {
         Location normalized = ManagerSupport.normalize(blockLocation);
-        StoveData stove = stoves.remove(normalized);
+        StoveData stove = removeTrackedStove(normalized);
         if (stove != null) {
             cleanupAllVisuals(stove);
             if (shouldDropItems) {
@@ -194,16 +215,53 @@ public class StoveManager {
     }
 
     public void saveWorldData(World world) {
-        ManagerSupport.saveWorldData(stoves, world, this::saveStove);
+        if (world == null) {
+            return;
+        }
+        Set<Location> locations = stovesByWorld.get(world.getUID());
+        if (locations == null || locations.isEmpty()) {
+            return;
+        }
+        for (Location location : List.copyOf(locations)) {
+            StoveData stove = stoves.get(location);
+            if (stove != null) {
+                saveStove(location, stove);
+            }
+        }
     }
 
     public void cleanupWorld(UUID worldId) {
-        ManagerSupport.cleanupWorld(stoves, worldId, this::cleanupAllVisuals);
+        Set<Location> locations = stovesByWorld.remove(worldId);
+        if (locations == null || locations.isEmpty()) {
+            return;
+        }
+        for (Location location : List.copyOf(locations)) {
+            StoveData stove = stoves.remove(location);
+            if (stove != null) {
+                cleanupAllVisuals(stove);
+            }
+        }
+        stopTaskIfIdle();
     }
 
     public void saveAndUnloadChunk(World world, int minX, int maxX, int minZ, int maxZ) {
-        ManagerSupport.saveAndUnloadChunk(stoves, world, minX, maxX, minZ, maxZ,
-                this::saveStove, location -> removeStove(location, false));
+        if (world == null) {
+            return;
+        }
+        Set<Location> locations = stovesByWorld.get(world.getUID());
+        if (locations == null || locations.isEmpty()) {
+            return;
+        }
+        for (Location location : List.copyOf(locations)) {
+            if (location.getBlockX() >= minX && location.getBlockX() <= maxX
+                    && location.getBlockZ() >= minZ && location.getBlockZ() <= maxZ) {
+                StoveData stove = stoves.get(location);
+                if (stove != null) {
+                    saveStove(location, stove);
+                }
+                removeStove(location, false);
+            }
+        }
     }
 
     public void loadStove(World world, net.momirealms.craftengine.core.world.BlockPos pos, Map<String, Object> data) {
@@ -237,7 +295,7 @@ public class StoveManager {
         }
 
         if (hasAnyItem) {
-            stoves.put(location, stove);
+            putStove(location, stove);
             ensureTaskRunning();
         } else {
             removeStoredData(location);
@@ -276,6 +334,7 @@ public class StoveManager {
             cleanupAllVisuals(stove);
         }
         stoves.clear();
+        stovesByWorld.clear();
     }
 
     public void reloadRecipeCache() {
@@ -284,13 +343,53 @@ public class StoveManager {
 
     private void removeStove(Location location, boolean removeStoredData) {
         Location normalized = ManagerSupport.normalize(location);
-        StoveData stove = stoves.remove(normalized);
+        StoveData stove = removeTrackedStove(normalized);
         if (stove != null) {
             cleanupAllVisuals(stove);
         }
         stopTaskIfIdle();
         if (removeStoredData) {
             removeStoredData(normalized);
+        }
+    }
+
+    private StoveData putStove(Location location, StoveData stove) {
+        Location normalized = ManagerSupport.normalize(location);
+        StoveData previous = stoves.put(normalized, stove);
+        indexStove(normalized);
+        return previous;
+    }
+
+    private StoveData removeTrackedStove(Location location) {
+        Location normalized = ManagerSupport.normalize(location);
+        StoveData removed = stoves.remove(normalized);
+        if (removed != null) {
+            deindexStove(normalized);
+        }
+        return removed;
+    }
+
+    private void indexStove(Location location) {
+        if (location == null || location.getWorld() == null) {
+            return;
+        }
+        stovesByWorld
+                .computeIfAbsent(location.getWorld().getUID(), ignored -> ConcurrentHashMap.newKeySet())
+                .add(location);
+    }
+
+    private void deindexStove(Location location) {
+        if (location == null || location.getWorld() == null) {
+            return;
+        }
+        UUID worldId = location.getWorld().getUID();
+        Set<Location> locations = stovesByWorld.get(worldId);
+        if (locations == null) {
+            return;
+        }
+        locations.remove(location);
+        if (locations.isEmpty()) {
+            stovesByWorld.remove(worldId);
         }
     }
 
@@ -327,12 +426,18 @@ public class StoveManager {
             heartbeatTicks = 0;
             debug(() -> "tick heartbeat: activeStoves=" + stoves.size());
         }
-        Iterator<Map.Entry<Location, StoveData>> it = stoves.entrySet().iterator();
+        List<Map.Entry<Location, StoveData>> snapshot = List.copyOf(stoves.entrySet());
+        int size = snapshot.size();
+        int budget = Math.min(tickBudget, size);
+        int start = tickCursor >= size ? 0 : tickCursor;
 
-        while (it.hasNext()) {
-            Map.Entry<Location, StoveData> entry = it.next();
+        for (int processed = 0; processed < budget; processed++) {
+            Map.Entry<Location, StoveData> entry = snapshot.get((start + processed) % size);
             Location location = entry.getKey();
             StoveData stove = entry.getValue();
+            if (stoves.get(location) != stove) {
+                continue;
+            }
 
             World world = location.getWorld();
             if (world == null) continue;
@@ -342,7 +447,7 @@ public class StoveManager {
                 debug(() -> "tick remove: stove carrier block is air at " + formatLocation(location));
                 cleanupAllVisuals(stove);
                 removeStoredData(location);
-                it.remove();
+                removeTrackedStove(location);
                 continue;
             }
             ImmutableBlockState state = CraftEngineBlocks.getCustomBlockState(block);
@@ -361,7 +466,7 @@ public class StoveManager {
                 ejectAllItems(location, stove);
                 cleanupAllVisuals(stove);
                 removeStoredData(location);
-                it.remove();
+                removeTrackedStove(location);
                 continue;
             }
 
@@ -402,9 +507,10 @@ public class StoveManager {
 
             if (!hasAnyItem(stove)) {
                 removeStoredData(location);
-                it.remove();
+                removeTrackedStove(location);
             }
         }
+        tickCursor = size == 0 ? 0 : (start + Math.max(1, budget)) % size;
         stopTaskIfIdle();
     }
 

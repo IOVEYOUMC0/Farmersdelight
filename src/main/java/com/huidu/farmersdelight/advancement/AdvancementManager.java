@@ -58,7 +58,7 @@ public class AdvancementManager {
 
         NamespacedKey key = advancementKeys.get(advancementId);
         if (key == null) {
-            if (plugin.getConfig().getBoolean("debug", false)) {
+            if (plugin.isDebugEnabled()) {
                 plugin.getLogger().info("Unknown advancement: " + advancementId);
             }
             return;
@@ -67,7 +67,7 @@ public class AdvancementManager {
         try {
             Advancement advancement = Bukkit.getAdvancement(key);
             if (advancement == null) {
-                if (plugin.getConfig().getBoolean("debug", false)) {
+                if (plugin.isDebugEnabled()) {
                     plugin.getLogger().info("Advancement not found: " + key);
                 }
                 return;
@@ -80,7 +80,7 @@ public class AdvancementManager {
                 }
             }
         } catch (Exception e) {
-            if (plugin.getConfig().getBoolean("debug", false)) {
+            if (plugin.isDebugEnabled()) {
                 plugin.getLogger().warning("Failed to award advancement " + advancementId + ": " + e.getMessage());
             }
         }
@@ -96,7 +96,7 @@ public class AdvancementManager {
 
         NamespacedKey key = advancementKeys.get(advancementId);
         if (key == null) {
-            if (plugin.getConfig().getBoolean("debug", false)) {
+            if (plugin.isDebugEnabled()) {
                 plugin.getLogger().info("Unknown advancement: " + advancementId);
             }
             return;
@@ -105,7 +105,7 @@ public class AdvancementManager {
         try {
             Advancement advancement = Bukkit.getAdvancement(key);
             if (advancement == null) {
-                if (plugin.getConfig().getBoolean("debug", false)) {
+                if (plugin.isDebugEnabled()) {
                     plugin.getLogger().info("Advancement not found: " + key);
                 }
                 return;
@@ -116,7 +116,7 @@ public class AdvancementManager {
                 progress.awardCriteria(criterion);
             }
         } catch (Exception e) {
-            if (plugin.getConfig().getBoolean("debug", false)) {
+            if (plugin.isDebugEnabled()) {
                 plugin.getLogger().warning("Failed to award advancement criterion "
                         + advancementId + "/" + criterion + ": " + e.getMessage());
             }
@@ -139,7 +139,7 @@ public class AdvancementManager {
                 progress.revokeCriteria(criteria);
             }
         } catch (Exception e) {
-            if (plugin.getConfig().getBoolean("debug", false)) {
+            if (plugin.isDebugEnabled()) {
                 plugin.getLogger().warning("Failed to revoke advancement " + advancementId + ": " + e.getMessage());
             }
         }

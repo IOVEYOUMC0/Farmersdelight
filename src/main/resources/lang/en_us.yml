@@ -44,8 +44,6 @@ gui:
     more_items: "&7and {count} more"
     no_matching_items: "No matching items found"
     unknown: "Unknown"
-  packed_pot:
-    contains: "Contains {amount} serving(s) of {item}"
   cooking_pot:
     pending_container_hint: "&7Container: &f{container}"
 command:

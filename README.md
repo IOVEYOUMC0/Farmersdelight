@@ -84,17 +84,19 @@ CE 方块或家具配置中需要把对应行为挂到对应资源上。例如�
 语言：
 
 ```yaml
-language: zh_cn
+language: ''
 ```
 
-砧板副手交互：
+留空会跟随 JVM/系统语言；也可以写 `zh_cn`、`en_us` 强制服务端日志和控制台文本语言。玩家界面文本仍会优先按玩家客户端语言显示。
+
+砧板交互模式：
 
 ```yaml
 cutting-board:
-  allow-offhand-interactions: false
+  interaction-mode: stacking
 ```
 
-`false` 更接近原模组，只按主手工具处理。`true` 允许副手小刀 + 主手物品，或主手小刀 + 副手物品。
+`stacking` 会启用 64 堆叠并关闭副手交互。`offhand` 会启用副手交互并关闭 64 堆叠。
 
 煎锅漏斗导热：
 
@@ -118,6 +120,13 @@ cooking-pot-packed-drop:
 ```
 
 开启后厨锅被打包成物品时会保存内部内容，并用耐久条表示占用情况，同时隐藏原版高级耐久提示。
+
+说明：
+
+- `cooking-pot-packed-drop.enabled` 控制是否把厨锅内部原料、容器和待输出槽保存进掉落物。
+- `durability-bar.enabled` 只控制是否用耐久条显示内容量。该功能依赖 Paper/Purpur 1.20.5+ 的物品 DataComponent；不支持时会自动跳过，不影响内容保存。
+- `hide-advanced-durability-tooltip.enabled` 只隐藏 F3+H 高级提示里的“耐久度: x / y”。该功能需要 Paper/Purpur 1.21.5+ 的 `TOOLTIP_DISPLAY` 数据组件；旧版本或缺少 API 时会自动跳过。
+- 如果只想保留厨锅内容描述但不要耐久条，把 `durability-bar.enabled` 改成 `false`。
 
 ## 6. 物品 ID 与清空写法
 
@@ -336,6 +345,34 @@ pet-foods:
         ambient: false
         particles: true
 ```
+
+马食吸引：
+
+```yaml
+pet-foods:
+  farmersdelight:horse_feed:
+    entities:
+      - HORSE
+      - DONKEY
+      - MULE
+    require-tamed: false
+    restore-health: true
+    effects: []
+    sound: ENTITY_GENERIC_EAT
+    sound-volume: 0.8
+    sound-pitch: 0.8
+    particles: true
+    particle-type: HEART
+    particle-count: 4
+    tempt:
+      enabled: true
+      range: 10.0
+      move-speed: 1.25
+      tick-interval: 10
+      ignore-owned-tamed: true
+```
+
+`pet-foods` 的每个键就是一个食物物品 ID，支持 CraftEngine 物品 ID 和原版物品 ID。`entities` 使用 Bukkit `EntityType` 名称，例如 `HORSE`、`DONKEY`、`MULE`、`LLAMA`、`CAMEL`。`tempt` 是手持吸引配置；`tick-interval` 单位是 tick，10 tick 约等于 0.5 秒。需要更多可吸引食物时，直接在 `pet-foods` 下新增物品条目即可。
 
 营养效果默认关闭：
 
