@@ -203,6 +203,7 @@ public class StoveCookingBlockBehavior extends BlockBehavior {
         }
     }
 
+    @SuppressWarnings("deprecation")
     public static void clearRecipeCache() {
         StoveCookingBlockEntity.clearRecipeCache();
     }

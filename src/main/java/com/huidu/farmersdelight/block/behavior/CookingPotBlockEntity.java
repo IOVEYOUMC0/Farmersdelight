@@ -27,6 +27,7 @@ public class CookingPotBlockEntity {
     private static final int FIRST_INGREDIENT_SLOT = 0;
 
     private final BlockPosKey posKey;
+    private volatile World world;
     private final ItemStack[] inventory = new ItemStack[CookingPotBlockBehavior.INVENTORY_SIZE];
     private final double[] slotExperience = new double[CookingPotBlockBehavior.INVENTORY_SIZE];
     private final AtomicInteger cookingProgress = new AtomicInteger(0);
@@ -38,21 +39,26 @@ public class CookingPotBlockEntity {
     private final AtomicReference<ItemStack> mealContainerStack = new AtomicReference<>(null);
     private final Object inventoryLock = new Object();
     private final Object cookingLock = new Object();
-    private transient CookingPotWorldlyContainer worldlyContainer;
 
     public CookingPotBlockEntity(BlockPosKey posKey) {
+        this(posKey, null);
+    }
+
+    public CookingPotBlockEntity(BlockPosKey posKey, World world) {
         this.posKey = posKey;
+        this.world = world;
+    }
+
+    public void setWorld(World world) {
+        this.world = world;
+    }
+
+    public World getWorld() {
+        return world;
     }
 
     public BlockPosKey getPosKey() {
         return posKey;
-    }
-
-    public synchronized CookingPotWorldlyContainer getWorldlyContainer(FarmersDelightPlugin plugin, net.momirealms.craftengine.core.world.World ceWorld, org.bukkit.World bukkitWorld) {
-        if (this.worldlyContainer == null || this.worldlyContainer.ceWorld != ceWorld) {
-            this.worldlyContainer = new CookingPotWorldlyContainer(plugin, ceWorld, bukkitWorld, this.posKey, this);
-        }
-        return this.worldlyContainer;
     }
 
     public BlockPos getPos() {
@@ -96,8 +102,14 @@ public class CookingPotBlockEntity {
     }
 
     public void setSlotExperience(int slot, double experience) {
+        boolean changed;
         synchronized (inventoryLock) {
-            slotExperience[slot] = Math.max(0.0D, experience);
+            double normalized = Math.max(0.0D, experience);
+            changed = Double.compare(slotExperience[slot], normalized) != 0;
+            slotExperience[slot] = normalized;
+        }
+        if (changed) {
+            syncWorldlyContainer();
         }
     }
 
@@ -115,8 +127,9 @@ public class CookingPotBlockEntity {
     }
 
     private void syncWorldlyContainer() {
-        if (this.worldlyContainer != null) {
-            this.worldlyContainer.refreshFromEntity();
+        World currentWorld = world;
+        if (currentWorld != null) {
+            CookingPotBlockBehavior.markBlockEntityDirty(currentWorld, posKey);
         }
     }
 
@@ -413,6 +426,7 @@ public class CookingPotBlockEntity {
                 boolean stored = storeCookedResult(outputItem, recipe, recipe.getExperience());
                 if (!stored) {
                     cookingProgress.set(getCookingDuration());
+                    syncWorldlyContainer();
                     return false;
                 }
 
@@ -422,6 +436,7 @@ public class CookingPotBlockEntity {
                 lastRecipeId.set(null);
                 lastRecipeFingerprint.set(null);
 
+                syncWorldlyContainer();
                 return true;
             }
         }
@@ -558,6 +573,7 @@ public class CookingPotBlockEntity {
 
     public void setMealContainer(ItemStack container) {
         mealContainerStack.set(copyOrNull(container));
+        syncWorldlyContainer();
     }
     
     public boolean isContainerValid(ItemStack containerItem) {
@@ -601,6 +617,7 @@ public class CookingPotBlockEntity {
                     dropExperience(world, mealExperience);
                 }
             }
+            syncWorldlyContainer();
             return result.item();
         }
     }
@@ -635,6 +652,7 @@ public class CookingPotBlockEntity {
             }
 
             tryMovePendingToOutput();
+            syncWorldlyContainer();
             return result;
         }
     }
@@ -646,6 +664,7 @@ public class CookingPotBlockEntity {
                 slotExperience[CookingPotBlockBehavior.SLOT_OUTPUT] = 0.0D;
                 inventory[CookingPotBlockBehavior.SLOT_OUTPUT] = null;
                 tryMovePendingToOutput();
+                syncWorldlyContainer();
                 return meal;
             }
         }
@@ -664,6 +683,7 @@ public class CookingPotBlockEntity {
             slotExperience[CookingPotBlockBehavior.SLOT_OUTPUT] = 0.0D;
             tryMovePendingToOutput();
         }
+        syncWorldlyContainer();
         if (world != null && meal.experience() > 0.0D) {
             dropExperience(world, meal.experience());
         }
@@ -695,6 +715,9 @@ public class CookingPotBlockEntity {
             }
         }
 
+        if (!returnedItems.isEmpty()) {
+            syncWorldlyContainer();
+        }
         return returnedItems;
     }
 
@@ -702,7 +725,10 @@ public class CookingPotBlockEntity {
         synchronized (inventoryLock) {
             ItemStack pending = inventory[CookingPotBlockBehavior.SLOT_MEAL_DISPLAY];
             if (pending == null || pending.getType().isAir()) {
-                mealContainerStack.set(null);
+                ItemStack previousContainer = mealContainerStack.getAndSet(null);
+                if (previousContainer != null && !previousContainer.getType().isAir()) {
+                    syncWorldlyContainer();
+                }
                 return;
             }
 
@@ -725,6 +751,7 @@ public class CookingPotBlockEntity {
                 mealContainerStack.set(null);
             }
         }
+        syncWorldlyContainer();
     }
 
     private boolean storeCookedResult(ItemStack result, CookingPotRecipe recipe, double storedExperience) {
@@ -897,15 +924,23 @@ public class CookingPotBlockEntity {
     }
 
     public void setCookingProgress(int progress) {
-        cookingProgress.set(progress);
+        int previous = cookingProgress.getAndSet(progress);
+        if (previous != progress) {
+            syncWorldlyContainer();
+        }
     }
 
     public void incrementCookingProgress() {
         cookingProgress.incrementAndGet();
+        syncWorldlyContainer();
     }
 
     public void decrementCookingProgress() {
-        cookingProgress.updateAndGet(v -> Math.max(0, v - 2));
+        int previous = cookingProgress.get();
+        int updated = cookingProgress.updateAndGet(v -> Math.max(0, v - 2));
+        if (previous != updated) {
+            syncWorldlyContainer();
+        }
     }
 
     public int getCookingDuration() {
@@ -913,7 +948,10 @@ public class CookingPotBlockEntity {
     }
 
     public void setCookingDuration(int duration) {
-        this.cookingDuration.set(duration);
+        int previous = this.cookingDuration.getAndSet(duration);
+        if (previous != duration) {
+            syncWorldlyContainer();
+        }
     }
 
     public boolean hasHeatSource() {

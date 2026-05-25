@@ -4,17 +4,22 @@ import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.advancement.AdvancementManager;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.recipe.CuttingBoardRecipe;
-import com.huidu.farmersdelight.storage.BlockStorageManager;
 import com.huidu.farmersdelight.util.*;
+import fr.ateastudio.farmersdelight.api.event.ProfessionCookingExperienceEvent;
+import net.momirealms.craftengine.bukkit.world.BukkitWorldManager;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
+import net.momirealms.craftengine.core.block.behavior.EntityBlock;
 import net.momirealms.craftengine.core.block.behavior.WorldlyContainerHolder;
+import net.momirealms.craftengine.core.block.entity.BlockEntity;
+import net.momirealms.craftengine.core.block.entity.BlockEntityController;
 import net.momirealms.craftengine.core.block.property.Property;
 import net.momirealms.craftengine.core.entity.player.InteractionResult;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.world.BlockPos;
+import net.momirealms.craftengine.core.world.CEWorld;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
 import org.bukkit.*;
 import org.bukkit.block.Block;
@@ -29,7 +34,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
-public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyContainerHolder {
+public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBlock, WorldlyContainerHolder {
 
     @Override
     public boolean isPathFindable(Object thisBlock, Object[] args) {
@@ -45,7 +50,6 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
     }
 
     private static final Map<UUID, Map<BlockPosKey, CuttingBoardBlockEntity>> worldBlockEntities = new ConcurrentHashMap<>();
-    private static final String BLOCK_TYPE = "cutting_board";
     private static final Map<UUID, Map<BlockPosKey, Long>> recentManualInsertions = new ConcurrentHashMap<>();
     private static final long MANUAL_INSERT_GUARD_MILLIS = 250L;
 
@@ -55,8 +59,10 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
     private final String knifeSound;
     private final boolean enableStacking;
     private final int maxStackAmount;
+    private final String customDataKey;
+    private int controllerId;
 
-    private CuttingBoardBlockBehavior(BlockDefinition block, Property<?> facingProperty, List<Key> toolTags, List<Key> toolItems, String knifeSound, boolean enableStacking, int maxStackAmount) {
+    private CuttingBoardBlockBehavior(BlockDefinition block, Property<?> facingProperty, List<Key> toolTags, List<Key> toolItems, String knifeSound, boolean enableStacking, int maxStackAmount, String customDataKey) {
         super(block);
         this.facingProperty = facingProperty;
         this.toolTags = toolTags;
@@ -64,6 +70,21 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
         this.knifeSound = knifeSound;
         this.enableStacking = enableStacking;
         this.maxStackAmount = maxStackAmount;
+        this.customDataKey = customDataKey;
+    }
+
+    @Override
+    public BlockEntityController createBlockEntityController(BlockEntity blockEntity) {
+        return new CuttingBoardBlockEntityController(blockEntity, this);
+    }
+
+    @Override
+    public void initControllerId(int id) {
+        this.controllerId = id;
+    }
+
+    String customDataKey() {
+        return this.customDataKey;
     }
 
     public static CuttingBoardBlockEntity getBlockEntity(World world, BlockPos pos) {
@@ -74,7 +95,11 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
         if (world == null || posKey == null) return null;
         Map<BlockPosKey, CuttingBoardBlockEntity> worldEntities = worldBlockEntities.get(world.getUID());
         if (worldEntities == null) return null;
-        return worldEntities.get(posKey);
+        CuttingBoardBlockEntity entity = worldEntities.get(posKey);
+        if (entity != null) {
+            entity.setWorld(world);
+        }
+        return entity;
     }
 
     public static Map<BlockPosKey, CuttingBoardBlockEntity> getAllBlockEntities(World world) {
@@ -101,6 +126,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
         }
         Map<BlockPosKey, CuttingBoardBlockEntity> worldEntities = worldBlockEntities.computeIfAbsent(
                 world.getUID(), k -> new ConcurrentHashMap<>());
+        entity.setWorld(world);
         worldEntities.put(posKey, entity);
         return entity;
     }
@@ -120,28 +146,36 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
             CuttingBoardBlockEntity entity = worldEntities.remove(posKey);
             if (entity != null) {
                 entity.removeDisplayEntity();
-                BlockStorageManager storage = FarmersDelightPlugin.getInstance().getBlockStorageManager();
-                if (removeStoredData && storage != null) {
-                    storage.removeBlockData(posKey.toLocation(world));
-                }
             }
         }
     }
 
     public static void cleanupWorld(UUID worldId) {
+        cleanupWorld(worldId, true);
+    }
+
+    public static void cleanupWorld(UUID worldId, boolean removeDisplayEntities) {
         Map<BlockPosKey, CuttingBoardBlockEntity> worldEntities = worldBlockEntities.remove(worldId);
         if (worldEntities != null) {
             for (CuttingBoardBlockEntity entity : worldEntities.values()) {
-                entity.removeDisplayEntity();
+                if (removeDisplayEntities) {
+                    entity.removeDisplayEntity();
+                }
             }
             worldEntities.clear();
         }
     }
 
     public static void cleanupAll() {
+        cleanupAll(true);
+    }
+
+    public static void cleanupAll(boolean removeDisplayEntities) {
         for (Map<BlockPosKey, CuttingBoardBlockEntity> worldEntities : worldBlockEntities.values()) {
             for (CuttingBoardBlockEntity entity : worldEntities.values()) {
-                entity.removeDisplayEntity();
+                if (removeDisplayEntities) {
+                    entity.removeDisplayEntity();
+                }
             }
             worldEntities.clear();
         }
@@ -178,9 +212,6 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
     }
 
     public static void saveAllData() {
-        BlockStorageManager storage = FarmersDelightPlugin.getInstance().getBlockStorageManager();
-        if (storage == null) return;
-
         for (Map.Entry<UUID, Map<BlockPosKey, CuttingBoardBlockEntity>> worldEntry : worldBlockEntities.entrySet()) {
             World world = Bukkit.getWorld(worldEntry.getKey());
             if (world == null) continue;
@@ -190,7 +221,17 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
                 saveBlockEntityData(world, posKey);
             }
         }
-        storage.saveAll();
+    }
+
+    public static void markAllBlockEntitiesDirty() {
+        for (Map.Entry<UUID, Map<BlockPosKey, CuttingBoardBlockEntity>> worldEntry : worldBlockEntities.entrySet()) {
+            World world = Bukkit.getWorld(worldEntry.getKey());
+            if (world == null) continue;
+
+            for (BlockPosKey posKey : worldEntry.getValue().keySet()) {
+                markBlockEntityDirty(world, posKey);
+            }
+        }
     }
 
     public static void saveBlockEntityData(World world, BlockPos pos) {
@@ -199,29 +240,21 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
 
     public static void saveBlockEntityData(World world, BlockPosKey posKey) {
         if (world == null || posKey == null) return;
-        BlockStorageManager storage = FarmersDelightPlugin.getInstance().getBlockStorageManager();
-        if (storage == null) return;
 
         if (!isCuttingBoardBlock(world, posKey)) {
             removeBlockEntity(world, posKey, true);
             return;
         }
 
-        Map<BlockPosKey, CuttingBoardBlockEntity> worldEntities = worldBlockEntities.get(world.getUID());
-        if (worldEntities == null) return;
+        markBlockEntityDirty(world, posKey);
+    }
 
-        CuttingBoardBlockEntity entity = worldEntities.get(posKey);
-        if (entity == null) return;
+    public static void markBlockEntityDirty(World world, BlockPosKey posKey) {
+        if (world == null || posKey == null) return;
 
-        if (entity.hasItem()) {
-            Map<String, Object> data = new HashMap<>();
-            data.put("storedItem", entity.getStoredItem());
-            data.put("itemCarved", entity.isItemCarved());
-
-            Location loc = posKey.toLocation(world);
-            storage.saveBlockData(loc, BLOCK_TYPE, data);
-        } else {
-            storage.removeBlockData(posKey.toLocation(world));
+        CEWorld ceWorld = BukkitWorldManager.instance().getWorld(world.getUID());
+        if (ceWorld != null) {
+            ceWorld.blockEntityChanged(posKey.toBlockPos());
         }
     }
 
@@ -230,30 +263,22 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
     }
 
     public static void loadBlockEntity(World world, BlockPosKey posKey) {
-        if (world == null || posKey == null) return;
-        BlockStorageManager storage = FarmersDelightPlugin.getInstance().getBlockStorageManager();
-        if (storage == null) return;
+        if (world == null || posKey == null || !isCuttingBoardBlock(world, posKey)) return;
+        CuttingBoardBlockEntity entity = worldBlockEntities.computeIfAbsent(world.getUID(), k -> new ConcurrentHashMap<>())
+                .computeIfAbsent(posKey, key -> new CuttingBoardBlockEntity(key, world));
+        entity.setWorld(world);
+    }
 
-        Location loc = posKey.toLocation(world);
-        if (!isCuttingBoardBlock(world, posKey)) {
-            storage.removeBlockData(loc);
-            removeBlockEntity(world, posKey, false);
-            return;
-        }
-
-        Map<String, Object> data = storage.loadBlockData(loc, BLOCK_TYPE);
-        if (data == null) return;
+    public static void migrateLegacyBlockData(World world, BlockPosKey posKey, Map<String, Object> data) {
+        if (world == null || posKey == null || data == null || !isCuttingBoardBlock(world, posKey)) return;
 
         CuttingBoardBlockEntity entity = new CuttingBoardBlockEntity(posKey, world);
-
-        if (data.get("storedItem") instanceof ItemStack storedItem) {
+        if (data.get("storedItem") instanceof ItemStack storedItem && storedItem != null && !storedItem.getType().isAir()) {
             boolean itemCarved = data.get("itemCarved") instanceof Boolean carved && carved;
             entity.setItem(storedItem, world, posKey, getStoredBlockFacing(world, posKey), itemCarved);
         }
-
-        Map<BlockPosKey, CuttingBoardBlockEntity> worldEntities = worldBlockEntities.computeIfAbsent(
-                world.getUID(), k -> new ConcurrentHashMap<>());
-        worldEntities.put(posKey, entity);
+        putBlockEntity(world, posKey, entity);
+        saveBlockEntityData(world, posKey);
     }
 
     public static boolean isCuttingBoardBlock(World world, BlockPosKey posKey) {
@@ -290,7 +315,8 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
             String knifeSound = getArgumentString(arguments, "knife-sound", Constants.SOUND_CUTTING_BOARD_KNIFE);
             boolean enableStacking = FarmersDelightPlugin.getInstance().isCuttingBoardStackingEnabled();
             int maxStackAmount = getIntValue(arguments, "max-stack-amount", 64);
-            return new CuttingBoardBlockBehavior(block, facingProperty, toolTags, toolItems, knifeSound, enableStacking, maxStackAmount);
+            String customDataKey = getArgumentString(arguments, "data-key", "farmersdelight:cutting_board");
+            return new CuttingBoardBlockBehavior(block, facingProperty, toolTags, toolItems, knifeSound, enableStacking, maxStackAmount, customDataKey);
         }
     };
 
@@ -378,6 +404,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
             blockEntity = new CuttingBoardBlockEntity(posKey, world);
             worldEntities.put(posKey, blockEntity);
         }
+        blockEntity.setWorld(world);
 
         ItemStack mainHand = bukkitPlayer.getInventory().getItemInMainHand();
         ItemStack offHand = bukkitPlayer.getInventory().getItemInOffHand();
@@ -571,15 +598,12 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
         if (args == null || args.length < 3) {
             return;
         }
-        Object worldObj = args[1];
-        Object posObj = args[2];
-        if (!(worldObj instanceof net.momirealms.craftengine.core.world.World ceWorld) || !(posObj instanceof BlockPos pos)) {
+        World world = CraftEngineAdapter.toWorld(args[1]);
+        BlockPos pos = CraftEngineAdapter.toBlockPos(args[2]);
+        if (world == null || pos == null) {
             return;
         }
-        World world = Bukkit.getWorld(ceWorld.uuid());
-        if (world == null) {
-            return;
-        }
+
         BlockPosKey posKey = new BlockPosKey(pos);
         CuttingBoardBlockEntity entity = getBlockEntity(world, posKey);
         if (entity == null) {
@@ -592,28 +616,36 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
 
     @Override
     public Object getContainer(Object thisBlock, Object[] args) {
-        Object worldObj = args[1];
-        Object posObj = args[2];
-        if (!(worldObj instanceof net.momirealms.craftengine.core.world.World ceWorld) || !(posObj instanceof BlockPos pos)) {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        if (plugin == null || !plugin.isCuttingBoardHopperInteractionsEnabled()) {
+            return null;
+        }
+        if (args == null || args.length < 3) {
             return null;
         }
 
-        World world = Bukkit.getWorld(ceWorld.uuid());
-        if (world == null) {
+        World world = CraftEngineAdapter.toWorld(args[1]);
+        BlockPos pos = CraftEngineAdapter.toBlockPos(args[2]);
+        if (world == null || pos == null) {
             return null;
         }
 
-        BlockPosKey posKey = new BlockPosKey(pos);
-        CuttingBoardBlockEntity blockEntity = getBlockEntity(world, posKey);
+        CEWorld ceWorld = BukkitWorldManager.instance().getWorld(world.getUID());
+        if (ceWorld == null) {
+            return null;
+        }
+
+        BlockEntity blockEntity = ceWorld.getBlockEntityAtIfLoaded(pos);
         if (blockEntity == null) {
-            loadBlockEntity(world, posKey);
-            blockEntity = getBlockEntity(world, posKey);
-        }
-        if (blockEntity == null) {
             return null;
         }
-
-        return blockEntity.getWorldlyContainer(FarmersDelightPlugin.getInstance(), ceWorld, world).nmsContainer();
+        return blockEntity.controller.let(CuttingBoardBlockEntityController.class, this.controllerId, controller -> {
+            CuttingBoardBlockEntity entity = getBlockEntity(world, pos);
+            if (entity != null) {
+                controller.refreshFromEntity(entity);
+            }
+            return controller.container();
+        });
     }
 
     private ItemStack findMatchingTool(CuttingBoardBlockEntity blockEntity, ItemStack mainHand, ItemStack offHand,
@@ -723,6 +755,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
 
         int fortuneLevel = tool.getEnchantmentLevel(org.bukkit.enchantments.Enchantment.FORTUNE);
 
+        ItemStack firstResult = null;
         for (CuttingBoardRecipe.ResultEntry resultEntry : recipe.getResults()) {
             if (resultEntry.chance() < 1.0d && ThreadLocalRandom.current().nextDouble() > resultEntry.chance()) {
                 continue;
@@ -737,8 +770,22 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
                 }
             }
 
+            if (result.getAmount() <= 0 || result.getType().isAir()) {
+                continue;
+            }
+            if (firstResult == null) {
+                firstResult = result.clone();
+            }
             spawnItemEntity(world, posKey, result, facing);
         }
+
+        Bukkit.getPluginManager().callEvent(new ProfessionCookingExperienceEvent(
+                player.getUniqueId(),
+                player.getName(),
+                "cutting_board",
+                firstResult != null ? firstResult : storedItem,
+                0.0f
+        ));
 
         playCuttingFeedback(world, posKey, storedItem, recipe);
         if (toolIsOffhand) {
@@ -828,10 +875,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements WorldlyC
     }
 
     private void removeStoredData(World world, BlockPosKey posKey) {
-        BlockStorageManager storage = FarmersDelightPlugin.getInstance().getBlockStorageManager();
-        if (storage != null) {
-            storage.removeBlockData(posKey.toLocation(world));
-        }
+        saveBlockEntityData(world, posKey);
     }
 
     private void storeItemInBoard(World world, BlockPosKey posKey, BlockFace facing, CuttingBoardBlockEntity blockEntity, ItemStack itemToPlace, boolean carveTool) {

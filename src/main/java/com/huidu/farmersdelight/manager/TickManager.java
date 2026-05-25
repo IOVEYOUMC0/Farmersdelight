@@ -8,13 +8,13 @@ import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ManagerSupport;
+import com.huidu.farmersdelight.util.scheduler.PluginTask;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.scheduler.BukkitTask;
 
 import java.util.HashSet;
 import java.util.List;
@@ -23,13 +23,14 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class TickManager {
 
     private final FarmersDelightPlugin plugin;
-    private BukkitTask tickTask;
-    private BukkitTask cleanupTask;
+    private PluginTask tickTask;
+    private PluginTask cleanupTask;
     private volatile boolean running = false;
     private EffectSpec bubbleEffect = new EffectSpec(true, Particle.BUBBLE_POP, 0.20f, 1,
             0.02D, 0.0D, 0.0D, 0.0D, 0.01D);
@@ -43,10 +44,12 @@ public class TickManager {
     private final Set<ActiveBlock> pendingAdditions = new HashSet<>();
     private final Set<ActiveBlock> pendingRemovals = new HashSet<>();
     private final Map<ActiveBlock, Long> lastProcessedTicks = new ConcurrentHashMap<>();
+    private final Set<ActiveBlock> scheduledActiveBlocks = ConcurrentHashMap.newKeySet();
     private volatile List<ActiveBlock> activeBlockSnapshot = List.of();
     private boolean activeBlockLimitWarningShown;
     private int activeBlockCursor;
     private int cookingPotTickBudget = 512;
+    private final AtomicLong foliaTickClock = new AtomicLong();
 
     private static final int TICK_INTERVAL = 4;
     private static final int MAX_CACHE_SIZE = 1000;
@@ -78,8 +81,8 @@ public class TickManager {
         if (running) return;
         running = true;
         
-        tickTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1L, TICK_INTERVAL);
-        cleanupTask = Bukkit.getScheduler().runTaskTimer(plugin, this::performCleanup, CLEANUP_INTERVAL, CLEANUP_INTERVAL);
+        tickTask = plugin.scheduler().runRepeating(this::tick, 1L, TICK_INTERVAL);
+        cleanupTask = plugin.scheduler().runRepeating(this::performCleanup, CLEANUP_INTERVAL, CLEANUP_INTERVAL);
         plugin.getLogger().info("TickManager started with interval " + TICK_INTERVAL + " ticks");
     }
 
@@ -101,6 +104,7 @@ public class TickManager {
             pendingAdditions.clear();
             pendingRemovals.clear();
             lastProcessedTicks.clear();
+            scheduledActiveBlocks.clear();
         } finally {
             pendingLock.unlock();
         }
@@ -109,6 +113,11 @@ public class TickManager {
     }
     
     private void performCleanup() {
+        if (plugin.scheduler().isFolia()) {
+            scheduleCookingPotCleanup();
+            return;
+        }
+
         int cleanedCount = 0;
         
         cleanedCount += cleanupInvalidBlockEntities(
@@ -119,6 +128,21 @@ public class TickManager {
         
         if (cleanedCount > 0) {
             plugin.getLogger().info("Cleanup completed: removed " + cleanedCount + " invalid block entities");
+        }
+    }
+
+    private void scheduleCookingPotCleanup() {
+        for (Location location : CookingPotBlockBehavior.getBlockEntityLocations()) {
+            if (location == null || location.getWorld() == null) {
+                continue;
+            }
+            try {
+                plugin.scheduler().runAt(location, () -> cleanupCookingPotBlockEntity(
+                        location.getWorld(),
+                        new BlockPosKey(location)
+                ));
+            } catch (RuntimeException ignored) {
+            }
         }
     }
     
@@ -135,27 +159,47 @@ public class TickManager {
         for (World world : Bukkit.getWorlds()) {
             Map<BlockPosKey, T> entities = getter.getAll(world);
             for (BlockPosKey posKey : entities.keySet()) {
-                Block block = world.getBlockAt(posKey.x(), posKey.y(), posKey.z());
-                ImmutableBlockState state = CraftEngineBlocks.getCustomBlockState(block);
-                
-                if (state == null || state.isEmpty()) {
-                    remover.remove(world, posKey);
-                    count++;
-                    continue;
-                }
-                
-                String blockId = CustomBlockUtils.getId(state);
-                if (blockId == null || !blockId.contains(blockIdContains)) {
-                    remover.remove(world, posKey);
+                if (cleanupInvalidBlockEntity(world, posKey, remover, blockIdContains)) {
                     count++;
                 }
             }
         }
         return count;
     }
+
+    private boolean cleanupCookingPotBlockEntity(World world, BlockPosKey posKey) {
+        return cleanupInvalidBlockEntity(
+                world,
+                posKey,
+                CookingPotBlockBehavior::removeBlockEntity,
+                "cooking_pot"
+        );
+    }
+
+    private boolean cleanupInvalidBlockEntity(World world, BlockPosKey posKey, BlockEntityRemover remover, String blockIdContains) {
+        if (world == null || posKey == null) {
+            return false;
+        }
+
+        Block block = world.getBlockAt(posKey.x(), posKey.y(), posKey.z());
+        ImmutableBlockState state = CraftEngineBlocks.getCustomBlockState(block);
+
+        if (state == null || state.isEmpty()) {
+            remover.remove(world, posKey);
+            return true;
+        }
+
+        String blockId = CustomBlockUtils.getId(state);
+        if (blockId == null || !blockId.contains(blockIdContains)) {
+            remover.remove(world, posKey);
+            return true;
+        }
+        return false;
+    }
     
     public void registerActiveBlock(World world, BlockPosKey posKey, BlockType type) {
-        ActiveBlock block = new ActiveBlock(world.getUID(), posKey, type);
+        if (world == null || posKey == null || type == null) return;
+        ActiveBlock block = new ActiveBlock(world.getUID(), world, posKey, type);
         pendingLock.lock();
         try {
             pendingAdditions.add(block);
@@ -166,7 +210,8 @@ public class TickManager {
     }
     
     public void unregisterActiveBlock(World world, BlockPosKey posKey, BlockType type) {
-        ActiveBlock block = new ActiveBlock(world.getUID(), posKey, type);
+        if (world == null || posKey == null || type == null) return;
+        ActiveBlock block = new ActiveBlock(world.getUID(), world, posKey, type);
         pendingLock.lock();
         try {
             pendingRemovals.add(block);
@@ -182,6 +227,7 @@ public class TickManager {
 
     private void tick() {
         if (!running) return;
+        long currentTick = advanceCurrentTick();
         
         pendingLock.lock();
         boolean changed = false;
@@ -189,7 +235,6 @@ public class TickManager {
             if (!pendingAdditions.isEmpty()) {
                 activeBlocks.addAll(pendingAdditions);
                 changed = true;
-                long currentTick = getCurrentTick();
                 for (ActiveBlock activeBlock : pendingAdditions) {
                     lastProcessedTicks.putIfAbsent(activeBlock, currentTick);
                 }
@@ -201,6 +246,7 @@ public class TickManager {
                 changed = true;
                 for (ActiveBlock activeBlock : pendingRemovals) {
                     lastProcessedTicks.remove(activeBlock);
+                    scheduledActiveBlocks.remove(activeBlock);
                 }
                 pendingRemovals.clear();
             }
@@ -253,16 +299,49 @@ public class TickManager {
     }
 
     private void processActiveBlock(ActiveBlock activeBlock) {
-        World world = Bukkit.getWorld(activeBlock.worldId);
+        World world = activeBlock.world();
         if (world == null) return;
 
+        if (plugin.scheduler().isFolia()) {
+            if (!scheduledActiveBlocks.add(activeBlock)) {
+                return;
+            }
+            int chunkX = activeBlock.posKey().x() >> 4;
+            int chunkZ = activeBlock.posKey().z() >> 4;
+            try {
+                plugin.scheduler().runAt(world, chunkX, chunkZ, () -> {
+                    try {
+                        processActiveBlockInRegion(activeBlock, world);
+                    } finally {
+                        scheduledActiveBlocks.remove(activeBlock);
+                    }
+            });
+        } catch (RuntimeException e) {
+            scheduledActiveBlocks.remove(activeBlock);
+        }
+        return;
+        }
+
+        processActiveBlockInRegion(activeBlock, world);
+    }
+
+    private void processActiveBlockInRegion(ActiveBlock activeBlock, World world) {
+        if (!running || !activeBlocks.contains(activeBlock)) {
+            return;
+        }
+
+        BlockPosKey posKey = activeBlock.posKey();
+        if (!world.isChunkLoaded(posKey.x() >> 4, posKey.z() >> 4)) {
+            return;
+        }
+
         try {
-            switch (activeBlock.type) {
-                case COOKING_POT -> tickCookingPot(world, activeBlock.posKey, consumeElapsedTicks(activeBlock));
-                default -> throw new IllegalArgumentException("Unexpected value: " + activeBlock.type);
+            switch (activeBlock.type()) {
+                case COOKING_POT -> tickCookingPot(world, posKey, consumeElapsedTicks(activeBlock));
+                default -> throw new IllegalArgumentException("Unexpected value: " + activeBlock.type());
             }
         } catch (Exception e) {
-            plugin.getLogger().warning("Error ticking " + activeBlock.type + " at " + activeBlock.posKey + ": " + e.getMessage());
+            plugin.getLogger().warning("Error ticking " + activeBlock.type() + " at " + posKey + ": " + e.getMessage());
         }
     }
 
@@ -280,6 +359,16 @@ public class TickManager {
     }
 
     private long getCurrentTick() {
+        if (plugin.scheduler().isFolia()) {
+            return foliaTickClock.get();
+        }
+        return Bukkit.getCurrentTick();
+    }
+
+    private long advanceCurrentTick() {
+        if (plugin.scheduler().isFolia()) {
+            return foliaTickClock.addAndGet(TICK_INTERVAL);
+        }
         return Bukkit.getCurrentTick();
     }
 
@@ -599,7 +688,7 @@ public class TickManager {
         COOKING_POT
     }
     
-    private record ActiveBlock(UUID worldId, BlockPosKey posKey, BlockType type) {
+    private record ActiveBlock(UUID worldId, World world, BlockPosKey posKey, BlockType type) {
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;

@@ -66,6 +66,7 @@ public class RecipeViewGui implements InventoryHolder {
 
     private final FarmersDelightPlugin plugin;
     private final UUID playerId;
+    private final Player player;
     private final RecipeViewGuiConfig config;
     private Inventory inventory;
     private GuiState state = GuiState.MAIN_MENU;
@@ -99,6 +100,7 @@ public class RecipeViewGui implements InventoryHolder {
     public RecipeViewGui(FarmersDelightPlugin plugin, Player player, boolean fromCookingPot, Location cookingPotLocation) {
         this.plugin = plugin;
         this.playerId = player.getUniqueId();
+        this.player = player;
         this.fromCookingPot = fromCookingPot;
         this.cookingPotLocation = cookingPotLocation;
         this.config = getOrCreateConfig();
@@ -170,7 +172,7 @@ public class RecipeViewGui implements InventoryHolder {
         refresh(player);
         player.openInventory(inventory);
 
-        GuiTickManager.getInstance(plugin).registerCallback(tickCallback);
+        GuiTickManager.getInstance(plugin).registerCallback(player, tickCallback);
     }
 
     public void openCookingPotRecipes(Player player) {
@@ -230,8 +232,7 @@ public class RecipeViewGui implements InventoryHolder {
         int safeIndex = currentToolIndex % recipe.getTools().size();
         Key currentTool = recipe.getTools().get(safeIndex).key();
         
-        Player player = Bukkit.getPlayer(playerId);
-        if (player == null) return;
+        if (player == null || !player.isOnline()) return;
         
         ItemStack toolItem = createToolDisplayItem(currentTool, recipe.getTools().size(), safeIndex, player);
         inventory.setItem(detailConfig.getToolSlot(), toolItem);
@@ -248,8 +249,7 @@ public class RecipeViewGui implements InventoryHolder {
         }
 
         ingredientSwitchTicks = 0;
-        Player player = Bukkit.getPlayer(playerId);
-        if (player == null) {
+        if (player == null || !player.isOnline()) {
             return;
         }
 
@@ -1528,7 +1528,7 @@ public class RecipeViewGui implements InventoryHolder {
             return;
         }
         
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+        plugin.scheduler().runLaterAt(cookingPotLocation, () -> {
             World world = cookingPotLocation.getWorld();
             if (world == null) return;
             

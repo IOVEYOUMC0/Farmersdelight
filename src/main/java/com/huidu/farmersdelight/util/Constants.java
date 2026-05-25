@@ -82,6 +82,7 @@ public final class Constants {
     public static final int SLOT_CUTTING_BOARD_OUTPUT = 1;
     public static final int DEFAULT_COOKING_TIME_SKILLET = 600;
     public static final int DEFAULT_COOKING_TIME_COOKING_POT = 200;
+    public static final int DEFAULT_COMFORT_DURATION = 300;
     public static final int DEFAULT_NOURISHMENT_DURATION = 300;
     public static final int MUSHROOM_COLONY_MAX_LIGHT = 13;
     public static final int STOVE_COOLDOWN_DECREMENT = 2;

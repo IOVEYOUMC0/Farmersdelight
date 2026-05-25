@@ -16,6 +16,11 @@ import org.bukkit.inventory.Recipe;
 
 import java.util.*;
 
+/**
+ * Legacy stove state model kept for recipe cache helpers and old saved-state compatibility.
+ * Runtime stove logic is owned by {@link com.huidu.farmersdelight.manager.StoveManager}.
+ */
+@Deprecated(forRemoval = false)
 public class StoveCookingBlockEntity {
 
     private static final int MAX_CACHE_SIZE = 100;

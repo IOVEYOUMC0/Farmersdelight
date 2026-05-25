@@ -12,7 +12,7 @@ FarmersDelight 是一个基于 CraftEngine 26.5 的 Farmer's Delight 风格玩�
 - 煎锅：基于原版营火配方烹饪，带 CE 物品显示；默认不通过漏斗传导热量。
 - 作物与采集：水稻、野生水稻、高作物、成熟收割、小刀收割草秆。
 - 小刀战利品：用小刀击杀成年生物时额外掉落火腿、皮革、羽毛等，可配置概率和抢夺加成。
-- 食物效果：宠物食物、营养效果、容器返还。
+- 食物效果：宠物食物、舒适效果、营养效果、容器返还。
 - 配方查看 GUI：厨锅和砧板配方列表、详情页、标签/多选原料展示。
 - 进度系统：内置 Farmer's Delight 风格进度数据包。
 
@@ -21,6 +21,8 @@ FarmersDelight 是一个基于 CraftEngine 26.5 的 Farmer's Delight 风格玩�
 - Java 21
 - Paper / Purpur 1.21+
 - CraftEngine 26.5
+
+当前版本已把插件内调度统一到 scheduler adapter；在 Folia 上会优先走全局、区域或实体调度器。Folia 仍建议先在测试服验证厨锅/砧板容器、方块存储、显示同步和异步保存流程。
 
 安装步骤：
 
@@ -39,6 +41,8 @@ plugins/FarmersDelight/recipes/cooking_pot_recipes.yml
 plugins/FarmersDelight/recipes/cutting_board_recipes.yml
 plugins/FarmersDelight/block_storage.yml
 ```
+
+`block_storage.yml` 目前仍用于炉灶和煎锅运行数据。厨锅和砧板以 CraftEngine BlockEntity 数据为主，旧版 `block_storage.yml` 中的厨锅/砧板数据会在区块加载时迁移到 CE 数据并从旧文件中移除。
 
 ## 3. CraftEngine 侧需要配置什么
 
@@ -162,7 +166,7 @@ minecraft:air
 
 厨锅有 6 个原料槽、1 个容器槽、1 个待输出槽。配方匹配成功并且有热源时开始烹饪，完成后产物进入待输出槽。
 
-漏斗逻辑默认关闭。CraftEngine 26.x 的方块容器桥接仍在适配中，需要测试时再开启：
+漏斗逻辑默认关闭。当前只保留 CraftEngine `WorldlyContainerHolder` 容器路线，旧的 Bukkit 事件模拟漏斗路线已移除。需要测试时再开启：
 
 ```yaml
 hopper-interactions:
@@ -374,9 +378,14 @@ pet-foods:
 
 `pet-foods` 的每个键就是一个食物物品 ID，支持 CraftEngine 物品 ID 和原版物品 ID。`entities` 使用 Bukkit `EntityType` 名称，例如 `HORSE`、`DONKEY`、`MULE`、`LLAMA`、`CAMEL`。`tempt` 是手持吸引配置；`tick-interval` 单位是 tick，10 tick 约等于 0.5 秒。需要更多可吸引食物时，直接在 `pet-foods` 下新增物品条目即可。
 
-营养效果默认关闭：
+舒适效果和营养效果默认关闭：
 
 ```yaml
+comfort-foods:
+  enabled: false
+  foods:
+    farmersdelight:pasta_with_meatballs:
+      duration: 300
 nourishment-foods:
   enabled: false
   foods:
@@ -455,7 +464,7 @@ CE 物品名称显示成 ID：检查 CE 物品的显示名、语言文件和资�
 
 ## 16. 编译
 
-开发环境需要本地存在 CraftEngine 26.5 构建产物，路径参考 `build.gradle.kts`。
+开发环境通过 Maven 仓库解析 CraftEngine 26.5 依赖，`build.gradle.kts` 已使用 `net.momirealms:craft-engine-*` 坐标。若依赖仓库暂时不可用，可先把对应 CraftEngine 产物安装到 `mavenLocal()`。
 
 ```powershell
 .\gradlew.bat clean build
