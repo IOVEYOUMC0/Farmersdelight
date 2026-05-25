@@ -82,7 +82,7 @@ public class RopeBlockListener implements Listener {
         world.playSound(bottomBlock.getLocation(), Sound.BLOCK_WOOL_BREAK, 1.0f, 1.0f);
 
         BlockPos bp = new BlockPos(block.getX(), bottomY, block.getZ());
-        Bukkit.getScheduler().runTask(plugin,
+        plugin.scheduler().runAt(bottomBlock.getLocation(),
                 () -> RopeBlockBehavior.refreshAdjacentRopes(world, bp));
     }
 
@@ -111,7 +111,7 @@ public class RopeBlockListener implements Listener {
 
         World world = block.getWorld();
         BlockPos pos = new BlockPos(block.getX(), block.getY(), block.getZ());
-        Bukkit.getScheduler().runTask(plugin, () ->
+        plugin.scheduler().runAt(block.getLocation(), () ->
                 RopeBlockBehavior.refreshAdjacentRopes(world, pos));
     }
 

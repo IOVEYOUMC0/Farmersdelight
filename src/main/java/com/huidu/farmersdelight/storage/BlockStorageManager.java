@@ -1,13 +1,12 @@
 package com.huidu.farmersdelight.storage;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
-import org.bukkit.Bukkit;
+import com.huidu.farmersdelight.util.scheduler.PluginTask;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.scheduler.BukkitTask;
 
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
@@ -30,7 +29,7 @@ public class BlockStorageManager {
     private final ReentrantReadWriteLock dataLock = new ReentrantReadWriteLock();
     private final AtomicLong dataVersion = new AtomicLong();
     private final AtomicLong lastSavedVersion = new AtomicLong();
-    private BukkitTask autoSaveTask;
+    private PluginTask autoSaveTask;
     private volatile boolean asyncSaveRunning;
     private boolean legacyItemFormatLoaded;
 
@@ -44,7 +43,7 @@ public class BlockStorageManager {
     private void startAutoSave() {
         int saveInterval = plugin.getConfig().getInt("storage.auto-save-interval", 300);
         if (saveInterval > 0) {
-            autoSaveTask = Bukkit.getScheduler().runTaskTimer(plugin, this::saveAllAsync,
+            autoSaveTask = plugin.scheduler().runRepeating(this::saveAllAsync,
                     saveInterval * 20L, saveInterval * 20L);
         }
     }
@@ -60,7 +59,7 @@ public class BlockStorageManager {
         }
 
         asyncSaveRunning = true;
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+        plugin.scheduler().runAsync(() -> {
             try {
                 writeSnapshot(snapshot);
             } finally {

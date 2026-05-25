@@ -37,6 +37,7 @@ public class AdvancementManager {
         registerAdvancement("get_ham", "main/get_ham");
         registerAdvancement("netherite_knife", "main/obtain_netherite_knife");
         registerAdvancement("rotten_tomato_throw", "main/hit_raider_with_rotten_tomato");
+        registerAdvancement("eat_comfort_food", "main/eat_comfort_food");
         registerAdvancement("eat_nourishing_food", "main/eat_nourishing_food");
         registerAdvancement("master_chef", "main/master_chef");
 

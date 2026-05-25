@@ -9,6 +9,7 @@ import com.huidu.farmersdelight.manager.StoveManager;
 import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
+import com.huidu.farmersdelight.util.scheduler.PluginTask;
 import net.momirealms.craftengine.bukkit.api.event.CustomBlockAttemptPlaceEvent;
 import net.momirealms.craftengine.bukkit.api.event.CustomBlockPlaceEvent;
 import net.momirealms.craftengine.core.entity.player.InteractionHand;
@@ -21,7 +22,6 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.scheduler.BukkitTask;
 
 import java.util.Map;
 import java.util.Set;
@@ -58,7 +58,7 @@ public class BlockPlaceListener implements Listener {
             Map.entry(Material.CAVE_VINES_PLANT, "glow_berries")
     );
     private static final Map<PlacedItemKey, ItemStack> pendingPlacedItems = new ConcurrentHashMap<>();
-    private static BukkitTask cleanupTask;
+    private static PluginTask cleanupTask;
 
     public static void cleanup() {
         if (cleanupTask != null) {
@@ -230,8 +230,7 @@ public class BlockPlaceListener implements Listener {
             return;
         }
 
-        cleanupTask = FarmersDelightPlugin.getInstance().getServer().getScheduler().runTaskLater(
-                FarmersDelightPlugin.getInstance(),
+        cleanupTask = FarmersDelightPlugin.getInstance().scheduler().runLater(
                 () -> {
                     pendingPlacedItems.clear();
                     cleanupTask = null;

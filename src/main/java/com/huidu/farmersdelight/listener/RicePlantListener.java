@@ -86,16 +86,16 @@ public class RicePlantListener implements Listener {
             if (isUpperHalfValue(half)) {
                 Block lowerBlock = brokenBlock.getWorld().getBlockAt(
                         brokenBlock.getX(), brokenBlock.getY() - 1, brokenBlock.getZ());
-                Bukkit.getScheduler().runTask(plugin, () -> resetLowerAfterUpperBreak(lowerBlock));
+                plugin.scheduler().runAt(lowerBlock.getLocation(), () -> resetLowerAfterUpperBreak(lowerBlock));
             } else {
-                Bukkit.getScheduler().runTask(plugin, () -> restoreRiceCarrierBlock(brokenBlock, half));
+                plugin.scheduler().runAt(brokenBlock.getLocation(), () -> restoreRiceCarrierBlock(brokenBlock, half));
             }
             return;
         }
 
         if (isWildRiceBlock(brokenState)) {
             String half = getPropertyString(brokenState, "half");
-            Bukkit.getScheduler().runTask(plugin, () -> restoreWildRiceCarrierBlock(brokenBlock, half));
+            plugin.scheduler().runAt(brokenBlock.getLocation(), () -> restoreWildRiceCarrierBlock(brokenBlock, half));
         }
     }
 
@@ -483,12 +483,12 @@ public class RicePlantListener implements Listener {
 
     private void scheduleRiceValidation(Block block) {
         Location location = block.getLocation();
-        Bukkit.getScheduler().runTask(plugin, () -> validateRiceAfterPhysics(location));
+        plugin.scheduler().runAt(location, () -> validateRiceAfterPhysics(location));
     }
 
     private void scheduleWildRiceValidation(Block block) {
         Location location = block.getLocation();
-        Bukkit.getScheduler().runTask(plugin, () -> validateWildRiceAfterPhysics(location));
+        plugin.scheduler().runAt(location, () -> validateWildRiceAfterPhysics(location));
     }
 
     private void validateRiceAfterPhysics(Location location) {
@@ -767,7 +767,7 @@ public class RicePlantListener implements Listener {
         // CE may briefly rewrite the carrier block right after placement.
         // Keep only one stabilization chain per position and retry once if the
         // custom state is still settling on the next tick.
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+        plugin.scheduler().runLaterAt(location, () -> {
             pendingRiceStabilizations.remove(key);
             ensureRiceStable(location, attemptsRemaining);
         }, 1L);

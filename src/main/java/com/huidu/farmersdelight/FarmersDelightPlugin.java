@@ -27,14 +27,18 @@ import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.InteractionDebouncer;
 import com.huidu.farmersdelight.util.ItemUtils;
+import com.huidu.farmersdelight.util.scheduler.PluginTask;
+import com.huidu.farmersdelight.util.scheduler.SchedulerAdapter;
 import com.huidu.farmersdelight.visual.ProxyItemDisplayManager;
 import com.huidu.farmersdelight.visual.ItemDisplayManager;
 import net.momirealms.craftengine.bukkit.api.event.CraftEngineReloadEvent;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
+import net.momirealms.craftengine.bukkit.world.BukkitWorldManager;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviors;
 import net.momirealms.craftengine.core.registry.BuiltInRegistries;
 import net.momirealms.craftengine.core.util.Key;
+import net.momirealms.craftengine.core.world.CEWorld;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.command.CommandSender;
@@ -44,7 +48,6 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.world.WorldLoadEvent;
 import org.bukkit.event.world.WorldUnloadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitTask;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -75,6 +78,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             "advancements/data/farmersdelight/advancement/main/harvest_straw.json",
             "advancements/data/farmersdelight/advancement/main/place_cooking_pot.json",
             "advancements/data/farmersdelight/advancement/main/place_skillet.json",
+            "advancements/data/farmersdelight/advancement/main/eat_comfort_food.json",
             "advancements/data/farmersdelight/advancement/main/place_feast.json",
             "advancements/data/farmersdelight/advancement/main/use_cutting_board.json",
             "advancements/data/farmersdelight/advancement/main/plant_rice.json",
@@ -90,12 +94,13 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private volatile boolean startupSyncCompleted = false;
     private volatile boolean datapackSyncQueued = false;
     private volatile boolean datapackRemovalQueued = false;
-    private BukkitTask pendingCraftEngineReloadTask;
-    private BukkitTask pendingDatapackReloadTask;
-    private BukkitTask pendingDatapackSyncRetryTask;
+    private PluginTask pendingCraftEngineReloadTask;
+    private PluginTask pendingDatapackReloadTask;
+    private PluginTask pendingDatapackSyncRetryTask;
     private String pendingDatapackReloadReason;
     private String pendingDatapackSyncRetryReason;
 
+    private SchedulerAdapter scheduler;
     private BlockStorageManager blockStorageManager;
     private TickManager tickManager;
     private TrayManager trayManager;
@@ -220,6 +225,11 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         ensureConfigDefaults();
         I18n.init(this);
 
+        scheduler = new SchedulerAdapter(this);
+        if (scheduler.isFolia()) {
+            getLogger().info("Folia scheduler detected; FarmersDelight will route scheduled work through region/global schedulers.");
+        }
+
         blockStorageManager = new BlockStorageManager(this);
 
         loadConfigs();
@@ -288,7 +298,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
         refreshAdvancementSystem(false);
 
-        getServer().getScheduler().runTask(this, () -> startupSyncCompleted = true);
+        scheduler.run(() -> startupSyncCompleted = true);
 
         FarmersDelightCommand commandHandler = new FarmersDelightCommand(this);
         org.bukkit.command.Command base = new org.bukkit.command.Command("farmersdelight",
@@ -310,6 +320,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     @Override
     public void onDisable() {
         enabled = false;
+        boolean folia = scheduler != null && scheduler.isFolia();
 
         runDisableStep("stop tick manager", () -> {
             if (tickManager != null) {
@@ -378,15 +389,15 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             }
         });
 
-        runDisableStep("cleanup cooking pot block entities", CookingPotBlockBehavior::cleanupAll);
-        runDisableStep("cleanup cutting board block entities", CuttingBoardBlockBehavior::cleanupAll);
+        runDisableStep("cleanup cooking pot block entities", () -> CookingPotBlockBehavior.cleanupAll(!folia));
+        runDisableStep("cleanup cutting board block entities", () -> CuttingBoardBlockBehavior.cleanupAll(!folia));
         runDisableStep("cleanup stove block entities", StoveCookingBlockBehavior::cleanupAll);
         runDisableStep("cleanup skillet block entities", SkilletBlockBehavior::cleanupAll);
         runDisableStep("cleanup tall crops", TallCropBlockBehavior::cleanupAll);
         runDisableStep("cleanup mushroom colonies", MushroomColonyBehavior::cleanupAll);
         runDisableStep("cleanup wild rice blocks", WildRiceBlockBehavior::cleanupAll);
         runDisableStep("clear stove recipe cache", StoveCookingBlockBehavior::clearRecipeCache);
-        runDisableStep("clear skillet recipe cache", SkilletBlockEntity::clearRecipeCache);
+        runDisableStep("clear skillet recipe cache", this::clearLegacySkilletRecipeCache);
 
         runDisableStep("cancel pending tasks", () -> {
             if (pendingCraftEngineReloadTask != null) {
@@ -404,6 +415,13 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         });
 
         runDisableStep("unregister listeners", () -> HandlerList.unregisterAll((org.bukkit.plugin.Plugin) this));
+
+        runDisableStep("shutdown scheduler", () -> {
+            if (scheduler != null) {
+                scheduler.shutdown();
+                scheduler = null;
+            }
+        });
 
         knifeDropHandler = null;
         cookingPotRecipeManager = null;
@@ -432,6 +450,11 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         }
     }
 
+    @SuppressWarnings("deprecation")
+    private void clearLegacySkilletRecipeCache() {
+        SkilletBlockEntity.clearRecipeCache();
+    }
+
     private void cleanupPlacementCache() {
         BlockPlaceListener.cleanup();
     }
@@ -441,13 +464,37 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     }
 
     private void saveAllBlockData() {
-        CookingPotBlockBehavior.saveAllData();
+        if (scheduler != null && scheduler.isFolia()) {
+            CookingPotBlockBehavior.markAllBlockEntitiesDirty();
+            CuttingBoardBlockBehavior.markAllBlockEntitiesDirty();
+        } else {
+            CookingPotBlockBehavior.saveAllData();
+            CuttingBoardBlockBehavior.saveAllData();
+        }
         SkilletBlockBehavior.saveAllData();
-        CuttingBoardBlockBehavior.saveAllData();
         StoveCookingBlockBehavior.saveAllData();
 
         if (blockStorageManager != null) {
             blockStorageManager.saveAll();
+        }
+        flushCraftEngineWorldData();
+    }
+
+    private void flushCraftEngineWorldData() {
+        BukkitWorldManager worldManager = BukkitWorldManager.instance();
+        if (worldManager == null) {
+            return;
+        }
+
+        for (org.bukkit.World world : getServer().getWorlds()) {
+            try {
+                CEWorld ceWorld = worldManager.getWorld(world.getUID());
+                if (ceWorld != null) {
+                    ceWorld.save();
+                }
+            } catch (Throwable throwable) {
+                getLogger().log(Level.WARNING, "Failed to flush CraftEngine world data for " + world.getName(), throwable);
+            }
         }
     }
 
@@ -505,7 +552,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         if (pendingDatapackReloadTask != null && !pendingDatapackReloadTask.isCancelled()) {
             return;
         }
-        pendingDatapackReloadTask = getServer().getScheduler().runTaskLater(this, () -> {
+        pendingDatapackReloadTask = scheduler.runLater(() -> {
             pendingDatapackReloadTask = null;
             String reloadReason = pendingDatapackReloadReason != null
                     ? pendingDatapackReloadReason
@@ -534,7 +581,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         datapackSyncQueued = true;
         String worldName = primaryWorld.getName();
         Path datapackRoot = primaryWorld.getWorldFolder().toPath().resolve("datapacks").resolve("advancements");
-        getServer().getScheduler().runTaskAsynchronously(this, () -> {
+        scheduler.runAsync(() -> {
             boolean updated = false;
             try {
                 updated = syncAdvancementDatapack(datapackRoot, worldName);
@@ -553,7 +600,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             return;
         }
 
-        pendingDatapackSyncRetryTask = getServer().getScheduler().runTaskLater(this, () -> {
+        pendingDatapackSyncRetryTask = scheduler.runLater(() -> {
             pendingDatapackSyncRetryTask = null;
             String retryReason = pendingDatapackSyncRetryReason;
             pendingDatapackSyncRetryReason = null;
@@ -573,7 +620,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         }
         datapackRemovalQueued = true;
         Path datapackRoot = primaryWorld.getWorldFolder().toPath().resolve("datapacks").resolve("advancements");
-        getServer().getScheduler().runTaskAsynchronously(this, () -> {
+        scheduler.runAsync(() -> {
             boolean removed = false;
             try {
                 removed = removeAdvancementDatapack(datapackRoot);
@@ -596,7 +643,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             return;
         }
 
-        pendingCraftEngineReloadTask = getServer().getScheduler().runTaskLater(this, () -> {
+        pendingCraftEngineReloadTask = scheduler.runLater(() -> {
             pendingCraftEngineReloadTask = null;
             getLogger().info("CraftEngine reload detected, refreshing FarmersDelight CE caches and recipes...");
             refreshAfterCraftEngineReload();
@@ -611,7 +658,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private void refreshAfterCraftEngineReload() {
         RecipeViewGui.clearConfigCache();
         StoveCookingBlockBehavior.clearRecipeCache();
-        SkilletBlockEntity.clearRecipeCache();
+        clearLegacySkilletRecipeCache();
 
         if (stoveManager != null) {
             stoveManager.reloadConfig();
@@ -641,7 +688,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         I18n.reload();
         RecipeViewGui.clearConfigCache();
         StoveCookingBlockBehavior.clearRecipeCache();
-        SkilletBlockEntity.clearRecipeCache();
+        clearLegacySkilletRecipeCache();
 
         if (knifeDropHandler != null) {
             knifeDropHandler.reload();
@@ -685,7 +732,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         loadConfigs();
         RecipeViewGui.clearConfigCache();
         StoveCookingBlockBehavior.clearRecipeCache();
-        SkilletBlockEntity.clearRecipeCache();
+        clearLegacySkilletRecipeCache();
 
         if (knifeDropHandler != null) {
             knifeDropHandler.reload();
@@ -989,6 +1036,13 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     public BukkitCraftEngine getCraftEngine() {
         return BukkitCraftEngine.instance();
+    }
+
+    public SchedulerAdapter scheduler() {
+        if (scheduler == null) {
+            throw new IllegalStateException("Scheduler is not available");
+        }
+        return scheduler;
     }
 
     public boolean isDebugEnabled() {

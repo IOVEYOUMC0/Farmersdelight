@@ -25,6 +25,7 @@ public class CuttingBoardBlockEntity {
     private static final int NO_DISPLAY = -1;
 
     private final BlockPosKey posKey;
+    private volatile World world;
     private ItemStack storedItem;
     private boolean itemCarved;
     private final List<Integer> displayEntityIds = new ArrayList<>();
@@ -32,21 +33,18 @@ public class CuttingBoardBlockEntity {
     private boolean displayedCarved;
     private BlockFace displayedFacing;
     private CuttingBoardDisplayConfig.DisplayOverride displayedOverride;
-    private transient CuttingBoardWorldlyContainer worldlyContainer;
 
     public CuttingBoardBlockEntity(BlockPosKey posKey, World world) {
         this.posKey = posKey;
+        this.world = world;
+    }
+
+    public void setWorld(World world) {
+        this.world = world;
     }
 
     public BlockPosKey getPosKey() {
         return posKey;
-    }
-
-    public synchronized CuttingBoardWorldlyContainer getWorldlyContainer(FarmersDelightPlugin plugin, net.momirealms.craftengine.core.world.World ceWorld, org.bukkit.World bukkitWorld) {
-        if (this.worldlyContainer == null || this.worldlyContainer.ceWorld != ceWorld) {
-            this.worldlyContainer = new CuttingBoardWorldlyContainer(plugin, ceWorld, bukkitWorld, this.posKey, this);
-        }
-        return this.worldlyContainer;
     }
 
     public BlockPos getPos() {
@@ -73,6 +71,7 @@ public class CuttingBoardBlockEntity {
     }
 
     public void setItem(ItemStack item, World world, BlockPosKey posKey, BlockFace facing, boolean itemCarved) {
+        this.world = world;
         this.storedItem = cloneOrNull(item);
         this.itemCarved = itemCarved;
         if (this.storedItem != null) {
@@ -83,6 +82,7 @@ public class CuttingBoardBlockEntity {
     }
 
     public void setStoredItem(ItemStack item, World world, BlockPosKey posKey, BlockFace facing) {
+        this.world = world;
         this.storedItem = cloneOrNull(item);
         this.itemCarved = false;
         syncWorldlyContainer();
@@ -311,8 +311,9 @@ public class CuttingBoardBlockEntity {
     }
 
     private void syncWorldlyContainer() {
-        if (this.worldlyContainer != null) {
-            this.worldlyContainer.refreshFromEntity();
+        World currentWorld = world;
+        if (currentWorld != null) {
+            CuttingBoardBlockBehavior.markBlockEntityDirty(currentWorld, posKey);
         }
     }
 }

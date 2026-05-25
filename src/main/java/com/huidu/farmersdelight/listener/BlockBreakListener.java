@@ -187,7 +187,7 @@ public class BlockBreakListener implements Listener {
 
     private void cleanupTatami(Location blockLocation) {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
-        Bukkit.getScheduler().runTaskLater(plugin, () -> TatamiPairingBehavior.refreshAdjacentTatami(blockLocation), 1L);
+        plugin.scheduler().runLaterAt(blockLocation, () -> TatamiPairingBehavior.refreshAdjacentTatami(blockLocation), 1L);
     }
 
     private boolean isManagedInteractiveBlock(ImmutableBlockState state) {

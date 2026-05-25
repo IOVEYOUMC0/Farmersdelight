@@ -1,5 +1,6 @@
 package com.huidu.farmersdelight.block.behavior;
 
+import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
@@ -141,9 +142,10 @@ public class RopeBlockBehavior extends BlockBehavior {
 
                 world.playSound(placeLoc, Sound.BLOCK_WOOL_PLACE, 1.0f, 1.0f);
 
-                Bukkit.getScheduler().runTask(
-                        Bukkit.getPluginManager().getPlugin("FarmersDelight"),
-                        () -> refreshAdjacentRopes(world, bp));
+                FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+                if (plugin != null) {
+                    plugin.scheduler().runAt(placeLoc, () -> refreshAdjacentRopes(world, bp));
+                }
 
                 if (bukkitPlayer.getGameMode() != GameMode.CREATIVE) {
                     hand.setAmount(hand.getAmount() - 1);

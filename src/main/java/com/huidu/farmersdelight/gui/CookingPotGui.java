@@ -125,7 +125,7 @@ public class CookingPotGui implements InventoryHolder {
         refreshInventory();
         player.openInventory(inventory);
 
-        GuiTickManager.getInstance(plugin).registerCallback(tickCallback);
+        GuiTickManager.getInstance(plugin).registerCallback(player, tickCallback);
     }
 
     private void tick() {
@@ -615,7 +615,7 @@ public class CookingPotGui implements InventoryHolder {
         }
 
         syncQueued = true;
-        Bukkit.getScheduler().runTask(plugin, () -> {
+        plugin.scheduler().runAt(cookingPotLocation, () -> {
             if (closed) {
                 syncQueued = false;
                 return;

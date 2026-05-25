@@ -20,6 +20,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Legacy skillet state model kept for recipe cache helpers and old saved-state compatibility.
+ * Runtime skillet logic is owned by com.huidu.farmersdelight.manager.SkilletManager.
+ */
+@Deprecated(forRemoval = false)
 public class SkilletBlockEntity {
 
     private static final int MAX_CACHE_SIZE = 100;

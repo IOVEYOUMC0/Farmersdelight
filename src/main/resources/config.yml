@@ -20,7 +20,12 @@ storage:
 performance:
   # 每 4 tick 最多处理多少个活跃厨锅。调大响应更快，调小压测时更稳。
   cooking-pot-tick-budget: 512
+  # 每 4 tick 最多处理多少个活跃炉灶。
+  stove-tick-budget: 512
+  # 每 4 tick 最多处理多少个活跃煎锅。
+  skillet-tick-budget: 512
   # 代理 ItemDisplay 可见性同步间隔和每批处理数量。影响煎锅/炉灶食物显示的远近可见性维护。
+  proxy-item-display-view-distance: 64.0
   proxy-item-display-sync-interval-ticks: 20
   proxy-item-display-sync-batch-size: 256
 
@@ -292,6 +297,31 @@ pet-foods:
       tick-interval: 10
       # true = 已驯服且主人就是当前玩家的马不会被自己的马食继续拉扯。
       ignore-owned-tamed: true
+
+# 舒适效果。默认关闭；开启后吃下列表食物会给玩家 Comfort。
+comfort-foods:
+  enabled: false
+  foods:
+    farmersdelight:apple_cider:
+      duration: 300
+    farmersdelight:glow_berry_custard:
+      duration: 300
+    farmersdelight:pumpkin_pie:
+      duration: 300
+    farmersdelight:hot_cocoa:
+      duration: 300
+    farmersdelight:baked_cod_stew:
+      duration: 300
+    minecraft:rabbit_stew:
+      duration: 300
+    farmersdelight:pasta_with_meatballs:
+      duration: 300
+    farmersdelight:pasta_with_mutton_chop:
+      duration: 300
+    farmersdelight:dumplings:
+      duration: 300
+    farmersdelight:cabbage_rolls:
+      duration: 300
 
 # 营养效果。默认关闭；开启后吃下列表食物会给玩家 Nourishment。
 nourishment-foods:
