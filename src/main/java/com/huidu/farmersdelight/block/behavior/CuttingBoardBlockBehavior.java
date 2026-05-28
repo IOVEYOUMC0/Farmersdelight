@@ -285,7 +285,9 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         if (world == null || posKey == null) {
             return false;
         }
-        return CustomBlockUtils.hasId(world.getBlockAt(posKey.x(), posKey.y(), posKey.z()), Constants.BLOCK_CUTTING_BOARD);
+        var block = world.getBlockAt(posKey.x(), posKey.y(), posKey.z());
+        return CustomBlockUtils.hasBehavior(block, CuttingBoardBlockBehavior.class)
+                || CustomBlockUtils.hasId(block, Constants.BLOCK_CUTTING_BOARD);
     }
 
     public static final BlockBehaviorFactory<CuttingBoardBlockBehavior> FACTORY = new BlockBehaviorFactory<CuttingBoardBlockBehavior>() {
@@ -522,9 +524,10 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         }
 
         ItemStack itemToPlace = sourceItem.clone();
+        int stackLimit = getBoardStackLimit(sourceItem);
         int amountToMove = itemToPlace.getAmount();
         if (enableStacking) {
-            amountToMove = Math.min(amountToMove, maxStackAmount);
+            amountToMove = Math.min(amountToMove, stackLimit);
         } else {
             amountToMove = 1;
         }
@@ -559,11 +562,12 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         }
 
         ItemStack stored = blockEntity.getStoredItem();
-        if (stored == null || !mainHand.isSimilar(stored) || stored.getAmount() >= maxStackAmount) {
+        int stackLimit = Math.min(getBoardStackLimit(stored), getBoardStackLimit(mainHand));
+        if (stored == null || !mainHand.isSimilar(stored) || stored.getAmount() >= stackLimit) {
             return false;
         }
 
-        int space = maxStackAmount - stored.getAmount();
+        int space = stackLimit - stored.getAmount();
         int toMove = Math.min(space, mainHand.getAmount());
         if (toMove <= 0) {
             return false;
@@ -577,6 +581,13 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         }
         SoundUtils.play(player.getWorld(), player.getLocation(), null, Sound.BLOCK_WOOD_PLACE, 1.0f, 1.0f);
         return true;
+    }
+
+    private int getBoardStackLimit(ItemStack item) {
+        if (item == null || item.getType().isAir()) {
+            return 1;
+        }
+        return Math.max(1, Math.min(maxStackAmount, item.getMaxStackSize()));
     }
 
     @Override

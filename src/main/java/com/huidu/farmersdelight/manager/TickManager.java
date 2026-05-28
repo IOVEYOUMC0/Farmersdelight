@@ -6,7 +6,6 @@ import com.huidu.farmersdelight.block.behavior.CookingPotBlockEntity;
 import com.huidu.farmersdelight.recipe.CookingPotRecipe;
 import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
-import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ManagerSupport;
 import com.huidu.farmersdelight.util.scheduler.PluginTask;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
@@ -122,8 +121,7 @@ public class TickManager {
         
         cleanedCount += cleanupInvalidBlockEntities(
             CookingPotBlockBehavior::getAllBlockEntities,
-            CookingPotBlockBehavior::removeBlockEntity,
-            "cooking_pot"
+            CookingPotBlockBehavior::removeBlockEntity
         );
         
         if (cleanedCount > 0) {
@@ -154,12 +152,12 @@ public class TickManager {
         void remove(World world, BlockPosKey posKey);
     }
     
-    private <T> int cleanupInvalidBlockEntities(BlockEntityGetter<T> getter, BlockEntityRemover remover, String blockIdContains) {
+    private <T> int cleanupInvalidBlockEntities(BlockEntityGetter<T> getter, BlockEntityRemover remover) {
         int count = 0;
         for (World world : Bukkit.getWorlds()) {
             Map<BlockPosKey, T> entities = getter.getAll(world);
             for (BlockPosKey posKey : entities.keySet()) {
-                if (cleanupInvalidBlockEntity(world, posKey, remover, blockIdContains)) {
+                if (cleanupInvalidBlockEntity(world, posKey, remover)) {
                     count++;
                 }
             }
@@ -171,26 +169,16 @@ public class TickManager {
         return cleanupInvalidBlockEntity(
                 world,
                 posKey,
-                CookingPotBlockBehavior::removeBlockEntity,
-                "cooking_pot"
+                CookingPotBlockBehavior::removeBlockEntity
         );
     }
 
-    private boolean cleanupInvalidBlockEntity(World world, BlockPosKey posKey, BlockEntityRemover remover, String blockIdContains) {
+    private boolean cleanupInvalidBlockEntity(World world, BlockPosKey posKey, BlockEntityRemover remover) {
         if (world == null || posKey == null) {
             return false;
         }
 
-        Block block = world.getBlockAt(posKey.x(), posKey.y(), posKey.z());
-        ImmutableBlockState state = CraftEngineBlocks.getCustomBlockState(block);
-
-        if (state == null || state.isEmpty()) {
-            remover.remove(world, posKey);
-            return true;
-        }
-
-        String blockId = CustomBlockUtils.getId(state);
-        if (blockId == null || !blockId.contains(blockIdContains)) {
+        if (!CookingPotBlockBehavior.hasCookingPotBehavior(world, posKey)) {
             remover.remove(world, posKey);
             return true;
         }
@@ -382,8 +370,7 @@ public class TickManager {
             return;
         }
         
-        String blockId = CustomBlockUtils.getId(state);
-        if (blockId == null || !blockId.contains("cooking_pot")) {
+        if (!CookingPotBlockBehavior.hasCookingPotBehavior(world, posKey)) {
             unregisterActiveBlock(world, posKey, BlockType.COOKING_POT);
             return;
         }

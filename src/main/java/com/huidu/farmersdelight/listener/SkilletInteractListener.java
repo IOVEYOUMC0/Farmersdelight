@@ -1,6 +1,7 @@
 package com.huidu.farmersdelight.listener;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
+import com.huidu.farmersdelight.block.behavior.SkilletBlockBehavior;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.Constants;
@@ -72,7 +73,7 @@ public class SkilletInteractListener implements Listener {
             logDebug(player, block, ceBlockId, "farmersdelight:skillet", mainHand, plugin.getSkilletManager().findRecipeId(mainHand));
         }
 
-        if (!isSkilletBlock(ceBlockId)) {
+        if (!isSkilletBlock(block)) {
             return;
         }
         if (!WorldGuardCompat.canUse(player, block) || !WorldGuardCompat.canBuild(player, block)) {
@@ -146,8 +147,14 @@ public class SkilletInteractListener implements Listener {
         return Constants.CE_SHORT_SKILLET.equals(ceBlockId);
     }
 
+    private boolean isSkilletBlock(Block block) {
+        return CustomBlockUtils.hasBehavior(block, SkilletBlockBehavior.class)
+                || CustomBlockUtils.hasId(block, Constants.BLOCK_SKILLET)
+                || Constants.CE_SHORT_SKILLET.equals(CustomBlockUtils.getId(block));
+    }
+
     private boolean shouldLogAttempt(Block block, String ceBlockId) {
-        if (isSkilletBlock(ceBlockId)) {
+        if (isSkilletBlock(ceBlockId) || isSkilletBlock(block)) {
             return true;
         }
         if (block == null) {

@@ -300,7 +300,8 @@ public class SkilletManager {
     }
 
     private boolean isSkilletBlock(Location location) {
-        return CustomBlockUtils.hasId(location, Constants.BLOCK_SKILLET);
+        return CustomBlockUtils.hasBehavior(location, SkilletBlockBehavior.class)
+                || CustomBlockUtils.hasId(location, Constants.BLOCK_SKILLET);
     }
 
     public void breakSkillet(Location blockLocation, Location dropLocation) {
@@ -817,9 +818,10 @@ public class SkilletManager {
         }
 
         for (int i = skillet.displayEntityIds.size(); i < displayCount; i++) {
-            double offsetX = displayCount == 1 ? 0 : (random.nextDouble() - 0.5D) * 0.3D;
-            double offsetZ = displayCount == 1 ? 0 : (random.nextDouble() - 0.5D) * 0.3D;
-            double offsetY = 0.1D + ((i + 1) * 0.03D);
+            double spread = plugin.getSkilletDisplaySpread();
+            double offsetX = displayCount == 1 ? 0 : (random.nextDouble() - 0.5D) * spread;
+            double offsetZ = displayCount == 1 ? 0 : (random.nextDouble() - 0.5D) * spread;
+            double offsetY = plugin.getSkilletDisplayYOffset() + ((i + 1) * 0.03D);
 
             ItemStack stackForDisplay = visualItem.clone();
 

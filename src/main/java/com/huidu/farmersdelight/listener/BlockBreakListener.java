@@ -29,20 +29,6 @@ import java.util.Set;
 
 public class BlockBreakListener implements Listener {
     private static final String TATAMI_BLOCK_ID = "farmersdelight:tatami";
-    private static final Set<String> MANAGED_INTERACTIVE_BLOCK_IDS = Set.of(
-            Constants.BLOCK_COOKING_POT,
-            Constants.BLOCK_CUTTING_BOARD,
-            Constants.BLOCK_SKILLET,
-            Constants.BLOCK_STOVE,
-            TATAMI_BLOCK_ID
-    );
-    private static final Set<String> STATE_MANAGED_INTERACTIVE_BLOCK_IDS = Set.of(
-            Constants.BLOCK_COOKING_POT,
-            Constants.BLOCK_CUTTING_BOARD,
-            Constants.BLOCK_SKILLET,
-            Constants.BLOCK_STOVE
-    );
-
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         FarmersDelightPlugin.getInstance().getStoveManager()
@@ -63,7 +49,8 @@ public class BlockBreakListener implements Listener {
         if (isCookingPotBlock(event.blockState())) {
             boolean shouldDropItems = event.dropItems() && event.getPlayer().getGameMode() != GameMode.CREATIVE;
             event.setDropItems(false);
-            cleanupBlockAt(event.bukkitBlock(), false, shouldDropItems);
+            boolean preserveContents = FarmersDelightPlugin.getInstance().isCookingPotPackContentsOnBreak();
+            cleanupBlockAt(event.bukkitBlock(), event.blockState(), preserveContents, shouldDropItems);
             return;
         }
         if (!isSkilletBlock(event.blockState())) {
@@ -98,13 +85,17 @@ public class BlockBreakListener implements Listener {
     }
 
     private void cleanupBlockAt(org.bukkit.block.Block block, boolean preserveCookingPotContents, boolean shouldDropItems) {
+        cleanupBlockAt(block, CustomBlockUtils.getState(block), preserveCookingPotContents, shouldDropItems);
+    }
+
+    private void cleanupBlockAt(org.bukkit.block.Block block, ImmutableBlockState state, boolean preserveCookingPotContents, boolean shouldDropItems) {
         World world = block.getWorld();
         Location blockLocation = block.getLocation();
         Location dropLocation = blockLocation.clone().add(0.5, 0.5, 0.5);
         BlockPos pos = new BlockPos(block.getX(), block.getY(), block.getZ());
 
-        if (isCookingPotBlock(block)) {
-            cleanupCookingPot(pos, world, dropLocation, preserveCookingPotContents, shouldDropItems);
+        if (isCookingPotBlock(state)) {
+            cleanupCookingPot(pos, world, dropLocation, state, preserveCookingPotContents, shouldDropItems);
         }
         cleanupSkillet(blockLocation, dropLocation, shouldDropItems);
         cleanupCuttingBoard(pos, world, dropLocation, shouldDropItems);
@@ -122,7 +113,7 @@ public class BlockBreakListener implements Listener {
         return isCookingPotBlock(state);
     }
 
-    private void cleanupCookingPot(BlockPos pos, World world, Location dropLocation, boolean preserveContents, boolean shouldDropItems) {
+    private void cleanupCookingPot(BlockPos pos, World world, Location dropLocation, ImmutableBlockState state, boolean preserveContents, boolean shouldDropItems) {
         CookingPotBlockEntity entity = CookingPotBlockBehavior.getBlockEntity(world, pos);
         if (entity == null) {
             if (shouldDropItems) {
@@ -132,7 +123,12 @@ public class BlockBreakListener implements Listener {
         }
 
         if (shouldDropItems) {
-            dropCookingPotBaseItem(world, dropLocation, entity);
+            if (preserveContents) {
+                dropCookingPotBaseItem(world, dropLocation, state, entity);
+            } else {
+                dropCookingPotBaseItem(world, dropLocation);
+                dropCookingPotContents(world, dropLocation, entity);
+            }
         }
         CookingPotBlockBehavior.removeBlockEntity(world, pos);
     }
@@ -142,7 +138,12 @@ public class BlockBreakListener implements Listener {
     }
 
     private void dropCookingPotBaseItem(World world, Location dropLocation, CookingPotBlockEntity entity) {
-        ItemStack potItem = ItemUtils.createItem(Constants.BLOCK_COOKING_POT);
+        dropCookingPotBaseItem(world, dropLocation, null, entity);
+    }
+
+    private void dropCookingPotBaseItem(World world, Location dropLocation, ImmutableBlockState state, CookingPotBlockEntity entity) {
+        String itemId = CustomBlockUtils.getId(state);
+        ItemStack potItem = ItemUtils.createItem(itemId != null ? itemId : Constants.BLOCK_COOKING_POT);
         if (potItem == null || potItem.getType().isAir()) {
             return;
         }
@@ -152,7 +153,9 @@ public class BlockBreakListener implements Listener {
             return;
         }
 
-        CookingPotBlockBehavior behavior = CookingPotBlockBehavior.getBlockBehavior(dropLocation);
+        CookingPotBlockBehavior behavior = state != null && state.behavior() instanceof CookingPotBlockBehavior potBehavior
+                ? potBehavior
+                : CookingPotBlockBehavior.getBlockBehavior(dropLocation);
         if (behavior == null) {
             world.dropItemNaturally(dropLocation, potItem);
             return;
@@ -163,6 +166,23 @@ public class BlockBreakListener implements Listener {
         blockEntityData.put(behavior.getCustomDataKey(), CookingPotBlockEntityController.saveData(entity));
         wrapped.setSparrowTagComponent(DataComponentKeys.BLOCK_ENTITY_DATA, blockEntityData);
         world.dropItemNaturally(dropLocation, net.momirealms.craftengine.bukkit.util.ItemStackUtils.getBukkitStack(wrapped));
+    }
+
+    private void dropCookingPotContents(World world, Location dropLocation, CookingPotBlockEntity entity) {
+        if (world == null || dropLocation == null || entity == null) {
+            return;
+        }
+
+        for (ItemStack item : entity.getInventory()) {
+            if (item != null && !item.getType().isAir()) {
+                world.dropItemNaturally(dropLocation, item);
+            }
+        }
+
+        ItemStack mealContainer = entity.getMealContainer();
+        if (mealContainer != null && !mealContainer.getType().isAir()) {
+            world.dropItemNaturally(dropLocation, mealContainer);
+        }
     }
 
     private void cleanupSkillet(Location blockLocation, Location dropLocation, boolean shouldDropItems) {
@@ -191,21 +211,33 @@ public class BlockBreakListener implements Listener {
     }
 
     private boolean isManagedInteractiveBlock(ImmutableBlockState state) {
-        String blockId = CustomBlockUtils.getId(state);
-        return blockId != null && MANAGED_INTERACTIVE_BLOCK_IDS.contains(blockId);
+        return isCookingPotBlock(state)
+                || isSkilletBlock(state)
+                || CustomBlockUtils.hasBehavior(state, CuttingBoardBlockBehavior.class)
+                || Constants.BLOCK_CUTTING_BOARD.equals(CustomBlockUtils.getId(state))
+                || CustomBlockUtils.hasBehavior(state, StoveCookingBlockBehavior.class)
+                || Constants.BLOCK_STOVE.equals(CustomBlockUtils.getId(state))
+                || TATAMI_BLOCK_ID.equals(CustomBlockUtils.getId(state));
     }
 
     private boolean isStateManagedInteractiveBlock(org.bukkit.block.Block block) {
-        String blockId = CustomBlockUtils.getId(block);
-        return blockId != null && STATE_MANAGED_INTERACTIVE_BLOCK_IDS.contains(blockId);
+        ImmutableBlockState state = CustomBlockUtils.getState(block);
+        return isCookingPotBlock(state)
+                || isSkilletBlock(state)
+                || CustomBlockUtils.hasBehavior(state, CuttingBoardBlockBehavior.class)
+                || Constants.BLOCK_CUTTING_BOARD.equals(CustomBlockUtils.getId(state))
+                || CustomBlockUtils.hasBehavior(state, StoveCookingBlockBehavior.class)
+                || Constants.BLOCK_STOVE.equals(CustomBlockUtils.getId(state));
     }
 
     private boolean isSkilletBlock(ImmutableBlockState state) {
-        return Constants.BLOCK_SKILLET.equals(CustomBlockUtils.getId(state));
+        return CustomBlockUtils.hasBehavior(state, SkilletBlockBehavior.class)
+                || Constants.BLOCK_SKILLET.equals(CustomBlockUtils.getId(state));
     }
 
     private boolean isCookingPotBlock(ImmutableBlockState state) {
-        return Constants.BLOCK_COOKING_POT.equals(CustomBlockUtils.getId(state));
+        return CustomBlockUtils.hasBehavior(state, CookingPotBlockBehavior.class)
+                || Constants.BLOCK_COOKING_POT.equals(CustomBlockUtils.getId(state));
     }
 
     private boolean isTatamiBlock(org.bukkit.block.Block block) {

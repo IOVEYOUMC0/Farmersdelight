@@ -6,14 +6,17 @@ import com.huidu.farmersdelight.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
 
+import java.io.File;
 import java.util.*;
 
 public class CookingPotRecipeManager {
 
     private final FarmersDelightPlugin plugin;
     private final Map<String, CookingPotRecipe> recipes = new HashMap<>();
+    private final Map<String, Map<String, CookingPotRecipe>> customRecipes = new HashMap<>();
     private final Map<String, Set<String>> ingredientToRecipes = new HashMap<>();
     private final Map<String, CookingPotRecipe> recipeCache = new LinkedHashMap<>(MAX_CACHE_SIZE + 1, 0.75f, true) {
         @Override
@@ -30,6 +33,7 @@ public class CookingPotRecipeManager {
 
     public void loadRecipes() {
         recipes.clear();
+        customRecipes.clear();
         ingredientToRecipes.clear();
         synchronized (recipeCache) {
             recipeCache.clear();
@@ -37,33 +41,80 @@ public class CookingPotRecipeManager {
         validContainerKeys.clear();
         RecipeFileLoader.loadRecipeSections(plugin, "recipes/cooking_pot_recipes.yml", "cooking_pot_recipes", "cooking pot",
                 (recipeId, section) -> {
-                    CookingPotRecipe recipe = parseRecipe(recipeId, section);
+                    CookingPotRecipe recipe = parseRecipe(recipeId, section, 6);
                     recipes.put(recipeId, recipe);
 
-                    for (RecipeIngredient ingredient : recipe.getIngredients()) {
-                        for (String ingredientKey : flattenIngredientKeys(ingredient)) {
-                            ingredientToRecipes.computeIfAbsent(ingredientKey, k -> new HashSet<>()).add(recipeId);
-                        }
-                    }
-
-                    ItemStack container = recipe.getContainer();
-                    if (container != null && !container.getType().isAir()) {
-                        String customId = ItemUtils.getCustomItemId(container);
-                        if (customId != null) {
-                            validContainerKeys.add(customId);
-                        }
-                        validContainerKeys.add("minecraft:" + container.getType().name().toLowerCase());
-                    }
+                    indexDefaultRecipe(recipeId, recipe);
+                    indexContainer(recipe);
                 });
+        loadCustomRecipes();
     }
 
-    private CookingPotRecipe parseRecipe(String id, ConfigurationSection section) {
+    private void loadCustomRecipes() {
+        File recipesFile = new File(plugin.getDataFolder(), "recipes/cooking_pot_recipes.yml");
+        if (!recipesFile.exists()) {
+            return;
+        }
+
+        YamlConfiguration config = YamlConfiguration.loadConfiguration(recipesFile);
+        ConfigurationSection root = config.getConfigurationSection("custom_cooking_pot_recipes");
+        if (root == null) {
+            return;
+        }
+
+        int loadedCount = 0;
+        for (String groupId : root.getKeys(false)) {
+            ConfigurationSection groupSection = root.getConfigurationSection(groupId);
+            if (groupSection == null) {
+                continue;
+            }
+            Map<String, CookingPotRecipe> groupRecipes = customRecipes.computeIfAbsent(groupId, key -> new LinkedHashMap<>());
+            for (String recipeId : groupSection.getKeys(false)) {
+                ConfigurationSection section = groupSection.getConfigurationSection(recipeId);
+                if (section == null) {
+                    continue;
+                }
+                try {
+                    CookingPotRecipe recipe = parseRecipe(recipeId, section, 54);
+                    groupRecipes.put(recipeId, recipe);
+                    indexContainer(recipe);
+                    loadedCount++;
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Failed to load custom cooking pot recipe '" + groupId + "." + recipeId + "': " + e.getMessage());
+                }
+            }
+        }
+        if (loadedCount > 0 || plugin.isDebugEnabled()) {
+            plugin.getLogger().info("Loaded " + loadedCount + " custom cooking pot recipes");
+        }
+    }
+
+    private void indexDefaultRecipe(String recipeId, CookingPotRecipe recipe) {
+        for (RecipeIngredient ingredient : recipe.getIngredients()) {
+            for (String ingredientKey : flattenIngredientKeys(ingredient)) {
+                ingredientToRecipes.computeIfAbsent(ingredientKey, k -> new HashSet<>()).add(recipeId);
+            }
+        }
+    }
+
+    private void indexContainer(CookingPotRecipe recipe) {
+        ItemStack container = recipe.getContainer();
+        if (container != null && !container.getType().isAir()) {
+            String customId = ItemUtils.getCustomItemId(container);
+            if (customId != null) {
+                validContainerKeys.add(customId);
+            }
+            validContainerKeys.add("minecraft:" + container.getType().name().toLowerCase());
+        }
+    }
+
+    private CookingPotRecipe parseRecipe(String id, ConfigurationSection section, int maxIngredients) {
         List<String> ingredientStrings = section.getStringList("ingredients");
         if (ingredientStrings.isEmpty()) {
             throw new IllegalArgumentException("Recipe must have at least one ingredient");
         }
-        if (ingredientStrings.size() > 6) {
-            throw new IllegalArgumentException("Recipe can have at most 6 ingredients");
+        if (ingredientStrings.size() > maxIngredients) {
+            throw new IllegalArgumentException("Recipe can have at most " + maxIngredients + " ingredients");
         }
 
         List<RecipeIngredient> ingredients = new ArrayList<>();
@@ -143,6 +194,10 @@ public class CookingPotRecipeManager {
     }
 
     public CookingPotRecipe matchRecipe(List<ItemStack> inputItems, ItemStack container) {
+        return matchRecipe(inputItems, container, null);
+    }
+
+    public CookingPotRecipe matchRecipe(List<ItemStack> inputItems, ItemStack container, String customRecipeGroupId) {
         if (inputItems == null || inputItems.isEmpty()) {
             return null;
         }
@@ -156,6 +211,10 @@ public class CookingPotRecipeManager {
         
         if (nonEmptyInputs.isEmpty()) {
             return null;
+        }
+
+        if (customRecipeGroupId != null && !customRecipeGroupId.isBlank()) {
+            return matchCustomRecipe(nonEmptyInputs, container, customRecipeGroupId);
         }
 
         String cacheKey = buildCacheKey(nonEmptyInputs, container);
@@ -196,6 +255,19 @@ public class CookingPotRecipeManager {
         }
 
         return result;
+    }
+
+    private CookingPotRecipe matchCustomRecipe(List<ItemStack> nonEmptyInputs, ItemStack container, String customRecipeGroupId) {
+        Map<String, CookingPotRecipe> groupRecipes = customRecipes.get(customRecipeGroupId);
+        if (groupRecipes == null || groupRecipes.isEmpty()) {
+            return null;
+        }
+        for (CookingPotRecipe recipe : groupRecipes.values()) {
+            if (matchesContainer(recipe, container) && matchRecipe(recipe, nonEmptyInputs)) {
+                return recipe;
+            }
+        }
+        return null;
     }
 
     private String buildCacheKey(List<ItemStack> inputs, ItemStack container) {
@@ -304,6 +376,14 @@ public class CookingPotRecipeManager {
         return true;
     }
 
+    public boolean canCraft(CookingPotRecipe recipe, List<ItemStack> inputs, ItemStack container) {
+        return recipe != null && matchesContainer(recipe, container) && matchRecipe(recipe, inputs);
+    }
+
+    public boolean matchesIngredient(ItemStack item, RecipeIngredient ingredient) {
+        return matchIngredient(item, ingredient);
+    }
+
     private boolean matchIngredient(ItemStack item, RecipeIngredient ingredient) {
         if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
             return ItemUtils.matchesItemId(item, itemIngredient.key());
@@ -367,6 +447,14 @@ public class CookingPotRecipeManager {
         return Collections.unmodifiableMap(recipes);
     }
 
+    public Map<String, CookingPotRecipe> getRecipes(String customRecipeGroupId) {
+        if (customRecipeGroupId == null || customRecipeGroupId.isBlank()) {
+            return getRecipes();
+        }
+        Map<String, CookingPotRecipe> groupRecipes = customRecipes.get(customRecipeGroupId);
+        return groupRecipes == null ? Map.of() : Collections.unmodifiableMap(groupRecipes);
+    }
+
     public Set<String> getValidContainerKeys() {
         return validContainerKeys;
     }
@@ -377,6 +465,14 @@ public class CookingPotRecipeManager {
 
     public CookingPotRecipe getRecipe(String id) {
         return recipes.get(id);
+    }
+
+    public CookingPotRecipe getRecipe(String customRecipeGroupId, String id) {
+        if (customRecipeGroupId == null || customRecipeGroupId.isBlank()) {
+            return getRecipe(id);
+        }
+        Map<String, CookingPotRecipe> groupRecipes = customRecipes.get(customRecipeGroupId);
+        return groupRecipes == null ? null : groupRecipes.get(id);
     }
 
     public void reload() {

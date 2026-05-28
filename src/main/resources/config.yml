@@ -5,7 +5,7 @@
 
 # 服务端日志和控制台文本语言。
 # 留空会跟随 JVM/系统语言；可填 zh_cn、en_us 强制指定。
-# 这里只影响插件日志、控制台文本和无玩家上下文的文本；玩家 GUI/消息仍优先使用玩家客户端语言。
+# 影响插件日志、控制台文本和无玩家上下文的文本；玩家 GUI/消息仍优先使用玩家客户端语言。
 language: ''
 
 # 进度系统。关闭后不会同步内置进度数据包。
@@ -31,21 +31,36 @@ performance:
 
 # 漏斗与插件方块的原版容器交互。
 # enabled=false 时完全关闭插件方块的漏斗容器桥接，避免漏斗吞物品、重复创建容器或写入异常。
-# 当前默认关闭；需要测试厨锅/砧板漏斗时再开启，并建议先在测试服验证。
+# 默认关闭；厨锅/砧板需要漏斗输入输出时可开启。生产服启用前建议在测试服验证。
 hopper-interactions:
   enabled: false
   cooking-pot: true
   cutting-board: true
 
-# 砧板交互。
+# 砧板交互与砧板上物品展示。
 cutting-board:
   # 砧板交互模式：
   # stacking = 启用 64 堆叠，关闭副手交互
   # offhand  = 启用副手交互，关闭 64 堆叠
   interaction-mode: stacking
-  # Per-item visual overrides for the item shown on cutting boards.
-  # Keys are stored item ids. Values follow CraftEngine-style vector syntax.
-  # Example:
+  # 砧板上物品展示实体的全局默认偏移，格式 x,y,z。
+  # x/z 控制水平位置，y 控制离砧板表面的高度。
+  # 替换砧板模型后，如果所有物品整体偏左/偏右/陷进模型，可调整该项。
+  # 单个物品的特殊位置优先使用 display-overrides。
+  default-display-offset: 0,0,0
+  # 多个物品堆在砧板上时的随机散开范围。
+  # 0.15 表示 x/z 最大约 ±0.075 方块，接近原模组表现。
+  # 觉得食物太散就调小，例如 0.08；想看出堆叠层次就调大，例如 0.20。
+  display-item-spread: 0.15
+  # 针对某个物品单独覆盖砧板展示。
+  # key 写“存放在砧板上的物品 ID”，可以是 minecraft:* 或 CraftEngine 物品 ID。
+  # display-item: 用另一个物品作为展示模型，适合原物品模型在 ItemDisplay 里显示不正确时使用。
+  # style: auto 自动判断；item 强制平面物品；block 强制方块/立体物品。
+  # position: 在全局 default-display-offset 基础上继续偏移，格式 x,y,z。
+  # translation: ItemDisplay transformation 内部平移。通常保持默认，模型自身轴心不对时再调整。
+  # rotation: 直接覆盖展示旋转角度，格式 x,y,z，单位度。
+  # scale: 直接覆盖缩放，格式 x,y,z；也可以写单个数字，如 0.55。
+  # 示例：
   # display-overrides:
   #   farmersdelight:tomato:
   #     display-item: farmersdelight:tomato_display
@@ -71,6 +86,22 @@ knife-config:
 cooking-pot-progress-display:
   # false 只显示进度/状态；true 会额外显示正在烹饪的配方名。
   show-recipe-name: false
+  # TextDisplay 相对厨锅方块底部的高度。
+  # 更换高锅或矮锅模型后，如果文字压进锅里或漂得太高，可调整该项。
+  y-offset: 1.2
+  # TextDisplay 缩放。只影响悬浮进度文字，不影响 GUI。
+  scale: 0.5
+  # 玩家距离厨锅多少格以内才可能看到进度文字。
+  # Paper 下还会要求玩家看向厨锅；Folia 下为了避免跨区显示控制，默认直接可见。
+  visibility-distance: 10.0
+  # 玩家视线与厨锅方向的点积阈值。越接近 1，要求看得越准。
+  # 0.95 约等于必须明显看向厨锅；觉得提示太难触发可降到 0.90。
+  look-dot-threshold: 0.95
+
+# 厨锅破坏掉落。
+cooking-pot:
+  # true = 打包锅内物品到掉落的厨锅物品；false = 掉落空锅并把锅内物品散落出来。
+  pack-contents-on-break: true
 
 # 热源判定。厨锅和煎锅都会用到，煎锅的漏斗导热可单独关闭。
 heat-sources:
@@ -104,7 +135,7 @@ heat-sources:
 tray:
   # true = 打开/同步厨锅时自动确保下方托盘存在；false = 不自动生成托盘，厨锅内容显示可能不完整。
   enabled: true
-  # CraftEngine 托盘方块/家具 ID。资源侧改名后这里也要同步修改。
+  # CraftEngine 托盘方块/家具 ID。资源侧改名后该项也需要同步修改。
   tray-block-id: farmersdelight:tray
   # 托盘相对厨锅方块坐标的偏移，通常不用改。
   x-offset: 0.5
@@ -115,7 +146,7 @@ tray:
   # 托盘批量同步间隔和每批处理数量。TPS 紧张时可调大间隔或调小 batch。
   sync-interval-ticks: 100
   sync-batch-size: 32
-  # 托盘标记键，已放置世界不建议随意修改；改了会导致旧托盘无法被识别为自动托盘。
+  # 托盘标记键。已放置世界不建议随意修改；修改后旧托盘无法被识别为自动托盘。
   marker-key: auto_tray_marker
 
 # 厨锅世界粒子效果。
@@ -245,7 +276,7 @@ straw-drops:
 
 # 宠物食物。玩家右键对应实体时给予效果，可继续按同格式添加更多食物。
 # 每个键都是物品 ID，支持 CraftEngine 物品和原版物品。
-# 如果某个食物只想用于“手持吸引”而不想右键消耗，可以把 restore-health 设为 false、effects 写 []，仍然保留 sound/particles 或按需关闭。
+# 食物仅用于“手持吸引”而不用于右键消耗时，可把 restore-health 设为 false、effects 写 []，并按需保留或关闭 sound/particles。
 pet-foods:
   farmersdelight:dog_food:
     entities:
@@ -295,7 +326,7 @@ pet-foods:
       move-speed: 1.25
       # 吸引任务间隔，单位 tick。10 tick = 0.5 秒；调大可降低开销但响应会慢一些。
       tick-interval: 10
-      # true = 已驯服且主人就是当前玩家的马不会被自己的马食继续拉扯。
+      # true = 已驯服且主人为喂食玩家的马不会被自己的马食继续拉扯。
       ignore-owned-tamed: true
 
 # 舒适效果。默认关闭；开启后吃下列表食物会给玩家 Comfort。
@@ -342,14 +373,35 @@ nourishment-foods:
     farmersdelight:fried_rice:
       duration: 300
 
-# 食物吃完或厨锅消耗容器后返还的物品。
-# 例如牛奶瓶被消耗后返还玻璃瓶。写 "" 可禁用某一项返还。
+# 厨锅配方消耗容器类物品后的返还表。
+# 键是被厨锅消耗的容器物品 ID，值是烹饪后返还到容器槽/玩家背包的物品 ID。
+# 例如 milk_bottle 被厨锅消耗后返还 glass_bottle。值写 "" 可禁用某一项返还。
 container-returns:
   farmersdelight:milk_bottle: minecraft:glass_bottle
 
-# 世界中显示物品的缩放。
+# 世界中物品展示实体的默认视觉参数。
 display-visuals:
   skillet:
+    # 煎锅中食物展示的缩放。换模型后如果食物太大或太小，优先调整该项。
     scale: 0.5
+    # 食物展示实体的基础高度，原模组约 0.1。
+    # 如果食物陷进煎锅，略微调高；如果漂浮明显，略微调低。
+    y-offset: 0.1
+    # 多个食物在煎锅上的随机散开范围。
+    # 原模组约 0.125，即最大约 ±0.0625 方块；比砧板更集中。
+    # 如果 x/z 水平散开过大，优先调小这个值。
+    item-spread: 0.125
   stove:
+    # 炉灶上食物展示的缩放。
     scale: 0.375
+    # 炉灶 6 个食物展示槽位的默认偏移，格式 x,y,z。
+    # 坐标以 north 朝向为基准：x 左右，y 高度，z 前后；插件会按炉灶朝向自动旋转。
+    # 换用其它炉灶模型后，如果食物不在烤面上，通常只需要调整该项。
+    # 槽位顺序为前排右/中/左，后排右/中/左（以 north 基准观察）。
+    slot-offsets:
+      - "0.3,1.02,0.2"
+      - "0.0,1.02,0.2"
+      - "-0.3,1.02,0.2"
+      - "0.3,1.02,-0.2"
+      - "0.0,1.02,-0.2"
+      - "-0.3,1.02,-0.2"

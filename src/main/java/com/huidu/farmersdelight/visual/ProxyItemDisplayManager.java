@@ -10,10 +10,15 @@ import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.network.BukkitNetworkManager;
 import net.momirealms.craftengine.core.plugin.network.NetWorkUser;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundAddEntityPacketProxy;
+import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundSetEntityDataPacketProxy;
+import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundTeleportEntityPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.EntityTypeProxy;
+import net.momirealms.craftengine.proxy.minecraft.world.entity.PositionMoveRotationProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.phys.Vec3Proxy;
+import net.momirealms.craftengine.core.util.MiscUtils;
+import net.momirealms.craftengine.core.util.VersionHelper;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -113,6 +118,28 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         displays.put(entityId, display);
         scheduleSyncDisplay(display);
         return entityId;
+    }
+
+    @Override
+    public boolean updateDisplay(int entityId, DisplaySpec spec) {
+        if (!isAvailable() || spec == null || spec.location() == null || spec.location().getWorld() == null) {
+            return false;
+        }
+
+        ProxyItemDisplay display = displays.get(entityId);
+        if (display == null) {
+            return false;
+        }
+
+        DisplaySpec normalizedSpec = normalize(spec);
+        display.spec = normalizedSpec;
+        display.spawnPacket = createSpawnPacket(entityId, display.entityUuid, normalizedSpec);
+        display.metadataPacket = createMetadataPacket(entityId, normalizedSpec);
+        display.spawnPackets = List.of(display.spawnPacket, display.metadataPacket);
+        Object positionPacket = createPositionPacket(entityId, normalizedSpec.location());
+        sendUpdateForAllViewers(display, positionPacket, display.metadataPacket);
+        scheduleSyncDisplay(display);
+        return true;
     }
 
     @Override
@@ -418,6 +445,43 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         }
     }
 
+    private void sendUpdateForAllViewers(ProxyItemDisplay display, Object positionPacket, Object metadataPacket) {
+        for (UUID viewerId : new HashSet<>(display.viewers)) {
+            Player player = onlinePlayers.get(viewerId);
+            if (player != null) {
+                if (plugin.scheduler().isFolia()) {
+                    try {
+                        plugin.scheduler().runForEntity(player, () -> {
+                            if (display.viewers.contains(viewerId)) {
+                                sendUpdateForViewer(player, display, positionPacket, metadataPacket);
+                            }
+                        });
+                    } catch (RuntimeException e) {
+                        display.viewers.remove(viewerId);
+                        onlinePlayers.remove(viewerId);
+                    }
+                } else {
+                    sendUpdateForViewer(player, display, positionPacket, metadataPacket);
+                }
+            } else {
+                display.viewers.remove(viewerId);
+            }
+        }
+    }
+
+    private void sendUpdateForViewer(Player player, ProxyItemDisplay display, Object positionPacket, Object metadataPacket) {
+        try {
+            NetWorkUser user = networkManager.getOnlineUser(player.getUniqueId());
+            if (user == null || !user.isOnline()) {
+                display.viewers.remove(player.getUniqueId());
+                return;
+            }
+            user.sendPackets(List.of(positionPacket, metadataPacket), false);
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to update CE proxy item display " + display.entityId + " for " + player.getName() + ": " + e.getMessage());
+        }
+    }
+
     private Object createSpawnPacket(int entityId, UUID entityUuid, DisplaySpec spec) {
         Location location = spec.location();
         return ClientboundAddEntityPacketProxy.INSTANCE.newInstance(
@@ -433,6 +497,24 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
                 Vec3Proxy.ZERO,
                 0.0D
         );
+    }
+
+    private Object createPositionPacket(int entityId, Location location) {
+        if (VersionHelper.isOrAbove1_21_2) {
+            Object position = Vec3Proxy.INSTANCE.newInstance(location.getX(), location.getY(), location.getZ());
+            Object values = PositionMoveRotationProxy.INSTANCE.newInstance(position, Vec3Proxy.ZERO, 0.0F, 0.0F);
+            return ClientboundEntityPositionSyncPacketProxy.INSTANCE.newInstance(entityId, values, false);
+        }
+
+        Object packet = ClientboundTeleportEntityPacketProxy.UNSAFE_CONSTRUCTOR.newInstance();
+        ClientboundTeleportEntityPacketProxy.INSTANCE.setId(packet, entityId);
+        ClientboundTeleportEntityPacketProxy.INSTANCE.setX(packet, location.getX());
+        ClientboundTeleportEntityPacketProxy.INSTANCE.setY(packet, location.getY());
+        ClientboundTeleportEntityPacketProxy.INSTANCE.setZ(packet, location.getZ());
+        ClientboundTeleportEntityPacketProxy.INSTANCE.setYRot(packet, MiscUtils.packDegrees(0.0F));
+        ClientboundTeleportEntityPacketProxy.INSTANCE.setXRot(packet, MiscUtils.packDegrees(0.0F));
+        ClientboundTeleportEntityPacketProxy.INSTANCE.setOnGround(packet, false);
+        return packet;
     }
 
     private Object createMetadataPacket(int entityId, DisplaySpec spec) {
@@ -503,12 +585,12 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
     private static final class ProxyItemDisplay {
         private final int entityId;
         private final UUID entityUuid;
-        private final DisplaySpec spec;
+        private DisplaySpec spec;
         private final Set<UUID> viewers = ConcurrentHashMap.newKeySet();
-        private final Object spawnPacket;
-        private final Object metadataPacket;
+        private Object spawnPacket;
+        private Object metadataPacket;
         private final Object destroyPacket;
-        private final List<Object> spawnPackets;
+        private List<Object> spawnPackets;
 
         private ProxyItemDisplay(int entityId, UUID entityUuid, DisplaySpec spec,
                                  Object spawnPacket, Object metadataPacket, Object destroyPacket) {
