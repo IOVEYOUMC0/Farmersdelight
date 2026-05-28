@@ -3,12 +3,14 @@ package com.huidu.farmersdelight.gui;
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.block.behavior.CookingPotBlockBehavior;
 import com.huidu.farmersdelight.block.behavior.CookingPotBlockEntity;
+import com.huidu.farmersdelight.block.behavior.CookingPotLayout;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.manager.TickManager;
 import com.huidu.farmersdelight.util.ItemUtils;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.momirealms.craftengine.bukkit.api.CraftEngineImages;
 import net.momirealms.craftengine.core.font.Image;
 import net.momirealms.craftengine.core.util.Key;
@@ -45,6 +47,7 @@ public class CookingPotGui implements InventoryHolder {
     private static final Pattern SHIFT_TAG_PATTERN = Pattern.compile("<shift:([+-]?\\d+)>");
     private static final Pattern IMAGE_TAG_PATTERN = Pattern.compile("<image:([a-z0-9_./-]+:[a-z0-9_./-]+)>");
     private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
+    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
 
     private final FarmersDelightPlugin plugin;
     private final CookingPotBlockEntity blockEntity;
@@ -53,11 +56,11 @@ public class CookingPotGui implements InventoryHolder {
     private final Inventory inventory;
 
     private final int[] ingredientSlots;
+    private final int[] containerSlots;
+    private final int[] bufferSlots;
+    private final int[] outputSlots;
     private final int heatSlot;
-    private final int containerSlot;
     private final int progressSlot;
-    private final int bufferSlot;
-    private final int outputSlot;
     private final int recipeSlot;
     private final Map<Integer, Integer> slotMapping;
 
@@ -69,9 +72,8 @@ public class CookingPotGui implements InventoryHolder {
     private Boolean cachedHeatState;
     private int cachedProgressPercent = -1;
     private int cachedRemainingSeconds = -1;
-    private ItemStack cachedPendingItem;
+    private final Map<Integer, ItemStack> cachedDisplayItems = new HashMap<>();
     private ItemStack cachedPendingContainer;
-    private ItemStack cachedOutputItem;
     private boolean syncQueued;
 
     public CookingPotGui(FarmersDelightPlugin plugin, CookingPotBlockEntity blockEntity,
@@ -86,22 +88,22 @@ public class CookingPotGui implements InventoryHolder {
         this.blockBehavior = blockBehavior;
         this.world = world;
         this.cookingPotLocation = cookingPotLocation;
-        this.config = plugin.getCookingPotGuiConfig();
+        String customId = blockBehavior != null ? blockBehavior.getCustomRecipeGroupId() : blockEntity.getRecipeGroupId();
+        this.config = plugin.getCookingPotGuiConfig(customId);
 
         this.ingredientSlots = config.getIngredientSlots();
+        this.containerSlots = config.getContainerSlots();
+        this.bufferSlots = config.getBufferSlots();
+        this.outputSlots = config.getOutputSlots();
         this.heatSlot = config.getHeatSlot();
-        this.containerSlot = config.getContainerSlot();
         this.progressSlot = config.getProgressSlot();
-        this.bufferSlot = config.getBufferSlot();
-        this.outputSlot = config.getOutputSlot();
         this.recipeSlot = config.getRecipeSlot();
         this.slotMapping = new HashMap<>();
-        for (int i = 0; i < ingredientSlots.length && i < 6; i++) {
-            slotMapping.put(ingredientSlots[i], i);
-        }
-        if (containerSlot >= 0) {
-            slotMapping.put(containerSlot, CookingPotBlockBehavior.SLOT_CONTAINER);
-        }
+        CookingPotLayout layout = blockEntity.getLayout();
+        mapSlots(ingredientSlots, layout.inputSlots(), true);
+        mapSlots(containerSlots, layout.containerSlots(), true);
+        mapSlots(bufferSlots, layout.pendingOutputSlots(), false);
+        mapSlots(outputSlots, layout.outputSlots(), false);
 
         this.inventory = Bukkit.createInventory(this, config.getSize(), resolveTitleComponent());
         this.tickCallback = ignored -> {
@@ -109,6 +111,13 @@ public class CookingPotGui implements InventoryHolder {
                 tick();
             }
         };
+    }
+
+    private void mapSlots(int[] guiSlots, int[] entitySlots, boolean interactiveOnly) {
+        int count = Math.min(guiSlots.length, entitySlots.length);
+        for (int i = 0; i < count; i++) {
+            slotMapping.put(guiSlots[i], entitySlots[i]);
+        }
     }
 
     public void open(Player player) {
@@ -166,9 +175,9 @@ public class CookingPotGui implements InventoryHolder {
         for (int ingredientSlot : ingredientSlots) {
             inventory.setItem(ingredientSlot, null);
         }
-        if (containerSlot >= 0) inventory.setItem(containerSlot, null);
-        if (bufferSlot >= 0) inventory.setItem(bufferSlot, null);
-        if (outputSlot >= 0) inventory.setItem(outputSlot, null);
+        for (int slot : containerSlots) inventory.setItem(slot, null);
+        for (int slot : bufferSlots) inventory.setItem(slot, null);
+        for (int slot : outputSlots) inventory.setItem(slot, null);
 
         for (Map.Entry<Integer, Integer> entry : slotMapping.entrySet()) {
             int guiSlot = entry.getKey();
@@ -183,7 +192,10 @@ public class CookingPotGui implements InventoryHolder {
     }
 
     private Component resolveTitleComponent() {
-        return MINI_MESSAGE.deserialize(resolveTitleLayout(config.getTitle()));
+        String title = blockBehavior != null && blockBehavior.getTitleOverride() != null
+                ? blockBehavior.getTitleOverride()
+                : config.getTitle();
+        return MINI_MESSAGE.deserialize(resolveTitleLayout(title));
     }
 
     private String resolveTitleLayout(String rawTitle) {
@@ -283,35 +295,33 @@ public class CookingPotGui implements InventoryHolder {
             }
         }
 
-        if (bufferSlot >= 0) {
-            ItemStack pending = blockEntity.getPendingOutputItem();
-            ItemStack container = blockEntity.getMealContainer();
-            if (!sameItemState(pending, cachedPendingItem) || !sameItemState(container, cachedPendingContainer)) {
-                if (pending != null && !pending.getType().isAir()) {
-                    ItemStack displayPending = pending.clone();
-                    appendContainerHint(displayPending, container);
-                    inventory.setItem(bufferSlot, displayPending);
-                } else {
-                    inventory.setItem(bufferSlot, null);
-                }
-                cachedPendingItem = cloneOrNull(pending);
-                cachedPendingContainer = cloneOrNull(container);
-            }
+        ItemStack container = blockEntity.getMealContainer();
+        boolean pendingContainerChanged = !sameItemState(container, cachedPendingContainer);
+        for (int slot : bufferSlots) {
+            updateMappedDisplaySlot(slot, pendingContainerChanged, container);
         }
+        for (int slot : outputSlots) {
+            updateMappedDisplaySlot(slot, false, null);
+        }
+        cachedPendingContainer = cloneOrNull(container);
+    }
 
-        if (outputSlot >= 0) {
-            ItemStack output = blockEntity.getMealDisplayItem();
-            final ItemStack cachedOutputItem2 = cachedOutputItem;
-            if (cachedOutputItem2 != null) {
-                if (!sameItemState(output, cachedOutputItem2)) {
-                    inventory.setItem(outputSlot, cloneOrNull(output));
-                    cachedOutputItem = cloneOrNull(output);
-                }
-            } else {
-                inventory.setItem(outputSlot, cloneOrNull(output));
-                cachedOutputItem = cloneOrNull(output);
-            }
+    private void updateMappedDisplaySlot(int guiSlot, boolean appendContainerHint, ItemStack container) {
+        Integer entitySlot = slotMapping.get(guiSlot);
+        if (entitySlot == null) {
+            return;
         }
+        ItemStack item = blockEntity.getInventorySlot(entitySlot);
+        ItemStack cached = cachedDisplayItems.get(guiSlot);
+        if (!appendContainerHint && sameItemState(item, cached)) {
+            return;
+        }
+        ItemStack display = cloneOrNull(item);
+        if (appendContainerHint && display != null) {
+            appendContainerHint(display, container);
+        }
+        inventory.setItem(guiSlot, display);
+        cachedDisplayItems.put(guiSlot, cloneOrNull(item));
     }
 
     @SuppressWarnings("null")
@@ -333,9 +343,8 @@ public class CookingPotGui implements InventoryHolder {
         cachedHeatState = null;
         cachedProgressPercent = -1;
         cachedRemainingSeconds = -1;
-        cachedPendingItem = null;
+        cachedDisplayItems.clear();
         cachedPendingContainer = null;
-        cachedOutputItem = null;
     }
 
     private ItemStack cloneOrNull(ItemStack item) {
@@ -374,18 +383,31 @@ public class CookingPotGui implements InventoryHolder {
         if (!inventory.getViewers().isEmpty() && inventory.getViewers().getFirst() instanceof Player player) {
             viewer = player;
         }
-        String containerName = viewer != null
-                ? ItemUtils.getDisplayName(container, viewer)
-                : ItemUtils.getDisplayName(container);
-        Map<String, String> placeholders = Map.of("container", containerName);
-        Component hint = viewer != null
-                ? I18n.getComponent("gui.cooking_pot.pending_container_hint", viewer, placeholders)
-                : I18n.getComponent("gui.cooking_pot.pending_container_hint", placeholders);
+        Component containerName = ItemUtils.getDisplayComponent(container, viewer);
+        Component hintPrefix = I18n.getComponent("gui.cooking_pot.pending_container_hint_prefix", viewer);
+        String rawHint = viewer != null
+                ? I18n.get("gui.cooking_pot.pending_container_hint", viewer)
+                : I18n.get("gui.cooking_pot.pending_container_hint");
+        Component hint = rawHint.contains("{container}")
+                ? componentWithInsertedItemName(rawHint, "{container}", containerName)
+                : hintPrefix.append(containerName);
 
         lore.add(Component.empty());
         lore.add(hint.decoration(TextDecoration.ITALIC, false));
         meta.lore(lore);
         item.setItemMeta(meta);
+    }
+
+    private Component componentWithInsertedItemName(String template, String marker, Component itemName) {
+        int markerIndex = template.indexOf(marker);
+        if (markerIndex < 0) {
+            return LEGACY.deserialize(template).append(itemName);
+        }
+        String before = template.substring(0, markerIndex);
+        String after = template.substring(markerIndex + marker.length());
+        return LEGACY.deserialize(before)
+                .append(itemName)
+                .append(LEGACY.deserialize(after));
     }
 
     private void syncToBlockEntity() {
@@ -438,7 +460,7 @@ public class CookingPotGui implements InventoryHolder {
         Inventory clickedInventory = event.getClickedInventory();
         boolean clickedTop = clickedInventory != null && clickedInventory.equals(inventory);
         boolean clickedBottom = clickedInventory != null && clickedInventory.getType() == InventoryType.PLAYER;
-        if (rawSlot == heatSlot || rawSlot == progressSlot || rawSlot == bufferSlot) {
+        if (rawSlot == heatSlot || rawSlot == progressSlot || config.isBufferSlot(rawSlot)) {
             event.setCancelled(true);
             return;
         }
@@ -452,15 +474,15 @@ public class CookingPotGui implements InventoryHolder {
             return;
         }
 
-        if (rawSlot == outputSlot) {
+        if (config.isOutputSlot(rawSlot)) {
             event.setCancelled(true);
             Player player = (Player) event.getWhoClicked();
-            int requestedAmount = resolveOutputTakeAmount(event);
+            int requestedAmount = resolveOutputTakeAmount(event, rawSlot);
             if (requestedAmount <= 0) {
                 return;
             }
 
-            ItemStack meal = blockEntity.takeMealPortionForDelivery(world, requestedAmount);
+            ItemStack meal = takeOutputFromSlot(rawSlot, requestedAmount);
             if (meal != null) {
                 deliverOutputToPlayer(event, player, meal);
                 player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1.0f, 1.0f);
@@ -650,6 +672,20 @@ public class CookingPotGui implements InventoryHolder {
         GuiTickManager.cleanup();
     }
 
+    public static void closeAllOpenGuis() {
+        for (Map.Entry<UUID, CookingPotGui> entry : new ArrayList<>(activeGuis.entrySet())) {
+            CookingPotGui gui = entry.getValue();
+            Player player = Bukkit.getPlayer(entry.getKey());
+            if (gui != null && !gui.closed) {
+                gui.close();
+            }
+            activeGuis.remove(entry.getKey());
+            if (player != null && player.isOnline()) {
+                player.closeInventory();
+            }
+        }
+    }
+
     private void ensureListenerRegistered() {
         if (listenerRegistered) return;
         synchronized (CookingPotGui.class) {
@@ -707,13 +743,15 @@ public class CookingPotGui implements InventoryHolder {
     }
 
     private boolean shouldPrioritizeContainer(ItemStack item) {
-        if (containerSlot < 0) {
+        if (containerSlots.length == 0) {
             return false;
         }
 
-        ItemStack containerItem = inventory.getItem(containerSlot);
-        if (containerItem != null && !containerItem.getType().isAir()) {
-            return isContainerCandidate(item) && containerItem.isSimilar(item);
+        for (int slot : containerSlots) {
+            ItemStack containerItem = inventory.getItem(slot);
+            if (containerItem != null && !containerItem.getType().isAir()) {
+                return isContainerCandidate(item) && containerItem.isSimilar(item);
+            }
         }
 
         return blockEntity.doesMealHaveContainer() && isContainerCandidate(item);
@@ -768,7 +806,7 @@ public class CookingPotGui implements InventoryHolder {
     }
 
     private void moveToContainerSlot(ItemStack item) {
-        if (containerSlot < 0 || item == null || item.getType().isAir()) {
+        if (containerSlots.length == 0 || item == null || item.getType().isAir()) {
             return;
         }
 
@@ -776,31 +814,44 @@ public class CookingPotGui implements InventoryHolder {
             return;
         }
 
-        ItemStack target = inventory.getItem(containerSlot);
-        if (target == null || target.getType().isAir()) {
+        for (int slot : containerSlots) {
+            ItemStack target = inventory.getItem(slot);
+            if (target == null || target.getType().isAir() || !target.isSimilar(item)) {
+                continue;
+            }
+
+            int space = target.getMaxStackSize() - target.getAmount();
+            if (space <= 0) {
+                continue;
+            }
+
+            int toMove = Math.min(space, item.getAmount());
+            target.setAmount(target.getAmount() + toMove);
+            item.setAmount(item.getAmount() - toMove);
+            inventory.setItem(slot, target);
+            if (item.getAmount() <= 0) {
+                return;
+            }
+        }
+
+        for (int slot : containerSlots) {
+            ItemStack target = inventory.getItem(slot);
+            if (target != null && !target.getType().isAir()) {
+                continue;
+            }
             ItemStack placed = item.clone();
-            inventory.setItem(containerSlot, placed);
+            inventory.setItem(slot, placed);
             item.setAmount(0);
             return;
         }
-
-        if (!target.isSimilar(item)) {
-            return;
-        }
-
-        int space = target.getMaxStackSize() - target.getAmount();
-        if (space <= 0) {
-            return;
-        }
-
-        int toMove = Math.min(space, item.getAmount());
-        target.setAmount(target.getAmount() + toMove);
-        item.setAmount(item.getAmount() - toMove);
-        inventory.setItem(containerSlot, target);
     }
 
-    private int resolveOutputTakeAmount(InventoryClickEvent event) {
-        ItemStack currentOutput = blockEntity.getMealDisplayItem();
+    private int resolveOutputTakeAmount(InventoryClickEvent event, int guiSlot) {
+        Integer entitySlot = slotMapping.get(guiSlot);
+        if (entitySlot == null) {
+            return 0;
+        }
+        ItemStack currentOutput = blockEntity.getInventorySlot(entitySlot);
         if (currentOutput == null || currentOutput.getType().isAir()) {
             return 0;
         }
@@ -830,6 +881,14 @@ public class CookingPotGui implements InventoryHolder {
         }
 
         return Math.min(rightClick ? 1 : currentOutput.getAmount(), availableCursorSpace);
+    }
+
+    private ItemStack takeOutputFromSlot(int guiSlot, int requestedAmount) {
+        Integer entitySlot = slotMapping.get(guiSlot);
+        if (entitySlot == null) {
+            return null;
+        }
+        return blockEntity.takeOutputSlotPortionForDelivery(world, entitySlot, requestedAmount);
     }
 
     private void deliverOutputToPlayer(InventoryClickEvent event, Player player, ItemStack meal) {

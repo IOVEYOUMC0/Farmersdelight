@@ -16,6 +16,7 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.CookingRecipe;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.util.Transformation;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -46,10 +47,11 @@ public class StoveManager {
     private int tickBudget;
     private volatile Property<?> fireProperty;
 
-    private final double[][] slotOffsets = {
+    private static final double[][] DEFAULT_SLOT_OFFSETS = {
             {0.3, 1.02, 0.2}, {0.0, 1.02, 0.2}, {-0.3, 1.02, 0.2},
             {0.3, 1.02, -0.2}, {0.0, 1.02, -0.2}, {-0.3, 1.02, -0.2}
     };
+    private volatile double[][] slotOffsets = copySlotOffsets(DEFAULT_SLOT_OFFSETS);
 
     public static class StoveData {
         final Location location;
@@ -76,6 +78,7 @@ public class StoveManager {
     public void reloadConfig() {
         this.tickBudget = Math.max(1, plugin.getConfig().getInt(
                 "performance.stove-tick-budget", DEFAULT_TICK_BUDGET));
+        this.slotOffsets = loadSlotOffsets();
     }
 
     private void ensureTaskRunning() {
@@ -207,7 +210,8 @@ public class StoveManager {
     }
 
     public boolean isStoveStateBlock(Location location) {
-        return CustomBlockUtils.hasId(location, Constants.BLOCK_STOVE);
+        return CustomBlockUtils.hasBehavior(location, StoveCookingBlockBehavior.class)
+                || CustomBlockUtils.hasId(location, Constants.BLOCK_STOVE);
     }
 
     public void saveAllData() {
@@ -502,7 +506,8 @@ public class StoveManager {
             return;
         }
 
-        if (!CustomBlockUtils.hasId(state, Constants.BLOCK_STOVE)) {
+        if (!CustomBlockUtils.hasBehavior(state, StoveCookingBlockBehavior.class)
+                && !CustomBlockUtils.hasId(state, Constants.BLOCK_STOVE)) {
             debug(() -> "tick state: stove state id mismatch, skipping this tick at " + formatLocation(location));
             return;
         }
@@ -729,6 +734,75 @@ public class StoveManager {
             case WEST -> new double[]{-offset[2], offset[1], offset[0]};
             default -> new double[]{offset[0], offset[1], offset[2]};
         };
+    }
+
+    private double[][] loadSlotOffsets() {
+        double[][] loaded = copySlotOffsets(DEFAULT_SLOT_OFFSETS);
+        ConfigurationSection section = plugin.getConfig().getConfigurationSection("display-visuals.stove");
+        if (section == null) {
+            return loaded;
+        }
+
+        List<?> list = section.getList("slot-offsets");
+        if (list != null && !list.isEmpty()) {
+            for (int i = 0; i < Math.min(SLOT_COUNT, list.size()); i++) {
+                double[] parsed = parseOffsetVector(list.get(i));
+                if (parsed != null) {
+                    loaded[i] = parsed;
+                }
+            }
+            return loaded;
+        }
+
+        ConfigurationSection slotsSection = section.getConfigurationSection("slots");
+        if (slotsSection != null) {
+            for (int i = 0; i < SLOT_COUNT; i++) {
+                double[] parsed = parseOffsetVector(slotsSection.get(String.valueOf(i)));
+                if (parsed != null) {
+                    loaded[i] = parsed;
+                }
+            }
+        }
+        return loaded;
+    }
+
+    private static double[][] copySlotOffsets(double[][] source) {
+        double[][] copy = new double[source.length][];
+        for (int i = 0; i < source.length; i++) {
+            copy[i] = Arrays.copyOf(source[i], source[i].length);
+        }
+        return copy;
+    }
+
+    private double[] parseOffsetVector(Object value) {
+        try {
+            if (value instanceof List<?> list && list.size() >= 3) {
+                return new double[]{
+                        Double.parseDouble(list.get(0).toString()),
+                        Double.parseDouble(list.get(1).toString()),
+                        Double.parseDouble(list.get(2).toString())
+                };
+            }
+            if (value instanceof String string) {
+                String[] parts = string.replace("_", "").split(",");
+                if (parts.length >= 3) {
+                    return new double[]{
+                            Double.parseDouble(parts[0].trim()),
+                            Double.parseDouble(parts[1].trim()),
+                            Double.parseDouble(parts[2].trim())
+                    };
+                }
+            }
+            if (value instanceof ConfigurationSection vectorSection) {
+                return new double[]{
+                        vectorSection.getDouble("x", 0.0D),
+                        vectorSection.getDouble("y", 0.0D),
+                        vectorSection.getDouble("z", 0.0D)
+                };
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     private void removeVisual(Location location, StoveData stove, int slot) {

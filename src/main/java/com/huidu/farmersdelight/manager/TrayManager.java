@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.manager;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.block.behavior.CookingPotBlockBehavior;
+import com.huidu.farmersdelight.block.behavior.SkilletBlockBehavior;
 import com.huidu.farmersdelight.config.HeatSourceConfig;
 import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
@@ -244,10 +245,12 @@ public class TrayManager {
             return;
         }
 
+        Set<TraySyncKey> scheduledThisRun = new HashSet<>(syncBatchSize * 3);
         cookingPotSyncCursor = scheduleBatchedTraySyncs(
                 CookingPotBlockBehavior.getBlockEntityLocations(),
                 cookingPotSyncCursor,
-                true
+                true,
+                scheduledThisRun
         );
 
         SkilletManager skilletManager = plugin.getSkilletManager();
@@ -255,14 +258,16 @@ public class TrayManager {
             skilletSyncCursor = scheduleBatchedTraySyncs(
                     skilletManager.getTrackedLocations(),
                     skilletSyncCursor,
-                    true
+                    true,
+                    scheduledThisRun
             );
         }
 
         trayOwnerSyncCursor = scheduleBatchedTraySyncs(
                 getTrackedTrayOwnerLocations(),
                 trayOwnerSyncCursor,
-                true
+                true,
+                scheduledThisRun
         );
     }
 
@@ -271,17 +276,23 @@ public class TrayManager {
             return;
         }
 
-        scheduleBatchedTraySyncs(CookingPotBlockBehavior.getBlockEntityLocations(), 0, false);
+        Set<TraySyncKey> scheduledThisRun = new HashSet<>();
+        scheduleBatchedTraySyncs(CookingPotBlockBehavior.getBlockEntityLocations(), 0, false, scheduledThisRun);
 
         SkilletManager skilletManager = plugin.getSkilletManager();
         if (skilletManager != null) {
-            scheduleBatchedTraySyncs(skilletManager.getTrackedLocations(), 0, false);
+            scheduleBatchedTraySyncs(skilletManager.getTrackedLocations(), 0, false, scheduledThisRun);
         }
 
-        scheduleBatchedTraySyncs(getTrackedTrayOwnerLocations(), 0, false);
+        scheduleBatchedTraySyncs(getTrackedTrayOwnerLocations(), 0, false, scheduledThisRun);
     }
 
-    private int scheduleBatchedTraySyncs(Collection<Location> rawLocations, int cursor, boolean batched) {
+    private int scheduleBatchedTraySyncs(
+            Collection<Location> rawLocations,
+            int cursor,
+            boolean batched,
+            Set<TraySyncKey> scheduledThisRun
+    ) {
         if (rawLocations == null || rawLocations.isEmpty()) {
             return 0;
         }
@@ -296,22 +307,36 @@ public class TrayManager {
         int budget = batched ? Math.min(syncBatchSize, size) : size;
         for (int processed = 0; processed < budget; processed++) {
             Location location = locations.get((start + processed) % size);
-            scheduleTraySync(location);
+            scheduleTraySync(location, scheduledThisRun);
         }
 
         return batched ? (start + Math.max(1, budget)) % size : 0;
     }
 
     private void scheduleTraySync(Location location) {
+        scheduleTraySync(location, null);
+    }
+
+    private void scheduleTraySync(Location location, @Nullable Set<TraySyncKey> scheduledThisRun) {
         if (location == null || location.getWorld() == null) {
+            return;
+        }
+
+        TraySyncKey key = new TraySyncKey(
+                location.getWorld().getUID(),
+                location.getBlockX(),
+                location.getBlockY(),
+                location.getBlockZ()
+        );
+        if (scheduledThisRun != null && !scheduledThisRun.add(key)) {
             return;
         }
 
         Location normalized = new Location(
                 location.getWorld(),
-                location.getBlockX(),
-                location.getBlockY(),
-                location.getBlockZ()
+                key.x(),
+                key.y(),
+                key.z()
         );
         trackWorld(normalized.getWorld());
 
@@ -320,12 +345,6 @@ public class TrayManager {
             return;
         }
 
-        TraySyncKey key = new TraySyncKey(
-                normalized.getWorld().getUID(),
-                normalized.getBlockX(),
-                normalized.getBlockY(),
-                normalized.getBlockZ()
-        );
         if (!scheduledTraySyncs.add(key)) {
             return;
         }
@@ -377,7 +396,8 @@ public class TrayManager {
     }
 
     private boolean isSkilletBlock(Location location) {
-        return CustomBlockUtils.hasId(location, Constants.BLOCK_SKILLET);
+        return CustomBlockUtils.hasBehavior(location, SkilletBlockBehavior.class)
+                || CustomBlockUtils.hasId(location, Constants.BLOCK_SKILLET);
     }
 
     private boolean canPlaceTrayAt(Block block) {

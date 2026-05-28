@@ -31,6 +31,9 @@ public class GuiConfig {
     private final Map<String, GuiItem> items;
 
     private final int[] ingredientSlots;
+    private final int[] containerSlots;
+    private final int[] bufferSlots;
+    private final int[] outputSlots;
     private final int heatSlot;
     private final int containerSlot;
     private final int progressSlot;
@@ -58,6 +61,9 @@ public class GuiConfig {
         }
 
         List<Integer> ingredients = new ArrayList<>();
+        List<Integer> containers = new ArrayList<>();
+        List<Integer> buffers = new ArrayList<>();
+        List<Integer> outputs = new ArrayList<>();
         int heat = -1;
         int container = -1;
         int progress = -1;
@@ -76,10 +82,19 @@ public class GuiConfig {
                     switch (type) {
                         case "ingredient" -> ingredients.add(slot);
                         case "heat" -> heat = slot;
-                        case "container" -> container = slot;
+                        case "container" -> {
+                            containers.add(slot);
+                            if (container < 0) container = slot;
+                        }
                         case "progress" -> progress = slot;
-                        case "meal", "buffer" -> buffer = slot;
-                        case "output" -> output = slot;
+                        case "meal", "buffer" -> {
+                            buffers.add(slot);
+                            if (buffer < 0) buffer = slot;
+                        }
+                        case "output" -> {
+                            outputs.add(slot);
+                            if (output < 0) output = slot;
+                        }
                         case "recipe" -> recipe = slot;
                         default -> {
                         }
@@ -89,6 +104,9 @@ public class GuiConfig {
         }
 
         this.ingredientSlots = ingredients.stream().mapToInt(i -> i).toArray();
+        this.containerSlots = containers.stream().mapToInt(i -> i).toArray();
+        this.bufferSlots = buffers.stream().mapToInt(i -> i).toArray();
+        this.outputSlots = outputs.stream().mapToInt(i -> i).toArray();
         this.heatSlot = heat;
         this.containerSlot = container;
         this.progressSlot = progress;
@@ -226,6 +244,10 @@ public class GuiConfig {
         return containerSlot;
     }
 
+    public int[] getContainerSlots() {
+        return containerSlots;
+    }
+
     public int getProgressSlot() {
         return progressSlot;
     }
@@ -238,8 +260,16 @@ public class GuiConfig {
         return bufferSlot;
     }
 
+    public int[] getBufferSlots() {
+        return bufferSlots;
+    }
+
     public int getOutputSlot() {
         return outputSlot;
+    }
+
+    public int[] getOutputSlots() {
+        return outputSlots;
     }
 
     public int getRecipeSlot() {
@@ -289,19 +319,19 @@ public class GuiConfig {
     }
 
     public boolean isContainerSlot(int slot) {
-        return slot == containerSlot;
+        return contains(containerSlots, slot);
     }
 
     public boolean isMealSlot(int slot) {
-        return slot == bufferSlot;
+        return contains(bufferSlots, slot);
     }
 
     public boolean isBufferSlot(int slot) {
-        return slot == bufferSlot;
+        return contains(bufferSlots, slot);
     }
 
     public boolean isOutputSlot(int slot) {
-        return slot == outputSlot;
+        return contains(outputSlots, slot);
     }
 
     public boolean isHeatSlot(int slot) {
@@ -319,6 +349,15 @@ public class GuiConfig {
     public boolean isInteractiveSlot(int slot) {
         String type = getSlotType(slot);
         return "ingredient".equals(type) || "container".equals(type);
+    }
+
+    private static boolean contains(int[] slots, int slot) {
+        for (int candidate : slots) {
+            if (candidate == slot) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static class GuiItem {

@@ -42,13 +42,11 @@ public final class CookingPotBlockEntityController extends BlockEntityController
     private static final String COOKING_PROGRESS = "cooking_progress";
     private static final String COOKING_DURATION = "cooking_duration";
     private static final String MEAL_CONTAINER = "meal_container";
-    private static final int[] INGREDIENT_SLOTS = {0, 1, 2, 3, 4, 5};
-    private static final int[] CONTAINER_SLOT = {CookingPotBlockBehavior.SLOT_CONTAINER};
-    private static final int[] OUTPUT_SLOT = {CookingPotBlockBehavior.SLOT_OUTPUT};
 
     private final CookingPotBlockBehavior behavior;
-    private final Item[] items = new Item[CookingPotBlockBehavior.INVENTORY_SIZE];
-    private final double[] slotExperience = new double[CookingPotBlockBehavior.INVENTORY_SIZE];
+    private final CookingPotLayout layout;
+    private final Item[] items;
+    private final double[] slotExperience;
     private final Object container;
     private final Inventory inventory;
     private ItemStack mealContainer;
@@ -59,6 +57,9 @@ public final class CookingPotBlockEntityController extends BlockEntityController
     public CookingPotBlockEntityController(BlockEntity blockEntity, CookingPotBlockBehavior behavior) {
         super(blockEntity);
         this.behavior = behavior;
+        this.layout = behavior != null ? behavior.getLayout() : CookingPotLayout.DEFAULT;
+        this.items = new Item[this.layout.size()];
+        this.slotExperience = new double[this.layout.size()];
         Arrays.fill(this.items, Item.empty());
         this.container = CraftEngine.instance().platform().createContainer(this);
         this.inventory = CraftInventoryProxy.INSTANCE.newInstance(this.container);
@@ -86,7 +87,7 @@ public final class CookingPotBlockEntityController extends BlockEntityController
         synchronized (entity.getLock()) {
             data.put(ITEMS, ItemStackUtils.saveBukkitItemsAsListTag(entity.getInventoryInternal()));
             ListTag experienceTag = new ListTag();
-            for (int i = 0; i < CookingPotBlockBehavior.INVENTORY_SIZE; i++) {
+            for (int i = 0; i < entity.getInventorySize(); i++) {
                 double experience = entity.getSlotExperience(i);
                 if (experience <= 0.0D) continue;
                 CompoundTag slotTag = new CompoundTag();
@@ -134,9 +135,9 @@ public final class CookingPotBlockEntityController extends BlockEntityController
 
         int dataVersion = data.getInt(DATA_VERSION, Config.itemDataFixerUpperFallbackVersion());
         ItemStack[] items = ItemStackUtils.parseBukkitItems(Optional.ofNullable(data.getList(ITEMS)).orElseGet(ListTag::new),
-                CookingPotBlockBehavior.INVENTORY_SIZE,
+                entity.getInventorySize(),
                 dataVersion);
-        for (int i = 0; i < CookingPotBlockBehavior.INVENTORY_SIZE; i++) {
+        for (int i = 0; i < entity.getInventorySize(); i++) {
             entity.setInventorySlot(i, items[i]);
             entity.setSlotExperience(i, 0.0D);
         }
@@ -145,7 +146,7 @@ public final class CookingPotBlockEntityController extends BlockEntityController
         for (int i = 0; i < experienceTag.size(); i++) {
             CompoundTag slotTag = experienceTag.getCompound(i);
             int slot = slotTag.getInt(SLOT, -1);
-            if (slot < 0 || slot >= CookingPotBlockBehavior.INVENTORY_SIZE) continue;
+            if (slot < 0 || slot >= entity.getInventorySize()) continue;
             entity.setSlotExperience(slot, slotTag.getDouble(EXPERIENCE, 0.0D));
         }
 
@@ -187,7 +188,7 @@ public final class CookingPotBlockEntityController extends BlockEntityController
         CompoundTag data = new CompoundTag();
         data.putInt(DATA_VERSION, VersionHelper.WORLD_VERSION);
 
-        ItemStack[] bukkitItems = new ItemStack[CookingPotBlockBehavior.INVENTORY_SIZE];
+        ItemStack[] bukkitItems = new ItemStack[this.items.length];
         for (int i = 0; i < this.items.length; i++) {
             bukkitItems[i] = asBukkitStack(this.items[i]);
         }
@@ -414,20 +415,20 @@ public final class CookingPotBlockEntityController extends BlockEntityController
 
     @Override
     public boolean canPlaceItem(int slot, Item item) {
-        return slot >= 0 && slot < CookingPotBlockBehavior.INVENTORY_SIZE && slot != CookingPotBlockBehavior.SLOT_OUTPUT;
+        return isValidSlot(slot) && (layout.isInputSlot(slot) || layout.isContainerSlot(slot));
     }
 
     @Override
     public boolean canTakeItem(Object into, int slot, Item item) {
-        return slot == CookingPotBlockBehavior.SLOT_OUTPUT;
+        return layout.isOutputSlot(slot);
     }
 
     @Override
     public int[] getSlotsForFace(Direction direction) {
         return switch (direction) {
-            case UP -> INGREDIENT_SLOTS;
-            case DOWN -> OUTPUT_SLOT;
-            case NORTH, SOUTH, EAST, WEST -> CONTAINER_SLOT;
+            case UP -> layout.inputSlots();
+            case DOWN -> layout.outputSlots();
+            case NORTH, SOUTH, EAST, WEST -> layout.containerSlots();
             default -> new int[0];
         };
     }
@@ -435,15 +436,15 @@ public final class CookingPotBlockEntityController extends BlockEntityController
     @Override
     public boolean canPlaceItemThroughFace(int slot, Item stack, Direction direction) {
         return switch (direction) {
-            case UP -> slot >= 0 && slot < CookingPotBlockBehavior.SLOT_MEAL_DISPLAY;
-            case NORTH, SOUTH, EAST, WEST -> slot == CookingPotBlockBehavior.SLOT_CONTAINER;
+            case UP -> layout.isInputSlot(slot);
+            case NORTH, SOUTH, EAST, WEST -> layout.isContainerSlot(slot);
             default -> false;
         };
     }
 
     @Override
     public boolean canTakeItemThroughFace(int slot, Item stack, Direction direction) {
-        return direction == Direction.DOWN && slot == CookingPotBlockBehavior.SLOT_OUTPUT;
+        return direction == Direction.DOWN && layout.isOutputSlot(slot);
     }
 
     private boolean isValidSlot(int slot) {

@@ -84,7 +84,7 @@ public class StoveInteractListener implements Listener {
             logDebug(player, block, ceBlockId, "farmersdelight:stove", mainHand, stoveManager.findRecipeId(mainHand));
         }
 
-        if (!isStoveBlock(ceBlockId)) {
+        if (!isStoveBlock(block)) {
             return;
         }
         if (!WorldGuardCompat.canUse(player, block) || !WorldGuardCompat.canBuild(player, block)) {
@@ -166,8 +166,13 @@ public class StoveInteractListener implements Listener {
         return Constants.BLOCK_STOVE.equals(ceBlockId);
     }
 
+    private boolean isStoveBlock(Block block) {
+        return CustomBlockUtils.hasBehavior(block, StoveCookingBlockBehavior.class)
+                || CustomBlockUtils.hasId(block, Constants.BLOCK_STOVE);
+    }
+
     private boolean shouldLogAttempt(Block block, String ceBlockId) {
-        if (isStoveBlock(ceBlockId)) {
+        if (isStoveBlock(ceBlockId) || isStoveBlock(block)) {
             return true;
         }
         if (block == null) {

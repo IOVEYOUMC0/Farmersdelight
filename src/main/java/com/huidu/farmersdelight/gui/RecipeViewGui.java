@@ -50,6 +50,7 @@ public class RecipeViewGui implements InventoryHolder {
     private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
     private static final Pattern SHIFT_TAG_PATTERN = Pattern.compile("<shift:(-?\\d+)>");
     private static final Collator DISPLAY_NAME_COLLATOR = Collator.getInstance(Locale.SIMPLIFIED_CHINESE);
+    private static final int MAX_COMPACT_INGREDIENT_LINE_LENGTH = 42;
 
     static {
         ItemMeta meta = EMPTY_SLOT_BACKGROUND.getItemMeta();
@@ -61,6 +62,7 @@ public class RecipeViewGui implements InventoryHolder {
         MAIN_MENU,
         COOKING_POT_LIST,
         CUTTING_BOARD_LIST,
+        MATERIAL_LIST,
         RECIPE_DETAIL
     }
 
@@ -73,6 +75,8 @@ public class RecipeViewGui implements InventoryHolder {
     private int currentPage = 0;
     private volatile String selectedRecipeId = null;
     private boolean cookingPotMode = true;
+    private boolean craftableOnly = false;
+    private GuiState recipeBackState = GuiState.COOKING_POT_LIST;
     private volatile boolean closed = false;
     private volatile int currentToolIndex = 0;
     private volatile int currentToolPreviewIndex = 0;
@@ -88,6 +92,7 @@ public class RecipeViewGui implements InventoryHolder {
     private final Location cookingPotLocation;
     private final Consumer<Void> tickCallback;
     private boolean ignoreNextClose = false;
+    private FillButtonState fillButtonState = FillButtonState.READY;
 
     public RecipeViewGui(FarmersDelightPlugin plugin, Player player) {
         this(plugin, player, false, null);
@@ -155,7 +160,7 @@ public class RecipeViewGui implements InventoryHolder {
         RecipeViewGuiConfig.RecipeListConfig recipeList = RecipeViewGuiConfig.RecipeListConfig.fromConfig(null);
         RecipeViewGuiConfig.RecipeDetailConfig cookingPotDetail = RecipeViewGuiConfig.RecipeDetailConfig.createCookingPotDefault();
         RecipeViewGuiConfig.RecipeDetailConfig cuttingBoardDetail = RecipeViewGuiConfig.RecipeDetailConfig.createCuttingBoardDefault();
-        return new RecipeViewGuiConfig(mainMenu, recipeList, cookingPotDetail, cuttingBoardDetail, true, false);
+        return new RecipeViewGuiConfig(mainMenu, recipeList, cookingPotDetail, cuttingBoardDetail, true, false, 4);
     }
 
     public void open(Player player) {
@@ -178,6 +183,7 @@ public class RecipeViewGui implements InventoryHolder {
     public void openCookingPotRecipes(Player player) {
         state = GuiState.COOKING_POT_LIST;
         cookingPotMode = true;
+        recipeBackState = GuiState.COOKING_POT_LIST;
         currentPage = 0;
         open(player);
     }
@@ -185,6 +191,7 @@ public class RecipeViewGui implements InventoryHolder {
     public void openCuttingBoardRecipes(Player player) {
         state = GuiState.CUTTING_BOARD_LIST;
         cookingPotMode = false;
+        recipeBackState = GuiState.CUTTING_BOARD_LIST;
         currentPage = 0;
         open(player);
     }
@@ -278,12 +285,11 @@ public class RecipeViewGui implements InventoryHolder {
     }
 
     private void refresh(Player player) {
-        inventory.clear();
-
         switch (state) {
             case MAIN_MENU -> drawMainMenu(player);
             case COOKING_POT_LIST -> drawCookingPotList(player);
             case CUTTING_BOARD_LIST -> drawCuttingBoardList(player);
+            case MATERIAL_LIST -> drawMaterialList(player);
             case RECIPE_DETAIL -> drawRecipeDetail(player);
         }
     }
@@ -302,7 +308,10 @@ public class RecipeViewGui implements InventoryHolder {
 
     private void drawCookingPotList(Player player) {
         RecipeViewGuiConfig.RecipeListConfig listConfig = config.getRecipeList();
-        List<CookingPotRecipe> recipes = new ArrayList<>(plugin.getCookingPotRecipes().getRecipes().values());
+        List<CookingPotRecipe> recipes = new ArrayList<>(plugin.getCookingPotRecipes().getRecipes(getActiveCookingPotRecipeGroup()).values());
+        if (craftableOnly) {
+            recipes.removeIf(recipe -> !canCraftCookingPotRecipe(recipe));
+        }
         recipes.sort(java.util.Comparator.comparing(CookingPotRecipe::getId));
         drawRecipeList(player, listConfig, recipes, true);
     }
@@ -314,11 +323,43 @@ public class RecipeViewGui implements InventoryHolder {
         drawRecipeList(player, listConfig, recipes, false);
     }
 
+    private void drawMaterialList(Player player) {
+        CookingPotRecipe recipe = plugin.getCookingPotRecipes().getRecipe(getActiveCookingPotRecipeGroup(), selectedRecipeId);
+        RecipeViewGuiConfig.RecipeDetailConfig detailConfig = config.getCookingPotDetail();
+        inventory = Bukkit.createInventory(this, detailConfig.getSize(),
+                coloredTitle(resolveMenuTitle("recipe-detail-cooking-pot", "level_2_pot", detailConfig.getTitle(), Map.of())));
+        fillBackground(detailConfig);
+        setGuiItem(detailConfig, "back", detailConfig.getBackSlot());
+        if (recipe == null) {
+            return;
+        }
+
+        List<Integer> slots = detailConfig.getIngredientSlots();
+        List<RecipeIngredient> ingredients = recipe.getIngredients();
+        for (int i = 0; i < slots.size() && i < ingredients.size(); i++) {
+            inventory.setItem(slots.get(i), createIngredientDisplay(ingredients.get(i), player, slots.get(i)));
+        }
+
+        if (recipe.needsContainer() && recipe.getContainer() != null && detailConfig.getContainerSlot() >= 0) {
+            ItemStack container = recipe.getContainer().clone();
+            ItemMeta meta = container.getItemMeta();
+            meta.displayName(itemNameComponent(container, player).colorIfAbsent(NamedTextColor.AQUA));
+            meta.lore(List.of(colored("&7" + I18n.get("gui.recipe.container", player))));
+            container.setItemMeta(meta);
+            inventory.setItem(detailConfig.getContainerSlot(), container);
+        }
+    }
+
     private <T> void drawRecipeList(Player player, RecipeViewGuiConfig.RecipeListConfig listConfig, 
                                     List<T> recipes, boolean isCookingPot) {
         List<Integer> recipeSlots = listConfig.getRecipeSlots();
         int itemsPerPage = recipeSlots.size();
         int totalPages = Math.max(1, (int) Math.ceil(recipes.size() / (double) itemsPerPage));
+        if (currentPage < 0) {
+            currentPage = 0;
+        } else if (currentPage >= totalPages) {
+            currentPage = totalPages - 1;
+        }
 
         Map<String, String> titlePlaceholders = new HashMap<>();
         titlePlaceholders.put("page", String.valueOf(currentPage + 1));
@@ -355,6 +396,9 @@ public class RecipeViewGui implements InventoryHolder {
         }
 
         setGuiItem(listConfig, "back", listConfig.getBackSlot());
+        if (cookingPotMode) {
+            setFilterToggleItem(listConfig, player);
+        }
 
         if (listConfig.getInfoSlot() >= 0) {
             GuiConfig.GuiItem infoItem = listConfig.getItem("info");
@@ -391,7 +435,7 @@ public class RecipeViewGui implements InventoryHolder {
         fillBackground(detailConfig);
 
         if (cookingPotMode) {
-            CookingPotRecipe recipe = plugin.getCookingPotRecipes().getRecipe(selectedRecipeId);
+            CookingPotRecipe recipe = plugin.getCookingPotRecipes().getRecipe(getActiveCookingPotRecipeGroup(), selectedRecipeId);
             if (recipe != null) {
                 drawCookingPotDetail(recipe, detailConfig, player);
             }
@@ -403,6 +447,60 @@ public class RecipeViewGui implements InventoryHolder {
         }
 
         setGuiItem(detailConfig, "back", detailConfig.getBackSlot());
+        if (cookingPotMode) {
+            drawCookingPotDetailActions(detailConfig, player);
+        }
+    }
+
+    private void setFilterToggleItem(RecipeViewGuiConfig.RecipeListConfig listConfig, Player player) {
+        int slot = listConfig.getFilterSlot();
+        if (slot < 0) {
+            return;
+        }
+        GuiConfig.GuiItem configured = listConfig.getItem(craftableOnly ? "filter-on" : "filter-off");
+        if (configured != null) {
+            inventory.setItem(slot, configured.createItem());
+            return;
+        }
+        ItemStack item = new ItemStack(craftableOnly ? Material.LIME_DYE : Material.GRAY_DYE);
+        ItemMeta meta = item.getItemMeta();
+        meta.displayName(colored(craftableOnly
+                ? "&a" + I18n.get("gui.recipe.filter_craftable_on", player)
+                : "&7" + I18n.get("gui.recipe.filter_craftable_off", player)));
+        meta.lore(List.of(colored("&e" + I18n.get("gui.recipe.click_to_toggle", player))));
+        item.setItemMeta(meta);
+        inventory.setItem(slot, item);
+    }
+
+    private void drawCookingPotDetailActions(RecipeViewGuiConfig.RecipeDetailConfig detailConfig, Player player) {
+        clearDetailActionSlot(detailConfig, detailConfig.getFilterSlot());
+        clearDetailActionSlot(detailConfig, detailConfig.getMaterialsSlot());
+        if (fromCookingPot) {
+            setFillButton(detailConfig, player);
+        }
+    }
+
+    private void setFillButton(RecipeViewGuiConfig.RecipeDetailConfig detailConfig, Player player) {
+        int slot = detailConfig.getFillSlot();
+        if (slot < 0) {
+            return;
+        }
+        GuiConfig.GuiItem configured = detailConfig.getItem(fillButtonState.itemKey());
+        if (configured == null) {
+            configured = detailConfig.getItem("fill");
+        }
+        if (configured == null) {
+            return;
+        }
+        inventory.setItem(slot, configured.createItem(fillButtonState.placeholders(player)));
+    }
+
+    private void clearDetailActionSlot(RecipeViewGuiConfig.RecipeDetailConfig detailConfig, int slot) {
+        if (slot < 0 || slot >= inventory.getSize()) {
+            return;
+        }
+        GuiConfig.GuiItem background = detailConfig.getItem("background");
+        inventory.setItem(slot, background == null ? EMPTY_SLOT_BACKGROUND : background.createItem());
     }
 
     private void drawCookingPotDetail(CookingPotRecipe recipe, RecipeViewGuiConfig.RecipeDetailConfig detailConfig, Player player) {
@@ -714,12 +812,19 @@ public class RecipeViewGui implements InventoryHolder {
 
         List<Component> lore = new ArrayList<>();
         lore.add(colored("&7" + I18n.get("gui.recipe.ingredients", player) + ":"));
-        for (RecipeIngredient ingredient : recipe.getIngredients()) {
-            appendIndentedIngredientLore(lore, ingredient, player);
+        List<RecipeIngredient> ingredients = recipe.getIngredients();
+        int displayedIngredients = Math.min(ingredients.size(), config.getRecipeListMaxPreviewIngredients());
+        for (int i = 0; i < displayedIngredients; i++) {
+            appendCompactIngredientLore(lore, ingredients.get(i), player);
         }
-        if (recipe.needsContainer()) {
+        appendMoreIngredientsLine(lore, ingredients.size() - displayedIngredients, player);
+        if (recipe.needsContainer() && recipe.getContainer() != null) {
             lore.add(colored("&7" + I18n.get("gui.recipe.container", player) + ": ")
                     .append(itemNameComponent(recipe.getContainer(), player).colorIfAbsent(NamedTextColor.AQUA)));
+        }
+        if (recipe.getExperience() > 0.0D || recipe.getCookTime() > 0) {
+            lore.add(colored("&7" + I18n.get("gui.recipe.cook_time", player) + ": &b"
+                    + (recipe.getCookTime() / 20) + i18nOrDefault("gui.recipe.seconds_suffix", player, "s")));
         }
         lore.add(Component.text(""));
         lore.add(colored("&e" + I18n.get("gui.recipe.click_to_view", player)));
@@ -750,6 +855,24 @@ public class RecipeViewGui implements InventoryHolder {
         meta.lore(lore);
         input.setItemMeta(meta);
         return input;
+    }
+
+    private void appendCompactIngredientLore(List<Component> lore, RecipeIngredient ingredient, Player player) {
+        for (String line : wrapPlainText(formatIngredient(ingredient, player), MAX_COMPACT_INGREDIENT_LINE_LENGTH)) {
+            lore.add(colored("&8- &f" + line));
+        }
+    }
+
+    private void appendMoreIngredientsLine(List<Component> lore, int remainingCount, Player player) {
+        if (remainingCount <= 0) {
+            return;
+        }
+        lore.add(colored(I18n.formatNamed(
+                "gui.recipe.more_ingredients",
+                player,
+                Map.of("count", String.valueOf(remainingCount))
+        )));
+        lore.add(colored("&e" + I18n.get("gui.recipe.click_to_view_materials", player)));
     }
 
     private void appendIndentedIngredientLore(List<Component> lore, RecipeIngredient ingredient, Player player) {
@@ -1031,6 +1154,13 @@ public class RecipeViewGui implements InventoryHolder {
         return unknownRecipeText(player);
     }
 
+    private Component formatIngredientComponent(RecipeIngredient ingredient, Player player) {
+        if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
+            return itemNameComponent(createItemFromKey(itemIngredient.key()), player);
+        }
+        return Component.text(formatIngredient(ingredient, player));
+    }
+
     private List<Component> formatIngredientLoreLines(RecipeIngredient ingredient, Player player) {
         List<Component> lines = new ArrayList<>();
         if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
@@ -1081,6 +1211,36 @@ public class RecipeViewGui implements InventoryHolder {
             builder.append(", +").append(remainingCount);
         }
         return builder.toString();
+    }
+
+    private List<String> wrapPlainText(String text, int maxLength) {
+        if (text == null || text.isBlank()) {
+            return List.of("");
+        }
+        if (maxLength <= 0 || text.length() <= maxLength) {
+            return List.of(text);
+        }
+
+        List<String> lines = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        for (String token : text.split(",\\s*")) {
+            if (token.isBlank()) {
+                continue;
+            }
+            int extra = current.isEmpty() ? token.length() : token.length() + 2;
+            if (!current.isEmpty() && current.length() + extra > maxLength) {
+                lines.add(current.toString());
+                current.setLength(0);
+            }
+            if (!current.isEmpty()) {
+                current.append(", ");
+            }
+            current.append(token);
+        }
+        if (!current.isEmpty()) {
+            lines.add(current.toString());
+        }
+        return lines.isEmpty() ? List.of(text) : lines;
     }
 
     private Component formatToolListComponent(List<CuttingBoardRecipe.ToolRequirement> tools, Player player) {
@@ -1300,7 +1460,8 @@ public class RecipeViewGui implements InventoryHolder {
             case MAIN_MENU -> handleMainMenuClick(player, slot);
             case COOKING_POT_LIST -> handleCookingPotListClick(player, slot);
             case CUTTING_BOARD_LIST -> handleCuttingBoardListClick(player, slot);
-            case RECIPE_DETAIL -> handleRecipeDetailClick(player, slot);
+            case MATERIAL_LIST -> handleMaterialListClick(player, slot);
+            case RECIPE_DETAIL -> handleRecipeDetailClick(player, slot, event.isShiftClick());
         }
     }
 
@@ -1331,10 +1492,20 @@ public class RecipeViewGui implements InventoryHolder {
 
     private void handleCookingPotListClick(Player player, int slot) {
         RecipeViewGuiConfig.RecipeListConfig listConfig = config.getRecipeList();
-        List<CookingPotRecipe> recipes = new ArrayList<>(plugin.getCookingPotRecipes().getRecipes().values());
+        List<CookingPotRecipe> recipes = new ArrayList<>(plugin.getCookingPotRecipes().getRecipes(getActiveCookingPotRecipeGroup()).values());
+        if (craftableOnly) {
+            recipes.removeIf(recipe -> !canCraftCookingPotRecipe(recipe));
+        }
         recipes.sort(java.util.Comparator.comparing(CookingPotRecipe::getId));
         
         handleRecipeListClick(player, slot, listConfig, recipes, true);
+    }
+
+    private void handleMaterialListClick(Player player, int slot) {
+        RecipeViewGuiConfig.RecipeDetailConfig detailConfig = config.getCookingPotDetail();
+        if (slot == detailConfig.getBackSlot()) {
+            navigateToState(player, GuiState.RECIPE_DETAIL);
+        }
     }
 
     private void handleCuttingBoardListClick(Player player, int slot) {
@@ -1355,6 +1526,10 @@ public class RecipeViewGui implements InventoryHolder {
             changePage(player, -1);
         } else if (slot == listConfig.getNextPageSlot() && currentPage < totalPages - 1) {
             changePage(player, 1);
+        } else if (isCookingPot && slot == listConfig.getFilterSlot()) {
+            craftableOnly = !craftableOnly;
+            currentPage = 0;
+            refreshContentsInPlace(player);
         } else if (slot == listConfig.getBackSlot()) {
             if (fromCookingPot && isCookingPot) {
                 closeGui(player);
@@ -1365,7 +1540,7 @@ public class RecipeViewGui implements InventoryHolder {
         } else if (recipeSlots.contains(slot)) {
             int slotIndex = recipeSlots.indexOf(slot);
             int recipeIndex = currentPage * itemsPerPage + slotIndex;
-            if (recipeIndex < recipes.size()) {
+        if (recipeIndex < recipes.size()) {
                 String recipeId;
                 if (isCookingPot) {
                     recipeId = ((CookingPotRecipe) recipes.get(recipeIndex)).getId();
@@ -1374,20 +1549,30 @@ public class RecipeViewGui implements InventoryHolder {
                 }
                 selectedRecipeId = recipeId;
                 cookingPotMode = isCookingPot;
+                fillButtonState = FillButtonState.READY;
+                recipeBackState = isCookingPot ? GuiState.COOKING_POT_LIST : GuiState.CUTTING_BOARD_LIST;
                 navigateToState(player, GuiState.RECIPE_DETAIL);
             }
         }
     }
 
-    private void handleRecipeDetailClick(Player player, int slot) {
+    private void handleRecipeDetailClick(Player player, int slot, boolean shiftClick) {
         RecipeViewGuiConfig.RecipeDetailConfig detailConfig = getActiveDetailConfig();
         
         if (slot == detailConfig.getBackSlot()) {
-        GuiState targetState = GuiState.CUTTING_BOARD_LIST;
-        if (cookingPotMode) {
-            targetState = GuiState.COOKING_POT_LIST;
+            navigateToState(player, recipeBackState);
+            return;
         }
-            navigateToState(player, targetState);
+
+        if (cookingPotMode && slot == detailConfig.getFillSlot()) {
+            FillResult result = fillCookingPotFromInventory(player, shiftClick);
+            if (result.returnToPot()) {
+                closeGui(player);
+                returnToCookingPot(player);
+            } else {
+                fillButtonState = result.buttonState();
+                refreshContentsInPlace(player);
+            }
             return;
         }
 
@@ -1408,6 +1593,8 @@ public class RecipeViewGui implements InventoryHolder {
         selectedRecipeId = linkedRecipe.recipeId();
         cookingPotMode = linkedRecipe.cookingPot();
         currentToolIndex = 0;
+        fillButtonState = FillButtonState.READY;
+        // Keep recipeBackState so linked recipe details return to the original list.
         navigateToState(player, GuiState.RECIPE_DETAIL);
     }
 
@@ -1432,7 +1619,7 @@ public class RecipeViewGui implements InventoryHolder {
     }
 
     private LinkedRecipe findCookingPotRecipeByResult(ItemStack item) {
-        for (CookingPotRecipe recipe : plugin.getCookingPotRecipes().getRecipes().values()) {
+        for (CookingPotRecipe recipe : plugin.getCookingPotRecipes().getRecipes(getActiveCookingPotRecipeGroup()).values()) {
             if (sameRecipeItem(recipe.getResult(), item)) {
                 return new LinkedRecipe(recipe.getId(), true);
             }
@@ -1467,11 +1654,313 @@ public class RecipeViewGui implements InventoryHolder {
 
     private record LinkedRecipe(String recipeId, boolean cookingPot) {}
 
+    private enum FillButtonState {
+        READY("fill", "gui.recipe.fill_ready"),
+        FILLED("fill-success", "gui.recipe.ingredients_filled"),
+        MISSING_INGREDIENTS("fill-missing", "gui.recipe.missing_ingredients"),
+        INVENTORY_FULL("fill-inventory-full", "gui.recipe.inventory_full");
+
+        private final String itemKey;
+        private final String messageKey;
+
+        FillButtonState(String itemKey, String messageKey) {
+            this.itemKey = itemKey;
+            this.messageKey = messageKey;
+        }
+
+        String itemKey() {
+            return itemKey;
+        }
+
+        Map<String, String> placeholders(Player player) {
+            return Map.of("status", I18n.get(messageKey, player));
+        }
+    }
+
+    private record FillResult(boolean returnToPot, FillButtonState buttonState) {
+        static FillResult returnToPot(FillButtonState buttonState) {
+            return new FillResult(true, buttonState);
+        }
+
+        static FillResult stay(FillButtonState buttonState) {
+            return new FillResult(false, buttonState);
+        }
+    }
+
+    private boolean canCraftCookingPotRecipe(CookingPotRecipe recipe) {
+        var entity = cookingPotLocation == null ? null : CookingPotBlockBehavior.getBlockEntity(cookingPotLocation);
+        if (entity != null && !canRecipeFitCookingPot(recipe, entity)) {
+            return false;
+        }
+        List<ItemStack> available = getAvailableCookingPotItems();
+        ItemStack container = findContainerForRecipe(recipe, available);
+        return plugin.getCookingPotRecipes().canCraft(recipe, available, container);
+    }
+
+    private List<ItemStack> getAvailableCookingPotItems() {
+        List<ItemStack> items = new ArrayList<>();
+        for (ItemStack item : player.getInventory().getStorageContents()) {
+            if (item != null && !item.getType().isAir()) {
+                items.add(item.clone());
+            }
+        }
+        if (cookingPotLocation != null) {
+            var entity = CookingPotBlockBehavior.getBlockEntity(cookingPotLocation);
+            if (entity != null) {
+                for (ItemStack item : entity.getInventory()) {
+                    if (item != null && !item.getType().isAir()) {
+                        items.add(item.clone());
+                    }
+                }
+            }
+        }
+        return items;
+    }
+
+    private ItemStack findContainerForRecipe(CookingPotRecipe recipe, List<ItemStack> available) {
+        if (recipe == null || !recipe.needsContainer()) {
+            return null;
+        }
+        ItemStack required = recipe.getContainer();
+        if (required == null || required.getType().isAir()) {
+            return null;
+        }
+        for (ItemStack item : available) {
+            if (sameRecipeItem(required, item)) {
+                return item;
+            }
+        }
+        return null;
+    }
+
+    private FillResult fillCookingPotFromInventory(Player player, boolean fillAll) {
+        if (!fromCookingPot || cookingPotLocation == null || selectedRecipeId == null) {
+            return FillResult.stay(FillButtonState.MISSING_INGREDIENTS);
+        }
+        CookingPotRecipe recipe = plugin.getCookingPotRecipes().getRecipe(getActiveCookingPotRecipeGroup(), selectedRecipeId);
+        var entity = CookingPotBlockBehavior.getBlockEntity(cookingPotLocation);
+        if (recipe == null || entity == null) {
+            return FillResult.stay(FillButtonState.MISSING_INGREDIENTS);
+        }
+
+        List<ItemStack> potItems = new ArrayList<>();
+        for (ItemStack item : entity.getInventory()) {
+            if (item != null && !item.getType().isAir()) {
+                potItems.add(item.clone());
+            }
+        }
+
+        if (!canFitItemsInInventory(player, potItems)) {
+            return FillResult.stay(FillButtonState.INVENTORY_FULL);
+        }
+
+        List<InventorySelection> selected = selectRecipeItemsFromInventory(recipe, entity.getLayout().inputSlots().length, fillAll);
+        InventorySelection selectedContainer = entity.getLayout().containerSlots().length > 0
+                ? selectRecipeContainerFromInventory(recipe, selected)
+                : null;
+
+        if (selected.isEmpty() && selectedContainer == null) {
+            return FillResult.stay(FillButtonState.MISSING_INGREDIENTS);
+        }
+
+        player.getInventory().addItem(potItems.toArray(ItemStack[]::new));
+        for (int i = 0; i < entity.getInventorySize(); i++) {
+            entity.setInventorySlot(i, null);
+        }
+        entity.setMealContainer(null);
+        entity.setCookingProgress(0);
+        for (InventorySelection selection : selected) {
+            ItemStack source = player.getInventory().getItem(selection.slot());
+            if (source == null || source.getType().isAir()) {
+                continue;
+            }
+            source.setAmount(source.getAmount() - 1);
+            if (source.getAmount() <= 0) {
+                player.getInventory().setItem(selection.slot(), null);
+            }
+            ItemStack moved = selection.item().clone();
+            moved.setAmount(1);
+            ItemStack leftover = entity.insertIngredientStack(moved);
+            returnLeftoverToPlayer(player, leftover);
+        }
+        if (selectedContainer != null) {
+            ItemStack source = player.getInventory().getItem(selectedContainer.slot());
+            if (source == null || source.getType().isAir()) {
+                return FillResult.stay(FillButtonState.MISSING_INGREDIENTS);
+            }
+            source.setAmount(source.getAmount() - 1);
+            if (source.getAmount() <= 0) {
+                player.getInventory().setItem(selectedContainer.slot(), null);
+            }
+            ItemStack container = selectedContainer.item().clone();
+            container.setAmount(1);
+            ItemStack leftover = entity.insertContainerStack(container);
+            returnLeftoverToPlayer(player, leftover);
+        }
+        return FillResult.returnToPot(FillButtonState.FILLED);
+    }
+
+    private boolean canRecipeFitCookingPot(CookingPotRecipe recipe, com.huidu.farmersdelight.block.behavior.CookingPotBlockEntity entity) {
+        if (recipe == null || entity == null) {
+            return false;
+        }
+        if (recipe.getIngredients().size() > entity.getLayout().inputSlots().length) {
+            return false;
+        }
+        return true;
+    }
+
+    private void returnLeftoverToPlayer(Player player, ItemStack leftover) {
+        if (leftover == null || leftover.getType().isAir()) {
+            return;
+        }
+        Map<Integer, ItemStack> returned = player.getInventory().addItem(leftover);
+        for (ItemStack item : returned.values()) {
+            player.getWorld().dropItemNaturally(player.getLocation(), item);
+        }
+    }
+
+    private boolean canFitItemsInInventory(Player player, List<ItemStack> items) {
+        if (items == null || items.isEmpty()) {
+            return true;
+        }
+        ItemStack[] simulated = player.getInventory().getStorageContents();
+        for (int i = 0; i < simulated.length; i++) {
+            simulated[i] = simulated[i] == null ? null : simulated[i].clone();
+        }
+        for (ItemStack item : items) {
+            if (item == null || item.getType().isAir()) {
+                continue;
+            }
+            ItemStack remaining = item.clone();
+            for (ItemStack slotItem : simulated) {
+                if (remaining.getAmount() <= 0) {
+                    break;
+                }
+                if (slotItem == null || slotItem.getType().isAir() || !slotItem.isSimilar(remaining)) {
+                    continue;
+                }
+                int space = slotItem.getMaxStackSize() - slotItem.getAmount();
+                if (space <= 0) {
+                    continue;
+                }
+                int moved = Math.min(space, remaining.getAmount());
+                slotItem.setAmount(slotItem.getAmount() + moved);
+                remaining.setAmount(remaining.getAmount() - moved);
+            }
+            for (int i = 0; i < simulated.length && remaining.getAmount() > 0; i++) {
+                ItemStack slotItem = simulated[i];
+                if (slotItem != null && !slotItem.getType().isAir()) {
+                    continue;
+                }
+                ItemStack placed = remaining.clone();
+                placed.setAmount(Math.min(remaining.getAmount(), placed.getMaxStackSize()));
+                simulated[i] = placed;
+                remaining.setAmount(remaining.getAmount() - placed.getAmount());
+            }
+            if (remaining.getAmount() > 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private List<InventorySelection> selectRecipeItemsFromInventory(CookingPotRecipe recipe, int maxIngredients, boolean fillAll) {
+        List<InventorySelection> available = new ArrayList<>();
+        ItemStack[] contents = player.getInventory().getStorageContents();
+        for (int slot = 0; slot < contents.length; slot++) {
+            ItemStack item = contents[slot];
+            if (item == null || item.getType().isAir()) {
+                continue;
+            }
+            for (int amount = 0; amount < item.getAmount(); amount++) {
+                ItemStack one = item.clone();
+                one.setAmount(1);
+                available.add(new InventorySelection(slot, one));
+            }
+        }
+
+        List<InventorySelection> selected = new ArrayList<>();
+        int maxSelections = Math.max(0, maxIngredients);
+        List<RecipeIngredient> ingredients = recipe.getIngredients();
+        if (ingredients.isEmpty() || maxSelections <= 0) {
+            return selected;
+        }
+
+        boolean selectedInPass;
+        do {
+            selectedInPass = false;
+            for (RecipeIngredient ingredient : ingredients) {
+                if (selected.size() >= maxSelections) {
+                    break;
+                }
+                int matchIndex = findMatchingAvailableIngredient(available, ingredient);
+                if (matchIndex < 0) {
+                    continue;
+                }
+                selected.add(available.remove(matchIndex));
+                selectedInPass = true;
+            }
+        } while (fillAll && selectedInPass && selected.size() < maxSelections);
+        return selected;
+    }
+
+    private int findMatchingAvailableIngredient(List<InventorySelection> available, RecipeIngredient ingredient) {
+        for (int i = 0; i < available.size(); i++) {
+            if (plugin.getCookingPotRecipes().matchesIngredient(available.get(i).item(), ingredient)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private InventorySelection selectRecipeContainerFromInventory(CookingPotRecipe recipe, List<InventorySelection> reservedItems) {
+        if (recipe == null || !recipe.needsContainer()) {
+            return null;
+        }
+        ItemStack required = recipe.getContainer();
+        if (required == null || required.getType().isAir()) {
+            return null;
+        }
+        Map<Integer, Integer> reservedBySlot = new HashMap<>();
+        if (reservedItems != null) {
+            for (InventorySelection selection : reservedItems) {
+                reservedBySlot.merge(selection.slot(), 1, Integer::sum);
+            }
+        }
+        ItemStack[] contents = player.getInventory().getStorageContents();
+        for (int slot = 0; slot < contents.length; slot++) {
+            ItemStack item = contents[slot];
+            if (item == null || item.getType().isAir()) {
+                continue;
+            }
+            if (item.getAmount() <= reservedBySlot.getOrDefault(slot, 0)) {
+                continue;
+            }
+            if (sameRecipeItem(required, item)) {
+                ItemStack selected = item.clone();
+                selected.setAmount(1);
+                return new InventorySelection(slot, selected);
+            }
+        }
+        return null;
+    }
+
+    private record InventorySelection(int slot, ItemStack item) {}
+
     private RecipeViewGuiConfig.RecipeDetailConfig getActiveDetailConfig() {
         if (cookingPotMode) {
             return config.getCookingPotDetail();
         }
         return config.getCuttingBoardDetail();
+    }
+
+    private String getActiveCookingPotRecipeGroup() {
+        if (!fromCookingPot || cookingPotLocation == null) {
+            return null;
+        }
+        CookingPotBlockBehavior behavior = CookingPotBlockBehavior.getBlockBehavior(cookingPotLocation);
+        return behavior == null ? null : behavior.getCustomRecipeGroupId();
     }
 
     private void navigateToState(Player player, GuiState newState) {
@@ -1486,10 +1975,32 @@ public class RecipeViewGui implements InventoryHolder {
         reopenInventory(player);
     }
 
-    private void changePage(Player player, int delta) {
-        currentPage += delta;
+    private void refreshAndReopen(Player player) {
         refresh(player);
         reopenInventory(player);
+    }
+
+    private void refreshContentsInPlace(Player player) {
+        Inventory visibleInventory = inventory;
+        refresh(player);
+        Inventory renderedInventory = inventory;
+        if (visibleInventory == null || renderedInventory == null
+                || visibleInventory.getSize() != renderedInventory.getSize()
+                || player.getOpenInventory().getTopInventory().getHolder() != this) {
+            reopenInventory(player);
+            return;
+        }
+
+        for (int slot = 0; slot < visibleInventory.getSize(); slot++) {
+            visibleInventory.setItem(slot, renderedInventory.getItem(slot));
+        }
+        inventory = visibleInventory;
+        player.updateInventory();
+    }
+
+    private void changePage(Player player, int delta) {
+        currentPage += delta;
+        refreshAndReopen(player);
     }
 
     private void reopenInventory(Player player) {
@@ -1552,6 +2063,20 @@ public class RecipeViewGui implements InventoryHolder {
         activeGuis.clear();
         cachedConfig = null;
         itemCache.clear();
+    }
+
+    public static void closeAllOpenGuis() {
+        for (Map.Entry<UUID, RecipeViewGui> entry : new ArrayList<>(activeGuis.entrySet())) {
+            RecipeViewGui gui = entry.getValue();
+            Player player = Bukkit.getPlayer(entry.getKey());
+            if (gui != null && !gui.closed) {
+                gui.close();
+            }
+            activeGuis.remove(entry.getKey());
+            if (player != null && player.isOnline()) {
+                player.closeInventory();
+            }
+        }
     }
 
     private void ensureListenerRegistered() {

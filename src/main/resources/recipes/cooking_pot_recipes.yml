@@ -14,6 +14,20 @@
 #     experience: <number>   # Optional, defaults to 0
 #     cook-time: <ticks>     # Optional, defaults to 200
 #     category: <type>       # Optional: meals, drinks, misc
+#
+# Custom cooking pot recipes:
+#   Use custom_cooking_pot_recipes.<id> where <id> matches behavior.custom.id
+#   in the CraftEngine block behavior. The recipe body is the same as above,
+#   but custom pots may use more than 6 ingredients when their input-slots allow it.
+# Example:
+# custom_cooking_pot_recipes:
+#   custom:
+#     large_stew:
+#       ingredients:
+#         - "minecraft:beef"
+#         - "minecraft:carrot"
+#       container: "minecraft:bowl"
+#       result: "farmersdelight:beef_stew"
 
 cooking_pot_recipes:
   # ========================================
