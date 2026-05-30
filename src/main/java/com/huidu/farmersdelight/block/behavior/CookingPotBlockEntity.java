@@ -557,8 +557,19 @@ public class CookingPotBlockEntity {
                 return false;
             }
 
+            List<ItemStack> inputItems = getIngredientSlotsInternal();
+            ItemStack containerItem = getContainerItemInternal();
+            CookingPotRecipe previousRecipe = currentRecipe.get();
+            if (previousRecipe != null
+                    && instance.getCookingPotRecipes().canCraft(previousRecipe, inputItems, containerItem)) {
+                lastRecipeId.set(previousRecipe.getId());
+                lastRecipeFingerprint.set(buildRecipeFingerprint(previousRecipe));
+                currentRecipe.set(previousRecipe);
+                return true;
+            }
+
             CookingPotRecipe recipe = instance.getCookingPotRecipes()
-                    .matchRecipe(getIngredientSlotsInternal(), getContainerItemInternal(), recipeGroupId);
+                    .matchRecipe(inputItems, containerItem, recipeGroupId);
 
             if (recipe == null) {
                 currentRecipe.set(null);
@@ -568,16 +579,14 @@ public class CookingPotBlockEntity {
             }
 
             String newRecipeId = recipe.getId();
-            String newFingerprint = buildRecipeFingerprint(recipe);
             String lastId = lastRecipeId.get();
-            String lastFingerprint = lastRecipeFingerprint.get();
 
-            if (lastId != null && (!newRecipeId.equals(lastId) || !newFingerprint.equals(lastFingerprint))) {
+            if (lastId != null && !newRecipeId.equals(lastId)) {
                 cookingProgress.set(0);
             }
 
             lastRecipeId.set(newRecipeId);
-            lastRecipeFingerprint.set(newFingerprint);
+            lastRecipeFingerprint.set(buildRecipeFingerprint(recipe));
 
             currentRecipe.set(recipe);
             return true;
@@ -1218,6 +1227,23 @@ public class CookingPotBlockEntity {
 
     public CookingPotRecipe getCurrentRecipe() {
         return currentRecipe.get();
+    }
+
+    public String debugInputSummary() {
+        synchronized (inventoryLock) {
+            List<String> parts = new ArrayList<>();
+            for (int slot : layout.inputSlots()) {
+                ItemStack item = inventory[slot];
+                if (item != null && !item.getType().isAir()) {
+                    parts.add(slot + "=" + ItemUtils.resolveItemId(item) + "x" + item.getAmount());
+                }
+            }
+            ItemStack container = getContainerItemInternal();
+            if (container != null && !container.getType().isAir()) {
+                parts.add("container=" + ItemUtils.resolveItemId(container) + "x" + container.getAmount());
+            }
+            return parts.isEmpty() ? "empty" : String.join(",", parts);
+        }
     }
 
     private record SplitItem(ItemStack item, double experience) {

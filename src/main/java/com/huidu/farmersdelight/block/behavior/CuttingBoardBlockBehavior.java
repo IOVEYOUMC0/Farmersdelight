@@ -6,7 +6,6 @@ import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.recipe.CuttingBoardRecipe;
 import com.huidu.farmersdelight.util.*;
 import fr.ateastudio.farmersdelight.api.event.ProfessionCookingExperienceEvent;
-import net.momirealms.craftengine.bukkit.world.BukkitWorldManager;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
@@ -148,6 +147,9 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
                 entity.removeDisplayEntity();
             }
         }
+        if (removeStoredData) {
+            CustomBlockUtils.removeCraftEngineBlockEntity(world, posKey);
+        }
     }
 
     public static void cleanupWorld(UUID worldId) {
@@ -246,16 +248,23 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
             return;
         }
 
+        CuttingBoardBlockEntity entity = getBlockEntity(world, posKey);
+        if (notifyControllerChanged(world, posKey, entity)) {
+            return;
+        }
+
         markBlockEntityDirty(world, posKey);
     }
 
-    public static void markBlockEntityDirty(World world, BlockPosKey posKey) {
-        if (world == null || posKey == null) return;
+    private static boolean notifyControllerChanged(World world, BlockPosKey posKey, CuttingBoardBlockEntity entity) {
+        CuttingBoardBlockBehavior behavior = world != null && posKey != null ? getBlockBehavior(posKey.toLocation(world)) : null;
+        Integer controllerId = behavior == null ? null : behavior.controllerId;
+        return CustomBlockUtils.notifyControllerChanged(world, posKey, CuttingBoardBlockEntityController.class, controllerId,
+                controller -> controller.setChangedFromEntity(entity));
+    }
 
-        CEWorld ceWorld = BukkitWorldManager.instance().getWorld(world.getUID());
-        if (ceWorld != null) {
-            ceWorld.blockEntityChanged(posKey.toBlockPos());
-        }
+    public static void markBlockEntityDirty(World world, BlockPosKey posKey) {
+        CustomBlockUtils.markBlockEntityDirty(world, posKey);
     }
 
     public static void loadBlockEntity(World world, BlockPos pos) {
@@ -342,11 +351,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         if (state == null) {
             return null;
         }
-        var behavior = state.behavior();
-        if (behavior instanceof CuttingBoardBlockBehavior cuttingBoardBehavior) {
-            return cuttingBoardBehavior;
-        }
-        return null;
+        return CustomBlockUtils.getBehavior(state, CuttingBoardBlockBehavior.class);
     }
 
     private static String getArgumentString(Map<String, Object> arguments, String key, String defaultValue) {
@@ -641,7 +646,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
             return null;
         }
 
-        CEWorld ceWorld = BukkitWorldManager.instance().getWorld(world.getUID());
+        CEWorld ceWorld = CustomBlockUtils.getCEWorld(world);
         if (ceWorld == null) {
             return null;
         }
@@ -926,7 +931,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
     private void debug(String message) {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         if (plugin != null && plugin.isDebugEnabled("interact")) {
-            plugin.getLogger().info("[cutting-board] " + message);
+            plugin.getLogger().info(I18n.formatConsole("debug.cutting_board", "message", message));
         }
     }
 

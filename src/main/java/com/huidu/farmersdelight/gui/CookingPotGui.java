@@ -63,6 +63,7 @@ public class CookingPotGui implements InventoryHolder {
     private final int progressSlot;
     private final int recipeSlot;
     private final Map<Integer, Integer> slotMapping;
+    private final Map<Integer, Integer> writableSlotMapping;
 
     private final World world;
     private final Location cookingPotLocation;
@@ -99,6 +100,7 @@ public class CookingPotGui implements InventoryHolder {
         this.progressSlot = config.getProgressSlot();
         this.recipeSlot = config.getRecipeSlot();
         this.slotMapping = new HashMap<>();
+        this.writableSlotMapping = new HashMap<>();
         CookingPotLayout layout = blockEntity.getLayout();
         mapSlots(ingredientSlots, layout.inputSlots(), true);
         mapSlots(containerSlots, layout.containerSlots(), true);
@@ -113,10 +115,13 @@ public class CookingPotGui implements InventoryHolder {
         };
     }
 
-    private void mapSlots(int[] guiSlots, int[] entitySlots, boolean interactiveOnly) {
+    private void mapSlots(int[] guiSlots, int[] entitySlots, boolean writable) {
         int count = Math.min(guiSlots.length, entitySlots.length);
         for (int i = 0; i < count; i++) {
             slotMapping.put(guiSlots[i], entitySlots[i]);
+            if (writable) {
+                writableSlotMapping.put(guiSlots[i], entitySlots[i]);
+            }
         }
     }
 
@@ -244,17 +249,20 @@ public class CookingPotGui implements InventoryHolder {
     }
 
     private boolean isPlayerInputSlot(int slot) {
-        return config.isIngredientSlot(slot) || config.isContainerSlot(slot);
+        return writableSlotMapping.containsKey(slot);
     }
 
     private GuiConfig.GuiItem getGuiItemForType(String type) {
+        if (type == null) {
+            return null;
+        }
         if (!config.isFillersEnabled() && ("background".equals(type) || "decoration".equals(type))) {
             return null;
         }
         return switch (type) {
             case "background" -> config.getItem("background");
             case "decoration" -> config.getItem("decoration");
-            default -> config.getItem("background");
+            default -> null;
         };
     }
 
@@ -411,7 +419,7 @@ public class CookingPotGui implements InventoryHolder {
     }
 
     private void syncToBlockEntity() {
-        for (Map.Entry<Integer, Integer> entry : slotMapping.entrySet()) {
+        for (Map.Entry<Integer, Integer> entry : writableSlotMapping.entrySet()) {
             int guiSlot = entry.getKey();
             int entitySlot = entry.getValue();
             ItemStack item = inventory.getItem(guiSlot);
@@ -440,12 +448,12 @@ public class CookingPotGui implements InventoryHolder {
         try {
             GuiTickManager.getInstance(plugin).unregisterCallback(tickCallback);
         } catch (Exception e) {
-            plugin.getLogger().warning("Error unregistering GUI tick callback: " + e.getMessage());
+            plugin.getLogger().warning(I18n.formatConsole("gui_runtime.unregister_tick_failed", "error", e.getMessage()));
         }
         try {
             syncToBlockEntity();
         } catch (Exception e) {
-            plugin.getLogger().warning("Error syncing inventory to block entity: " + e.getMessage());
+            plugin.getLogger().warning(I18n.formatConsole("gui_runtime.sync_inventory_failed", "error", e.getMessage()));
         }
     }
 
@@ -468,6 +476,9 @@ public class CookingPotGui implements InventoryHolder {
         if (rawSlot == recipeSlot) {
             event.setCancelled(true);
             Player player = (Player) event.getWhoClicked();
+            syncToBlockEntity();
+            close();
+            activeGuis.remove(player.getUniqueId());
             player.closeInventory();
             RecipeViewGui recipeGui = new RecipeViewGui(plugin, player, true, cookingPotLocation);
             recipeGui.open(player);
@@ -492,7 +503,7 @@ public class CookingPotGui implements InventoryHolder {
             return;
         }
 
-        if (clickedTop && !config.isInteractiveSlot(rawSlot)) {
+        if (clickedTop && !isPlayerInputSlot(rawSlot)) {
             event.setCancelled(true);
             return;
         }
@@ -534,7 +545,7 @@ public class CookingPotGui implements InventoryHolder {
     private void handleTopInventoryInteraction(InventoryClickEvent event) {
         Player player = (Player) event.getWhoClicked();
         int rawSlot = event.getRawSlot();
-        if (rawSlot < 0 || rawSlot >= config.getSize() || !config.isInteractiveSlot(rawSlot)) {
+        if (rawSlot < 0 || rawSlot >= config.getSize() || !isPlayerInputSlot(rawSlot)) {
             return;
         }
 
@@ -742,12 +753,26 @@ public class CookingPotGui implements InventoryHolder {
         }
     }
 
+    private int[] writableGuiSlots(int[] slots) {
+        if (slots == null || slots.length == 0) {
+            return new int[0];
+        }
+        List<Integer> writableSlots = new ArrayList<>();
+        for (int slot : slots) {
+            if (writableSlotMapping.containsKey(slot)) {
+                writableSlots.add(slot);
+            }
+        }
+        return writableSlots.stream().mapToInt(Integer::intValue).toArray();
+    }
+
     private boolean shouldPrioritizeContainer(ItemStack item) {
-        if (containerSlots.length == 0) {
+        int[] writableContainerSlots = writableGuiSlots(containerSlots);
+        if (writableContainerSlots.length == 0) {
             return false;
         }
 
-        for (int slot : containerSlots) {
+        for (int slot : writableContainerSlots) {
             ItemStack containerItem = inventory.getItem(slot);
             if (containerItem != null && !containerItem.getType().isAir()) {
                 return isContainerCandidate(item) && containerItem.isSimilar(item);
@@ -762,14 +787,15 @@ public class CookingPotGui implements InventoryHolder {
             return;
         }
 
+        int[] writableIngredientSlots = writableGuiSlots(ingredientSlots);
         Set<Integer> orderedSlots = new LinkedHashSet<>();
-        for (int slot : ingredientSlots) {
+        for (int slot : writableIngredientSlots) {
             ItemStack target = inventory.getItem(slot);
             if (target != null && !target.getType().isAir() && target.isSimilar(item)) {
                 orderedSlots.add(slot);
             }
         }
-        for (int slot : ingredientSlots) {
+        for (int slot : writableIngredientSlots) {
             ItemStack target = inventory.getItem(slot);
             if (target == null || target.getType().isAir()) {
                 orderedSlots.add(slot);
@@ -806,7 +832,8 @@ public class CookingPotGui implements InventoryHolder {
     }
 
     private void moveToContainerSlot(ItemStack item) {
-        if (containerSlots.length == 0 || item == null || item.getType().isAir()) {
+        int[] writableContainerSlots = writableGuiSlots(containerSlots);
+        if (writableContainerSlots.length == 0 || item == null || item.getType().isAir()) {
             return;
         }
 
@@ -814,7 +841,7 @@ public class CookingPotGui implements InventoryHolder {
             return;
         }
 
-        for (int slot : containerSlots) {
+        for (int slot : writableContainerSlots) {
             ItemStack target = inventory.getItem(slot);
             if (target == null || target.getType().isAir() || !target.isSimilar(item)) {
                 continue;
@@ -834,7 +861,7 @@ public class CookingPotGui implements InventoryHolder {
             }
         }
 
-        for (int slot : containerSlots) {
+        for (int slot : writableContainerSlots) {
             ItemStack target = inventory.getItem(slot);
             if (target != null && !target.getType().isAir()) {
                 continue;

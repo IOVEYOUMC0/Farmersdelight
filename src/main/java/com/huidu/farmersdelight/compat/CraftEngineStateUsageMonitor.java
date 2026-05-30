@@ -1,6 +1,7 @@
 package com.huidu.farmersdelight.compat;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
+import com.huidu.farmersdelight.i18n.I18n;
 import net.momirealms.craftengine.bukkit.block.BukkitBlockManager;
 import net.momirealms.craftengine.core.block.BlockManager;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -12,7 +13,7 @@ import java.util.Map;
 
 public final class CraftEngineStateUsageMonitor {
     private static final String FARMERS_DELIGHT_NAMESPACE = "farmersdelight:";
-    private static final int LOW_FREE_STATE_WARNING_THRESHOLD = 32;
+    private static final int DEFAULT_LOW_FREE_STATE_WARNING_THRESHOLD = 32;
 
     private CraftEngineStateUsageMonitor() {
     }
@@ -25,23 +26,29 @@ public final class CraftEngineStateUsageMonitor {
             }
 
             Usage usage = inspect(blockManager);
-            plugin.getLogger().info(String.format(
-                    "CraftEngine server-side block state usage%s: %d/%d used, %d free, %d FarmersDelight states.",
-                    reason == null || reason.isBlank() ? "" : " after " + reason,
-                    usage.used(),
-                    usage.total(),
-                    usage.free(),
-                    usage.farmersDelightStates()
-            ));
+            plugin.getLogger().info(I18n.formatConsole("craftengine_state.usage",
+                    "reason", reason == null || reason.isBlank()
+                            ? ""
+                            : I18n.formatConsole("craftengine_state.reason_suffix", "reason", reason),
+                    "used", usage.used(),
+                    "total", usage.total(),
+                    "free", usage.free(),
+                    "fd_states", usage.farmersDelightStates()));
 
             if (usage.free() == 0) {
-                plugin.getLogger().warning("CraftEngine server-side block states are exhausted. If FarmersDelight blocks cannot be placed, this is a CraftEngine block-state capacity issue, not a FarmersDelight placement bug. Increase CraftEngine's server-side block state limit or remove unused custom blocks/cache entries.");
-            } else if (usage.free() <= LOW_FREE_STATE_WARNING_THRESHOLD) {
-                plugin.getLogger().warning("CraftEngine server-side block states are almost full (" + usage.free() + " free). New or reloaded custom blocks may fail to register/place once the pool is exhausted.");
+                plugin.getLogger().warning(I18n.formatConsole("craftengine_state.exhausted"));
+            } else if (usage.free() <= lowFreeStateWarningThreshold(plugin)) {
+                plugin.getLogger().warning(I18n.formatConsole("craftengine_state.low_free", "free", usage.free()));
             }
         } catch (Throwable throwable) {
-            plugin.getLogger().fine("Failed to inspect CraftEngine block state usage: " + throwable.getMessage());
+            plugin.getLogger().fine(I18n.formatConsole("craftengine_state.inspect_failed",
+                    "error", throwable.getMessage()));
         }
+    }
+
+    private static int lowFreeStateWarningThreshold(FarmersDelightPlugin plugin) {
+        return Math.max(0, plugin.getConfigInt(DEFAULT_LOW_FREE_STATE_WARNING_THRESHOLD,
+                "performance.craftengine-free-state-warning-threshold"));
     }
 
     private static Usage inspect(BukkitBlockManager blockManager) {

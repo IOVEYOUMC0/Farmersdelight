@@ -1,6 +1,7 @@
 package com.huidu.farmersdelight.recipe;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
+import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
@@ -18,6 +19,7 @@ public class CookingPotRecipeManager {
     private final Map<String, CookingPotRecipe> recipes = new HashMap<>();
     private final Map<String, Map<String, CookingPotRecipe>> customRecipes = new HashMap<>();
     private final Map<String, Set<String>> ingredientToRecipes = new HashMap<>();
+    private final Map<String, Map<String, Set<String>>> customIngredientToRecipes = new HashMap<>();
     private final Map<String, CookingPotRecipe> recipeCache = new LinkedHashMap<>(MAX_CACHE_SIZE + 1, 0.75f, true) {
         @Override
         protected boolean removeEldestEntry(Map.Entry<String, CookingPotRecipe> eldest) {
@@ -35,6 +37,7 @@ public class CookingPotRecipeManager {
         recipes.clear();
         customRecipes.clear();
         ingredientToRecipes.clear();
+        customIngredientToRecipes.clear();
         synchronized (recipeCache) {
             recipeCache.clear();
         }
@@ -77,15 +80,18 @@ public class CookingPotRecipeManager {
                 try {
                     CookingPotRecipe recipe = parseRecipe(recipeId, section, 54);
                     groupRecipes.put(recipeId, recipe);
+                    indexCustomRecipe(groupId, recipeId, recipe);
                     indexContainer(recipe);
                     loadedCount++;
                 } catch (Exception e) {
-                    plugin.getLogger().warning("Failed to load custom cooking pot recipe '" + groupId + "." + recipeId + "': " + e.getMessage());
+                    I18n.logWarning("recipe.custom_cooking_pot_load_failed",
+                            "id", groupId + "." + recipeId,
+                            "error", e.getMessage());
                 }
             }
         }
         if (loadedCount > 0 || plugin.isDebugEnabled()) {
-            plugin.getLogger().info("Loaded " + loadedCount + " custom cooking pot recipes");
+            I18n.logInfo("recipe.custom_cooking_pot_loaded", "count", loadedCount);
         }
     }
 
@@ -93,6 +99,15 @@ public class CookingPotRecipeManager {
         for (RecipeIngredient ingredient : recipe.getIngredients()) {
             for (String ingredientKey : flattenIngredientKeys(ingredient)) {
                 ingredientToRecipes.computeIfAbsent(ingredientKey, k -> new HashSet<>()).add(recipeId);
+            }
+        }
+    }
+
+    private void indexCustomRecipe(String groupId, String recipeId, CookingPotRecipe recipe) {
+        Map<String, Set<String>> groupIndex = customIngredientToRecipes.computeIfAbsent(groupId, key -> new HashMap<>());
+        for (RecipeIngredient ingredient : recipe.getIngredients()) {
+            for (String ingredientKey : flattenIngredientKeys(ingredient)) {
+                groupIndex.computeIfAbsent(ingredientKey, key -> new HashSet<>()).add(recipeId);
             }
         }
     }
@@ -213,11 +228,8 @@ public class CookingPotRecipeManager {
             return null;
         }
 
-        if (customRecipeGroupId != null && !customRecipeGroupId.isBlank()) {
-            return matchCustomRecipe(nonEmptyInputs, container, customRecipeGroupId);
-        }
-
-        String cacheKey = buildCacheKey(nonEmptyInputs, container);
+        String normalizedGroupId = normalizeRecipeGroupId(customRecipeGroupId);
+        String cacheKey = buildCacheKey(nonEmptyInputs, container, normalizedGroupId);
         CookingPotRecipe cached;
         synchronized (recipeCache) {
             cached = recipeCache.get(cacheKey);
@@ -226,26 +238,13 @@ public class CookingPotRecipeManager {
             return cached;
         }
 
-        Set<String> candidateRecipes = findCandidateRecipes(nonEmptyInputs);
-        
         CookingPotRecipe result = null;
-        
-        if (candidateRecipes != null && !candidateRecipes.isEmpty()) {
-            for (String recipeId : candidateRecipes) {
-                CookingPotRecipe recipe = recipes.get(recipeId);
-                if (recipe != null && matchesContainer(recipe, container) && matchRecipe(recipe, nonEmptyInputs)) {
-                    result = recipe;
-                    break;
-                }
-            }
+        if (normalizedGroupId != null) {
+            result = matchCustomRecipe(nonEmptyInputs, container, normalizedGroupId);
         }
+
         if (result == null) {
-            for (CookingPotRecipe recipe : recipes.values()) {
-                if (matchesContainer(recipe, container) && matchRecipe(recipe, nonEmptyInputs)) {
-                    result = recipe;
-                    break;
-                }
-            }
+            result = matchDefaultRecipe(nonEmptyInputs, container);
         }
 
         if (result != null) {
@@ -262,6 +261,15 @@ public class CookingPotRecipeManager {
         if (groupRecipes == null || groupRecipes.isEmpty()) {
             return null;
         }
+        Set<String> candidateRecipes = findCandidateRecipes(nonEmptyInputs, customIngredientToRecipes.get(customRecipeGroupId));
+        if (candidateRecipes != null && !candidateRecipes.isEmpty()) {
+            for (String recipeId : candidateRecipes) {
+                CookingPotRecipe recipe = groupRecipes.get(recipeId);
+                if (recipe != null && matchesContainer(recipe, container) && matchRecipe(recipe, nonEmptyInputs)) {
+                    return recipe;
+                }
+            }
+        }
         for (CookingPotRecipe recipe : groupRecipes.values()) {
             if (matchesContainer(recipe, container) && matchRecipe(recipe, nonEmptyInputs)) {
                 return recipe;
@@ -270,7 +278,26 @@ public class CookingPotRecipeManager {
         return null;
     }
 
-    private String buildCacheKey(List<ItemStack> inputs, ItemStack container) {
+    private CookingPotRecipe matchDefaultRecipe(List<ItemStack> nonEmptyInputs, ItemStack container) {
+        Set<String> candidateRecipes = findCandidateRecipes(nonEmptyInputs, ingredientToRecipes);
+
+        if (candidateRecipes != null && !candidateRecipes.isEmpty()) {
+            for (String recipeId : candidateRecipes) {
+                CookingPotRecipe recipe = recipes.get(recipeId);
+                if (recipe != null && matchesContainer(recipe, container) && matchRecipe(recipe, nonEmptyInputs)) {
+                    return recipe;
+                }
+            }
+        }
+        for (CookingPotRecipe recipe : recipes.values()) {
+            if (matchesContainer(recipe, container) && matchRecipe(recipe, nonEmptyInputs)) {
+                return recipe;
+            }
+        }
+        return null;
+    }
+
+    private String buildCacheKey(List<ItemStack> inputs, ItemStack container, String customRecipeGroupId) {
         List<String> keys = new ArrayList<>();
         for (ItemStack item : inputs) {
             keys.add(getItemKey(item) + ":" + item.getAmount());
@@ -282,6 +309,9 @@ public class CookingPotRecipeManager {
             sb.append(key).append(";");
         }
         sb.append("|container=").append(getItemKey(container));
+        if (customRecipeGroupId != null) {
+            sb.append("|group=").append(customRecipeGroupId);
+        }
         return sb.toString();
     }
 
@@ -304,14 +334,17 @@ public class CookingPotRecipeManager {
         return required.isSimilar(container);
     }
 
-    private Set<String> findCandidateRecipes(List<ItemStack> inputs) {
+    private Set<String> findCandidateRecipes(List<ItemStack> inputs, Map<String, Set<String>> recipeIndex) {
+        if (recipeIndex == null || recipeIndex.isEmpty()) {
+            return null;
+        }
         Set<String> candidates = null;
         
         for (ItemStack item : inputs) {
             Set<String> recipesForItem = null;
 
             for (String itemId : ItemUtils.getItemIds(item)) {
-                Set<String> indexed = ingredientToRecipes.get(itemId);
+                Set<String> indexed = recipeIndex.get(itemId);
                 if (indexed == null || indexed.isEmpty()) {
                     continue;
                 }
@@ -322,7 +355,7 @@ public class CookingPotRecipeManager {
                 }
             }
             for (String tagId : ItemUtils.getItemTagIds(item)) {
-                Set<String> indexed = ingredientToRecipes.get("#" + tagId);
+                Set<String> indexed = recipeIndex.get("#" + tagId);
                 if (indexed == null || indexed.isEmpty()) {
                     continue;
                 }
@@ -448,11 +481,17 @@ public class CookingPotRecipeManager {
     }
 
     public Map<String, CookingPotRecipe> getRecipes(String customRecipeGroupId) {
-        if (customRecipeGroupId == null || customRecipeGroupId.isBlank()) {
+        String normalizedGroupId = normalizeRecipeGroupId(customRecipeGroupId);
+        if (normalizedGroupId == null) {
             return getRecipes();
         }
-        Map<String, CookingPotRecipe> groupRecipes = customRecipes.get(customRecipeGroupId);
-        return groupRecipes == null ? Map.of() : Collections.unmodifiableMap(groupRecipes);
+        Map<String, CookingPotRecipe> groupRecipes = customRecipes.get(normalizedGroupId);
+        if (groupRecipes == null || groupRecipes.isEmpty()) {
+            return getRecipes();
+        }
+        Map<String, CookingPotRecipe> merged = new LinkedHashMap<>(recipes);
+        merged.putAll(groupRecipes);
+        return Collections.unmodifiableMap(merged);
     }
 
     public Set<String> getValidContainerKeys() {
@@ -468,11 +507,13 @@ public class CookingPotRecipeManager {
     }
 
     public CookingPotRecipe getRecipe(String customRecipeGroupId, String id) {
-        if (customRecipeGroupId == null || customRecipeGroupId.isBlank()) {
+        String normalizedGroupId = normalizeRecipeGroupId(customRecipeGroupId);
+        if (normalizedGroupId == null) {
             return getRecipe(id);
         }
-        Map<String, CookingPotRecipe> groupRecipes = customRecipes.get(customRecipeGroupId);
-        return groupRecipes == null ? null : groupRecipes.get(id);
+        Map<String, CookingPotRecipe> groupRecipes = customRecipes.get(normalizedGroupId);
+        CookingPotRecipe customRecipe = groupRecipes == null ? null : groupRecipes.get(id);
+        return customRecipe != null ? customRecipe : getRecipe(id);
     }
 
     public void reload() {
@@ -483,6 +524,13 @@ public class CookingPotRecipeManager {
         synchronized (recipeCache) {
             recipeCache.clear();
         }
+    }
+
+    private String normalizeRecipeGroupId(String customRecipeGroupId) {
+        if (customRecipeGroupId == null || customRecipeGroupId.isBlank()) {
+            return null;
+        }
+        return customRecipeGroupId.trim();
     }
 }
 

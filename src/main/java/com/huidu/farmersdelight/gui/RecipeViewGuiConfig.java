@@ -1,9 +1,11 @@
 package com.huidu.farmersdelight.gui;
 
+import com.huidu.farmersdelight.i18n.I18n;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,18 +15,24 @@ public class RecipeViewGuiConfig {
     private final MainMenuConfig mainMenu;
     private final RecipeListConfig recipeList;
     private final RecipeDetailConfig cookingPotDetail;
+    private final Map<String, RecipeDetailConfig> customCookingPotDetails;
     private final RecipeDetailConfig cuttingBoardDetail;
     private final boolean backgroundItemsEnabled;
     private final boolean showIngredientIds;
     private final int recipeListMaxPreviewIngredients;
 
     public RecipeViewGuiConfig(MainMenuConfig mainMenu, RecipeListConfig recipeList,
-                               RecipeDetailConfig cookingPotDetail, RecipeDetailConfig cuttingBoardDetail,
+                               RecipeDetailConfig cookingPotDetail,
+                               Map<String, RecipeDetailConfig> customCookingPotDetails,
+                               RecipeDetailConfig cuttingBoardDetail,
                                boolean backgroundItemsEnabled, boolean showIngredientIds,
                                int recipeListMaxPreviewIngredients) {
         this.mainMenu = mainMenu;
         this.recipeList = recipeList;
         this.cookingPotDetail = cookingPotDetail;
+        this.customCookingPotDetails = customCookingPotDetails != null
+                ? Collections.unmodifiableMap(customCookingPotDetails)
+                : Map.of();
         this.cuttingBoardDetail = cuttingBoardDetail;
         this.backgroundItemsEnabled = backgroundItemsEnabled;
         this.showIngredientIds = showIngredientIds;
@@ -41,6 +49,18 @@ public class RecipeViewGuiConfig {
 
     public RecipeDetailConfig getCookingPotDetail() {
         return cookingPotDetail;
+    }
+
+    public RecipeDetailConfig getCookingPotDetail(String customId) {
+        if (customId == null || customId.isBlank()) {
+            return cookingPotDetail;
+        }
+        RecipeDetailConfig custom = customCookingPotDetails.get(customId);
+        return custom != null ? custom : cookingPotDetail;
+    }
+
+    public boolean hasCustomCookingPotDetail(String customId) {
+        return customId != null && !customId.isBlank() && customCookingPotDetails.containsKey(customId);
     }
 
     public RecipeDetailConfig getCuttingBoardDetail() {
@@ -71,13 +91,41 @@ public class RecipeViewGuiConfig {
                 legacyDetail,
                 RecipeDetailConfig.createCookingPotDefault()
         );
+        Map<String, RecipeDetailConfig> customCookingPotDetails = loadCustomCookingPotDetails(
+                section.getConfigurationSection("recipe-detail-cooking-pot-guis"),
+                cookingPotDetail
+        );
         RecipeDetailConfig cuttingBoardDetail = RecipeDetailConfig.fromConfig(
                 section.getConfigurationSection("recipe-detail-cutting-board"),
                 legacyDetail,
                 RecipeDetailConfig.createCuttingBoardDefault()
         );
-        return new RecipeViewGuiConfig(mainMenu, recipeList, cookingPotDetail, cuttingBoardDetail,
+        return new RecipeViewGuiConfig(mainMenu, recipeList, cookingPotDetail, customCookingPotDetails, cuttingBoardDetail,
                 backgroundItemsEnabled, showIngredientIds, maxPreviewIngredients);
+    }
+
+    private static Map<String, RecipeDetailConfig> loadCustomCookingPotDetails(
+            ConfigurationSection section,
+            RecipeDetailConfig defaultConfig
+    ) {
+        if (section == null) {
+            return Map.of();
+        }
+        Map<String, RecipeDetailConfig> configs = new HashMap<>();
+        for (String id : section.getKeys(false)) {
+            ConfigurationSection detailSection = section.getConfigurationSection(id);
+            if (detailSection == null) {
+                continue;
+            }
+            try {
+                configs.put(id, RecipeDetailConfig.fromConfig(detailSection, null, defaultConfig));
+            } catch (Exception e) {
+                warnConfig("console.gui.custom_recipe_detail_load_failed",
+                        "id", id,
+                        "error", e.getMessage());
+            }
+        }
+        return configs;
     }
 
     public static class BaseConfig {
@@ -128,13 +176,13 @@ public class RecipeViewGuiConfig {
             int row = slot / 9;
             int col = slot % 9;
 
-            if (row >= layout.size()) return "background";
+            if (row >= layout.size()) return null;
 
             String line = layout.get(row);
-            if (col >= line.length()) return "background";
+            if (col >= line.length()) return null;
 
             char c = line.charAt(col);
-            return legend.getOrDefault(c, "background");
+            return legend.get(c);
         }
 
         public List<Integer> getSlotsByType(String type) {
@@ -143,7 +191,7 @@ public class RecipeViewGuiConfig {
                 String line = layout.get(row);
                 for (int col = 0; col < line.length(); col++) {
                     char c = line.charAt(col);
-                    String slotType = legend.getOrDefault(c, "background");
+                    String slotType = legend.get(c);
                     if (type.equals(slotType)) {
                         slots.add(row * 9 + col);
                     }
@@ -190,7 +238,53 @@ public class RecipeViewGuiConfig {
                 }
             }
 
+            warnUnknownLayoutCharacters(section.getCurrentPath(), rows, layout, legend);
             return new BaseConfig(title, rows, layout, legend, items);
+        }
+    }
+
+    private static void warnUnknownLayoutCharacters(
+            String sectionPath,
+            int rows,
+            List<String> layout,
+            Map<Character, String> legend
+    ) {
+        String path = sectionPath == null || sectionPath.isBlank() ? "recipe-view-gui" : sectionPath;
+        if (layout.size() != rows) {
+            warnConfig("console.gui.rows_mismatch",
+                    "path", path,
+                    "rows", rows,
+                    "layout_rows", layout.size());
+        }
+        for (int row = 0; row < layout.size(); row++) {
+            String line = layout.get(row);
+            if (line.length() != 9) {
+                warnConfig("console.gui.row_length_mismatch",
+                        "path", path,
+                        "row", row + 1,
+                        "length", line.length());
+            }
+            for (int col = 0; col < line.length(); col++) {
+                char c = line.charAt(col);
+                if (!Character.isWhitespace(c) && !legend.containsKey(c)) {
+                    warnConfig("console.gui.unknown_layout_character",
+                            "path", path,
+                            "character", c,
+                            "row", row + 1,
+                            "column", col + 1);
+                }
+            }
+        }
+    }
+
+    private static void warnConfig(String key, Object... placeholders) {
+        String message = I18n.formatNamedArgs(key, placeholders);
+        com.huidu.farmersdelight.FarmersDelightPlugin plugin =
+                com.huidu.farmersdelight.FarmersDelightPlugin.getInstance();
+        if (plugin != null) {
+            plugin.getLogger().warning(message);
+        } else {
+            org.bukkit.Bukkit.getLogger().warning(I18n.formatConsole("prefix") + " " + message);
         }
     }
 

@@ -156,8 +156,54 @@ public class GuiConfig {
             }
         }
 
+        warnUnknownLayoutCharacters(section.getCurrentPath(), rows, layout, legend);
         return new GuiConfig(title, titleLayoutOffset, titleLayoutIcon, fillersEnabled, rows, layout, legend, items,
                 progressItems);
+    }
+
+    private static void warnUnknownLayoutCharacters(
+            String sectionPath,
+            int rows,
+            List<String> layout,
+            Map<Character, String> legend
+    ) {
+        String path = sectionPath == null || sectionPath.isBlank() ? "cooking-pot-gui" : sectionPath;
+        if (layout.size() != rows) {
+            warnConfig("console.gui.rows_mismatch",
+                    "path", path,
+                    "rows", rows,
+                    "layout_rows", layout.size());
+        }
+        for (int row = 0; row < layout.size(); row++) {
+            String line = layout.get(row);
+            if (line.length() != 9) {
+                warnConfig("console.gui.row_length_mismatch",
+                        "path", path,
+                        "row", row + 1,
+                        "length", line.length());
+            }
+            for (int col = 0; col < line.length(); col++) {
+                char c = line.charAt(col);
+                if (!Character.isWhitespace(c) && !legend.containsKey(c)) {
+                    warnConfig("console.gui.unknown_layout_character",
+                            "path", path,
+                            "character", c,
+                            "row", row + 1,
+                            "column", col + 1);
+                }
+            }
+        }
+    }
+
+    private static void warnConfig(String key, Object... placeholders) {
+        String message = I18n.formatNamedArgs(key, placeholders);
+        com.huidu.farmersdelight.FarmersDelightPlugin plugin =
+                com.huidu.farmersdelight.FarmersDelightPlugin.getInstance();
+        if (plugin != null) {
+            plugin.getLogger().warning(message);
+        } else {
+            org.bukkit.Bukkit.getLogger().warning(I18n.formatConsole("prefix") + " " + message);
+        }
     }
 
     public static GuiConfig createDefault() {
@@ -297,16 +343,16 @@ public class GuiConfig {
         int col = slot % 9;
 
         if (row >= layout.size()) {
-            return "background";
+            return null;
         }
 
         String line = layout.get(row);
         if (col >= line.length()) {
-            return "background";
+            return null;
         }
 
         char c = line.charAt(col);
-        return legend.getOrDefault(c, "background");
+        return legend.get(c);
     }
 
     public boolean isIngredientSlot(int slot) {
@@ -364,6 +410,8 @@ public class GuiConfig {
         private final Material material;
         private final Key customItemId;
         private final Integer customModelData;
+        private final String itemModel;
+        private final boolean hideTooltip;
         private final String name;
         private final List<String> lore;
         private final String nameKey;
@@ -377,14 +425,21 @@ public class GuiConfig {
         }
 
         public GuiItem(Material material, Key customItemId, Integer customModelData, String name, List<String> lore) {
-            this(material, customItemId, customModelData, name, lore, null, List.of());
+            this(material, customItemId, customModelData, null, false, name, lore, null, List.of());
         }
 
         public GuiItem(Material material, Key customItemId, Integer customModelData, String name, List<String> lore,
                        String nameKey, List<String> loreKeys) {
+            this(material, customItemId, customModelData, null, false, name, lore, nameKey, loreKeys);
+        }
+
+        public GuiItem(Material material, Key customItemId, Integer customModelData, String itemModel,
+                       boolean hideTooltip, String name, List<String> lore, String nameKey, List<String> loreKeys) {
             this.material = material;
             this.customItemId = customItemId;
             this.customModelData = customModelData;
+            this.itemModel = itemModel;
+            this.hideTooltip = hideTooltip;
             this.name = name;
             this.lore = lore;
             this.nameKey = nameKey;
@@ -429,8 +484,15 @@ public class GuiConfig {
             } else if (section.contains("customModelData")) {
                 customModelData = section.getInt("customModelData");
             }
+            String itemModel = section.getString("item-model");
+            if (itemModel == null) {
+                itemModel = section.getString("item_model");
+            }
+            boolean hideTooltip = section.getBoolean("hide-tooltip",
+                    section.getBoolean("hide_tooltip", section.getBoolean("hideTooltip", false)));
 
-            return new GuiItem(material, customItemId, customModelData, name, lore, nameKey, loreKeys);
+            return new GuiItem(material, customItemId, customModelData, itemModel, hideTooltip,
+                    name, lore, nameKey, loreKeys);
         }
 
         public static GuiItem fromMap(Map<?, ?> map) {
@@ -480,6 +542,16 @@ public class GuiConfig {
                     customModelData = null;
                 }
             }
+            String itemModel = null;
+            Object itemModelValue = map.containsKey("item-model")
+                    ? map.get("item-model")
+                    : map.get("item_model");
+            if (itemModelValue != null) {
+                itemModel = itemModelValue.toString();
+            }
+            boolean hideTooltip = parseBoolean(map.containsKey("hide-tooltip")
+                    ? map.get("hide-tooltip")
+                    : (map.containsKey("hide_tooltip") ? map.get("hide_tooltip") : map.get("hideTooltip")));
             List<String> lore = new ArrayList<>();
             Object loreValue = map.get("lore");
             if (loreValue instanceof List<?> loreList) {
@@ -499,7 +571,8 @@ public class GuiConfig {
                 }
             }
 
-            return new GuiItem(material, customItemId, customModelData, name, lore, nameKey, loreKeys);
+            return new GuiItem(material, customItemId, customModelData, itemModel, hideTooltip,
+                    name, lore, nameKey, loreKeys);
         }
 
         public Material getMaterial() {
@@ -545,6 +618,8 @@ public class GuiConfig {
             }
 
             applyCustomModelData(meta, customModelData);
+            applyItemModel(meta, itemModel);
+            applyHideTooltip(meta, hideTooltip);
 
             if (!builtFromCustomItem && (name != null || nameKey != null)) {
                 String processedName = applyPlaceholders(resolveText(name, nameKey), placeholders);
@@ -615,6 +690,51 @@ public class GuiConfig {
                 setter.invoke(meta, customModelData);
             } catch (ReflectiveOperationException ignored) {
             }
+        }
+
+        private void applyItemModel(ItemMeta meta, String itemModel) {
+            if (itemModel == null || itemModel.isBlank()) {
+                return;
+            }
+            NamespacedKey key = parseNamespacedKey(itemModel);
+            if (key == null) {
+                return;
+            }
+            try {
+                Method setter = meta.getClass().getMethod("setItemModel", NamespacedKey.class);
+                setter.invoke(meta, key);
+            } catch (ReflectiveOperationException ignored) {
+            }
+        }
+
+        private void applyHideTooltip(ItemMeta meta, boolean hideTooltip) {
+            if (!hideTooltip) {
+                return;
+            }
+            try {
+                Method setter = meta.getClass().getMethod("setHideTooltip", boolean.class);
+                setter.invoke(meta, true);
+            } catch (ReflectiveOperationException ignored) {
+            }
+        }
+
+        private static NamespacedKey parseNamespacedKey(String value) {
+            String normalized = value.trim();
+            if (normalized.isEmpty()) {
+                return null;
+            }
+            if (!normalized.contains(":")) {
+                normalized = "minecraft:" + normalized;
+            }
+            try {
+                return NamespacedKey.fromString(normalized);
+            } catch (IllegalArgumentException ignored) {
+                return null;
+            }
+        }
+
+        private static boolean parseBoolean(Object value) {
+            return value != null && Boolean.parseBoolean(value.toString());
         }
 
         private String resolveText(String fallback, String key) {

@@ -5,12 +5,14 @@ import com.huidu.farmersdelight.block.behavior.*;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
+import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.bukkit.api.event.CustomBlockBreakEvent;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.item.component.DataComponentKeys;
+import net.momirealms.craftengine.core.world.WorldPosition;
 import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.libraries.nbt.CompoundTag;
 import org.bukkit.Bukkit;
@@ -33,6 +35,7 @@ public class BlockBreakListener implements Listener {
     public void onBlockBreak(BlockBreakEvent event) {
         FarmersDelightPlugin.getInstance().getStoveManager()
                 .invalidateBlockedAboveCache(event.getBlock().getLocation().clone().add(0, -1, 0));
+        syncTraysAroundSupportChange(event.getBlock());
         if (isStateManagedInteractiveBlock(event.getBlock())) {
             return;
         }
@@ -43,6 +46,7 @@ public class BlockBreakListener implements Listener {
     public void onCustomBlockBreak(CustomBlockBreakEvent event) {
         FarmersDelightPlugin.getInstance().getStoveManager()
                 .invalidateBlockedAboveCache(event.bukkitBlock().getLocation().clone().add(0, -1, 0));
+        syncTraysAroundSupportChange(event.bukkitBlock());
         if (!isManagedInteractiveBlock(event.blockState())) {
             return;
         }
@@ -65,6 +69,7 @@ public class BlockBreakListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockExplode(BlockExplodeEvent event) {
         for (var block : event.blockList()) {
+            syncTraysAroundSupportChange(block);
             cleanupBlockAt(block, false);
         }
     }
@@ -72,8 +77,20 @@ public class BlockBreakListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onEntityExplode(EntityExplodeEvent event) {
         for (var block : event.blockList()) {
+            syncTraysAroundSupportChange(block);
             cleanupBlockAt(block, false);
         }
+    }
+
+    private void syncTraysAroundSupportChange(org.bukkit.block.Block block) {
+        if (block == null) {
+            return;
+        }
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        if (plugin == null || plugin.getTrayManager() == null) {
+            return;
+        }
+        plugin.getTrayManager().syncAroundSupportChange(block.getLocation());
     }
 
     private void cleanupBlockAt(org.bukkit.block.Block block) {
@@ -96,6 +113,8 @@ public class BlockBreakListener implements Listener {
 
         if (isCookingPotBlock(state)) {
             cleanupCookingPot(pos, world, dropLocation, state, preserveCookingPotContents, shouldDropItems);
+        } else if (CookingPotBlockBehavior.getBlockEntity(world, pos) != null) {
+            CookingPotBlockBehavior.removeBlockEntity(world, pos);
         }
         cleanupSkillet(blockLocation, dropLocation, shouldDropItems);
         cleanupCuttingBoard(pos, world, dropLocation, shouldDropItems);
@@ -117,8 +136,9 @@ public class BlockBreakListener implements Listener {
         CookingPotBlockEntity entity = CookingPotBlockBehavior.getBlockEntity(world, pos);
         if (entity == null) {
             if (shouldDropItems) {
-                dropCookingPotBaseItem(world, dropLocation);
+                dropCookingPotBaseItem(world, dropLocation, state, null);
             }
+            CookingPotBlockBehavior.removeBlockEntity(world, pos);
             return;
         }
 
@@ -153,8 +173,8 @@ public class BlockBreakListener implements Listener {
             return;
         }
 
-        CookingPotBlockBehavior behavior = state != null && state.behavior() instanceof CookingPotBlockBehavior potBehavior
-                ? potBehavior
+        CookingPotBlockBehavior behavior = state != null
+                ? CustomBlockUtils.getBehavior(state, CookingPotBlockBehavior.class)
                 : CookingPotBlockBehavior.getBlockBehavior(dropLocation);
         if (behavior == null) {
             world.dropItemNaturally(dropLocation, potItem);
@@ -162,10 +182,15 @@ public class BlockBreakListener implements Listener {
         }
 
         Item wrapped = BukkitItemManager.instance().wrap(potItem);
-        CompoundTag blockEntityData = new CompoundTag();
-        blockEntityData.put(behavior.getCustomDataKey(), CookingPotBlockEntityController.saveData(entity));
-        wrapped.setSparrowTagComponent(DataComponentKeys.BLOCK_ENTITY_DATA, blockEntityData);
-        world.dropItemNaturally(dropLocation, net.momirealms.craftengine.bukkit.util.ItemStackUtils.getBukkitStack(wrapped));
+        CompoundTag packedData = CookingPotBlockEntityController.saveData(entity);
+        CompoundTag customData = CustomBlockUtils.getComponentCompound(wrapped, DataComponentKeys.CUSTOM_DATA);
+        if (customData == null) {
+            customData = new CompoundTag();
+        }
+        customData.put(behavior.getCustomDataKey(), packedData);
+        wrapped.setSparrowTagComponent(DataComponentKeys.CUSTOM_DATA, customData);
+        net.momirealms.craftengine.core.world.World ceWorld = BukkitAdaptor.adapt(world);
+        ceWorld.dropItemNaturally(new WorldPosition(ceWorld, dropLocation.getX(), dropLocation.getY(), dropLocation.getZ()), wrapped);
     }
 
     private void dropCookingPotContents(World world, Location dropLocation, CookingPotBlockEntity entity) {

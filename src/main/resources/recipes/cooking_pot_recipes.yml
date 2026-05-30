@@ -19,6 +19,9 @@
 #   Use custom_cooking_pot_recipes.<id> where <id> matches behavior.custom.id
 #   in the CraftEngine block behavior. The recipe body is the same as above,
 #   but custom pots may use more than 6 ingredients when their input-slots allow it.
+#   Custom pots can still use the default cooking_pot_recipes. Recipes in a
+#   custom group are checked first, and a custom recipe with the same id overrides
+#   the default recipe in recipe GUIs.
 # Example:
 # custom_cooking_pot_recipes:
 #   custom:
