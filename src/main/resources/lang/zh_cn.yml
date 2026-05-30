@@ -113,7 +113,6 @@ console:
     advancement_resource_missing: "缺少内置进度资源：{resource}"
     debug_tools_missing: "构建标记要求启用调试工具，但调试工具类不存在。"
     craftengine_world_flush_failed: "刷新世界 {world} 的 CraftEngine 数据失败"
-    craftengine_world_save_unavailable: "CraftEngine CEWorld.save() 不可用，已跳过显式刷新 CraftEngine 世界数据。"
     server_properties_read_failed: "读取 server.properties 的 level-name 失败：{error}"
     disable_step_failed: "禁用插件时执行 {step} 失败；将继续关闭流程。"
     disable_step_stop_tick_manager: "停止 tick 管理器"

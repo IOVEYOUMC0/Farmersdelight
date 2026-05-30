@@ -25,9 +25,9 @@ repositories {
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
     compileOnly("org.jetbrains:annotations:26.1.0")
-    compileOnly("net.momirealms:craft-engine-core:26.5")
-    compileOnly("net.momirealms:craft-engine-bukkit:26.5")
-    compileOnly("net.momirealms:craft-engine-bukkit-proxy:26.5")
+    compileOnly("net.momirealms:craft-engine-core:26.5.3")
+    compileOnly("net.momirealms:craft-engine-bukkit:26.5.3")
+    compileOnly("net.momirealms:craft-engine-bukkit-proxy:26.5.3")
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
