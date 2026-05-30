@@ -53,6 +53,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -61,6 +63,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -146,6 +149,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private boolean cuttingBoardHopperInteractionsEnabled;
     private boolean cookingPotPackContentsOnBreak;
     private boolean skilletConductorsAllowed;
+    private final AtomicBoolean craftEngineWorldSaveUnavailableWarningLogged = new AtomicBoolean();
     private float skilletDisplayScale = 0.5F;
     private double skilletDisplayYOffset = 0.1D;
     private double skilletDisplaySpread = 0.125D;
@@ -503,12 +507,30 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             try {
                 CEWorld ceWorld = worldManager.getWorld(world.getUID());
                 if (ceWorld != null) {
-                    ceWorld.save();
+                    flushCraftEngineWorldData(world.getName(), ceWorld);
                 }
             } catch (Throwable throwable) {
                 getLogger().log(Level.WARNING, I18n.formatConsole("plugin.craftengine_world_flush_failed",
                         "world", world.getName()), throwable);
             }
+        }
+    }
+
+    private void flushCraftEngineWorldData(String worldName, CEWorld ceWorld) {
+        try {
+            Method saveMethod = ceWorld.getClass().getMethod("save");
+            saveMethod.invoke(ceWorld);
+        } catch (NoSuchMethodException e) {
+            if (craftEngineWorldSaveUnavailableWarningLogged.compareAndSet(false, true)) {
+                getLogger().warning(I18n.formatConsole("plugin.craftengine_world_save_unavailable"));
+            }
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause() == null ? e : e.getCause();
+            getLogger().log(Level.WARNING, I18n.formatConsole("plugin.craftengine_world_flush_failed",
+                    "world", worldName), cause);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            getLogger().log(Level.WARNING, I18n.formatConsole("plugin.craftengine_world_flush_failed",
+                    "world", worldName), e);
         }
     }
 
