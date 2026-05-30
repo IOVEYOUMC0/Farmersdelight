@@ -234,7 +234,7 @@ fun registerObfuscationTask(
             public java.util.List tabComplete(org.bukkit.command.CommandSender, java.lang.String[]);
         }
     """.trimIndent())
-        keepattributes("RuntimeVisibleAnnotations,RuntimeInvisibleAnnotations,AnnotationDefault,Signature,InnerClasses,EnclosingMethod,Record,PermittedSubclasses,StackMap,StackMapTable")
+        keepattributes("SourceFile,LineNumberTable,RuntimeVisibleAnnotations,RuntimeInvisibleAnnotations,AnnotationDefault,Signature,InnerClasses,EnclosingMethod,Record,PermittedSubclasses,StackMap,StackMapTable")
 
         optimizationpasses(7)
         dontwarn()

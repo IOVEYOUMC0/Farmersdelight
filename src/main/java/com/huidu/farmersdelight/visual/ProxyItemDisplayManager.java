@@ -4,8 +4,6 @@ import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.util.scheduler.PluginTask;
 import it.unimi.dsi.fastutil.ints.IntList;
-import net.momirealms.craftengine.bukkit.entity.data.BaseEntityData;
-import net.momirealms.craftengine.bukkit.entity.data.DisplayData;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.plugin.network.BukkitNetworkManager;
@@ -15,6 +13,8 @@ import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.Clientbo
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundSetEntityDataPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundTeleportEntityPacketProxy;
+import net.momirealms.craftengine.proxy.minecraft.network.syncher.EntityDataSerializersProxy;
+import net.momirealms.craftengine.proxy.minecraft.network.syncher.SynchedEntityDataProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.EntityTypeProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.PositionMoveRotationProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.phys.Vec3Proxy;
@@ -35,8 +35,11 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
 import org.bukkit.inventory.ItemStack;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -45,10 +48,25 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
     private static final double DEFAULT_VIEW_DISTANCE = 64.0D;
     private static final int DEFAULT_SYNC_INTERVAL_TICKS = 20;
     private static final int DEFAULT_SYNC_BATCH_SIZE = 256;
+    private static final int ENTITY_DATA_NO_GRAVITY = 5;
+    private static final int ENTITY_DATA_SILENT = 4;
+    private static final int ITEM_DISPLAY_DATA_ITEM_STACK = 23;
+    private static final int ITEM_DISPLAY_DATA_TRANSLATION = 11;
+    private static final int ITEM_DISPLAY_DATA_SCALE = 12;
+    private static final int ITEM_DISPLAY_DATA_LEFT_ROTATION = 13;
+    private static final int ITEM_DISPLAY_DATA_RIGHT_ROTATION = 14;
+    private static final int ITEM_DISPLAY_DATA_ITEM_TRANSFORM = 24;
+    private static final int ITEM_DISPLAY_DATA_SHADOW_RADIUS = 18;
+    private static final int ITEM_DISPLAY_DATA_SHADOW_STRENGTH = 19;
+    private static final int ITEM_DISPLAY_DATA_WIDTH = 20;
+    private static final int ITEM_DISPLAY_DATA_HEIGHT = 21;
+    private static final int ITEM_DISPLAY_DATA_VIEW_RANGE = 17;
+    private static final EntityDataBindings ENTITY_DATA = EntityDataBindings.resolve();
 
     private final FarmersDelightPlugin plugin;
     private final BukkitNetworkManager networkManager;
     private final AtomicInteger nextEntityId = new AtomicInteger(2_000_000);
+    private final AtomicBoolean metadataFallbackWarningLogged = new AtomicBoolean();
     private final Map<Integer, ProxyItemDisplay> displays = new ConcurrentHashMap<>();
     private final Map<UUID, Player> onlinePlayers = new ConcurrentHashMap<>();
     private final Set<Integer> scheduledDisplaySyncs = ConcurrentHashMap.newKeySet();
@@ -555,25 +573,29 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
 
     private Object createMetadataPacket(int entityId, DisplaySpec spec) {
         List<Object> values = new ArrayList<>();
-        BaseEntityData.NoGravity.addEntityData(true, values);
-        BaseEntityData.Silent.addEntityData(true, values);
+        boolean usedFallback = false;
+        usedFallback |= ENTITY_DATA.noGravity.addTo(values, true);
+        usedFallback |= ENTITY_DATA.silent.addTo(values, true);
 
         var wrappedItem = BukkitItemManager.instance().wrap(spec.itemStack());
         if (wrappedItem != null && !wrappedItem.isEmpty()) {
-            DisplayData.ItemDisplayData.ItemStack.addEntityData(wrappedItem.minecraftItem(), values);
+            usedFallback |= ENTITY_DATA.itemStack.addTo(values, wrappedItem.minecraftItem());
         }
 
         var transformation = spec.transformation();
-        DisplayData.ItemDisplayData.Translation.addEntityData(transformation.getTranslation(), values);
-        DisplayData.ItemDisplayData.Scale.addEntityData(transformation.getScale(), values);
-        DisplayData.ItemDisplayData.LeftRotation.addEntityData(transformation.getLeftRotation(), values);
-        DisplayData.ItemDisplayData.RightRotation.addEntityData(transformation.getRightRotation(), values);
-        DisplayData.ItemDisplayData.ItemTransform.addEntityData(toCeDisplayContext(spec.itemTransform()), values);
-        DisplayData.ItemDisplayData.ShadowRadius.addEntityData(0.0F, values);
-        DisplayData.ItemDisplayData.ShadowStrength.addEntityData(0.0F, values);
-        DisplayData.ItemDisplayData.Width.addEntityData(0.0F, values);
-        DisplayData.ItemDisplayData.Height.addEntityData(0.0F, values);
-        DisplayData.ItemDisplayData.ViewRange.addEntityData(1.0F, values);
+        usedFallback |= ENTITY_DATA.translation.addTo(values, transformation.getTranslation());
+        usedFallback |= ENTITY_DATA.scale.addTo(values, transformation.getScale());
+        usedFallback |= ENTITY_DATA.leftRotation.addTo(values, transformation.getLeftRotation());
+        usedFallback |= ENTITY_DATA.rightRotation.addTo(values, transformation.getRightRotation());
+        usedFallback |= ENTITY_DATA.itemTransform.addTo(values, toCeDisplayContext(spec.itemTransform()));
+        usedFallback |= ENTITY_DATA.shadowRadius.addTo(values, 0.0F);
+        usedFallback |= ENTITY_DATA.shadowStrength.addTo(values, 0.0F);
+        usedFallback |= ENTITY_DATA.width.addTo(values, 0.0F);
+        usedFallback |= ENTITY_DATA.height.addTo(values, 0.0F);
+        usedFallback |= ENTITY_DATA.viewRange.addTo(values, 1.0F);
+        if (usedFallback) {
+            warnMetadataFallback();
+        }
         return createEntityDataPacket(entityId, values);
     }
 
@@ -583,6 +605,13 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
 
     private Object createDestroyPacket(int entityId) {
         return ClientboundRemoveEntitiesPacketProxy.INSTANCE.newInstance(IntList.of(entityId));
+    }
+
+    private void warnMetadataFallback() {
+        if (metadataFallbackWarningLogged.compareAndSet(false, true)) {
+            plugin.getLogger().warning("CraftEngine ItemDisplay entity data helper is unavailable or failed; "
+                    + "using protocol metadata fallback. Verify ItemDisplay visuals after CraftEngine or Minecraft updates.");
+        }
     }
 
     private void clearViewer(UUID playerId) {
@@ -618,6 +647,130 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         return new DisplaySpec(location, itemStack, spec.itemTransform(), spec.transformation());
     }
 
+    private static final class EntityDataBindings {
+        private static final String BASE_ENTITY_DATA_CLASS =
+                "net.momirealms.craftengine.bukkit.entity.data.BaseEntityData";
+        private static final String CURRENT_ITEM_DISPLAY_DATA_CLASS =
+                "net.momirealms.craftengine.bukkit.entity.data.DisplayData$ItemDisplayData";
+
+        private final EntityDataBinding noGravity;
+        private final EntityDataBinding silent;
+        private final EntityDataBinding itemStack;
+        private final EntityDataBinding translation;
+        private final EntityDataBinding scale;
+        private final EntityDataBinding leftRotation;
+        private final EntityDataBinding rightRotation;
+        private final EntityDataBinding itemTransform;
+        private final EntityDataBinding shadowRadius;
+        private final EntityDataBinding shadowStrength;
+        private final EntityDataBinding width;
+        private final EntityDataBinding height;
+        private final EntityDataBinding viewRange;
+
+        private EntityDataBindings(EntityDataBinding noGravity,
+                                   EntityDataBinding silent,
+                                   EntityDataBinding itemStack,
+                                   EntityDataBinding translation,
+                                   EntityDataBinding scale,
+                                   EntityDataBinding leftRotation,
+                                   EntityDataBinding rightRotation,
+                                   EntityDataBinding itemTransform,
+                                   EntityDataBinding shadowRadius,
+                                   EntityDataBinding shadowStrength,
+                                   EntityDataBinding width,
+                                   EntityDataBinding height,
+                                   EntityDataBinding viewRange) {
+            this.noGravity = noGravity;
+            this.silent = silent;
+            this.itemStack = itemStack;
+            this.translation = translation;
+            this.scale = scale;
+            this.leftRotation = leftRotation;
+            this.rightRotation = rightRotation;
+            this.itemTransform = itemTransform;
+            this.shadowRadius = shadowRadius;
+            this.shadowStrength = shadowStrength;
+            this.width = width;
+            this.height = height;
+            this.viewRange = viewRange;
+        }
+
+        private static EntityDataBindings resolve() {
+            return new EntityDataBindings(
+                    base("NoGravity", ENTITY_DATA_NO_GRAVITY, EntityDataSerializersProxy.BOOLEAN),
+                    base("Silent", ENTITY_DATA_SILENT, EntityDataSerializersProxy.BOOLEAN),
+                    itemDisplay("ItemStack", ITEM_DISPLAY_DATA_ITEM_STACK, EntityDataSerializersProxy.ITEM_STACK),
+                    itemDisplay("Translation", ITEM_DISPLAY_DATA_TRANSLATION, EntityDataSerializersProxy.VECTOR3),
+                    itemDisplay("Scale", ITEM_DISPLAY_DATA_SCALE, EntityDataSerializersProxy.VECTOR3),
+                    itemDisplay("LeftRotation", ITEM_DISPLAY_DATA_LEFT_ROTATION, EntityDataSerializersProxy.QUATERNION),
+                    itemDisplay("RightRotation", ITEM_DISPLAY_DATA_RIGHT_ROTATION, EntityDataSerializersProxy.QUATERNION),
+                    itemDisplay("ItemTransform", ITEM_DISPLAY_DATA_ITEM_TRANSFORM, EntityDataSerializersProxy.BYTE),
+                    itemDisplay("ShadowRadius", ITEM_DISPLAY_DATA_SHADOW_RADIUS, EntityDataSerializersProxy.FLOAT),
+                    itemDisplay("ShadowStrength", ITEM_DISPLAY_DATA_SHADOW_STRENGTH, EntityDataSerializersProxy.FLOAT),
+                    itemDisplay("Width", ITEM_DISPLAY_DATA_WIDTH, EntityDataSerializersProxy.FLOAT),
+                    itemDisplay("Height", ITEM_DISPLAY_DATA_HEIGHT, EntityDataSerializersProxy.FLOAT),
+                    itemDisplay("ViewRange", ITEM_DISPLAY_DATA_VIEW_RANGE, EntityDataSerializersProxy.FLOAT)
+            );
+        }
+
+        private static EntityDataBinding base(String fieldName, int fallbackId, Object fallbackSerializer) {
+            return new EntityDataBinding(readEntityData(BASE_ENTITY_DATA_CLASS, fieldName), fallbackId, fallbackSerializer);
+        }
+
+        private static EntityDataBinding itemDisplay(String fieldName, int fallbackId, Object fallbackSerializer) {
+            return new EntityDataBinding(readEntityData(CURRENT_ITEM_DISPLAY_DATA_CLASS, fieldName),
+                    fallbackId, fallbackSerializer);
+        }
+
+        private static Object readEntityData(String className, String fieldName) {
+            try {
+                Class<?> dataClass = Class.forName(className, true, BukkitCraftEngine.class.getClassLoader());
+                Field field = dataClass.getField(fieldName);
+                return field.get(null);
+            } catch (ReflectiveOperationException | LinkageError ignored) {
+                return null;
+            }
+        }
+    }
+
+    private static final class EntityDataBinding {
+        private final Object entityData;
+        private final Method addEntityDataMethod;
+        private final int fallbackId;
+        private final Object fallbackSerializer;
+
+        private EntityDataBinding(Object entityData, int fallbackId, Object fallbackSerializer) {
+            this.entityData = entityData;
+            this.addEntityDataMethod = resolveAddEntityDataMethod(entityData);
+            this.fallbackId = fallbackId;
+            this.fallbackSerializer = fallbackSerializer;
+        }
+
+        private boolean addTo(List<Object> values, Object value) {
+            if (entityData != null && addEntityDataMethod != null) {
+                try {
+                    addEntityDataMethod.invoke(entityData, value, values);
+                    return false;
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // Fall through to the protocol-level DataValue path below.
+                }
+            }
+            values.add(SynchedEntityDataProxy.DataValueProxy.INSTANCE.newInstance(fallbackId, fallbackSerializer, value));
+            return true;
+        }
+
+        private static Method resolveAddEntityDataMethod(Object entityData) {
+            if (entityData == null) {
+                return null;
+            }
+            try {
+                return entityData.getClass().getMethod("addEntityData", Object.class, List.class);
+            } catch (NoSuchMethodException | SecurityException ignored) {
+                return null;
+            }
+        }
+    }
+
     private static final class ProxyItemDisplay {
         private final int entityId;
         private final UUID entityUuid;
@@ -640,5 +793,3 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         }
     }
 }
-
-
