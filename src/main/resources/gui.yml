@@ -2,7 +2,7 @@
 # 界面布局、按钮、标题和贴图在此文件中配置。
 # 每个 GUI 的 layout 用字符表示槽位，legend 把字符映射到槽位类型。
 # items 下的每个按钮都可以使用 material（原版材质）或 item（CraftEngine 物品）。
-# 可选字段：name、lore、name-key、lore-keys、custom-model-data。
+# 可选字段：name、lore、name-key、lore-keys、custom-model-data、item-model/item_model、hide-tooltip/hide_tooltip。
 
 cooking-pot-gui:
   title: "<white><offset><icon><shift:-1600>烹饪锅"
@@ -31,6 +31,8 @@ cooking-pot-gui:
   items:
     background:
       material: GRAY_STAINED_GLASS_PANE
+      item_model: "air"
+      hide-tooltip: true
       name: " "
     decoration:
       material: BROWN_STAINED_GLASS_PANE
@@ -105,6 +107,8 @@ cooking-pot-guis: {}
 #     items:
 #       background:
 #         material: GRAY_STAINED_GLASS_PANE
+#         item_model: "air"
+#         hide-tooltip: true
 #         name: " "
 #       decoration:
 #         material: BROWN_STAINED_GLASS_PANE
@@ -148,6 +152,8 @@ recipe-view-gui:
     items:
       background:
         material: GRAY_STAINED_GLASS_PANE
+        item_model: "air"
+        hide-tooltip: true
         name: " "
       cooking_pot:
         material: CAULDRON
@@ -188,6 +194,8 @@ recipe-view-gui:
     items:
       background:
         material: GRAY_STAINED_GLASS_PANE
+        item_model: "air"
+        hide-tooltip: true
         name: " "
       prev_page:
         material: ARROW
@@ -238,6 +246,8 @@ recipe-view-gui:
     items:
       background:
         material: GRAY_STAINED_GLASS_PANE
+        item_model: "air"
+        hide-tooltip: true
         name: " "
       arrow:
         item: farmersdelight:cooking_time
@@ -273,6 +283,47 @@ recipe-view-gui:
         lore:
           - "&c背包空间不足，无法安全移动锅内物品。"
 
+  # Custom cooking pot recipe detail GUIs. Key must match behavior.custom.id.
+  # If a custom pot has no matching entry here, the plugin falls back to
+  # recipe-detail-cooking-pot and logs a console warning once per custom id.
+  recipe-detail-cooking-pot-guis: {}
+
+  # Example:
+  # recipe-detail-cooking-pot-guis:
+  #   custom:
+  #     title: "<white><offset><icon><shift:-1600>Custom Pot Recipe"
+  #     rows: 6
+  #     title-layout:
+  #       craftengine:
+  #         offset: "<shift:-8>"
+  #         icon: "<image:farmersdelight:cooking_pot_menu>"
+  #     layout:
+  #       - "B######P#"
+  #       - "###III###"
+  #       - "###III###"
+  #       - "###III###"
+  #       - "#####C#R#"
+  #       - "#########"
+  #     legend:
+  #       R: result
+  #       I: ingredient
+  #       C: container
+  #       B: back
+  #       P: fill
+  #       "#": background
+  #     items:
+  #       background:
+  #         material: GRAY_STAINED_GLASS_PANE
+  #         item_model: "air"
+  #         hide-tooltip: true
+  #         name: " "
+  #       back:
+  #         material: ARROW
+  #         name: "Back"
+  #       fill:
+  #         material: HOPPER
+  #         name: "Fill Ingredients"
+
   recipe-detail-cutting-board:
     title: "<white><offset><icon><shift:-1600>配方详细"
     rows: 6
@@ -296,6 +347,8 @@ recipe-view-gui:
     items:
       background:
         material: GRAY_STAINED_GLASS_PANE
+        item_model: "air"
+        hide-tooltip: true
         name: " "
       back:
         material: ARROW

@@ -39,10 +39,20 @@ plugins/FarmersDelight/config.yml
 plugins/FarmersDelight/gui.yml
 plugins/FarmersDelight/recipes/cooking_pot_recipes.yml
 plugins/FarmersDelight/recipes/cutting_board_recipes.yml
-plugins/FarmersDelight/block_storage.yml
 ```
 
-`block_storage.yml` 用于炉灶和煎锅运行数据。厨锅和砧板以 CraftEngine BlockEntity 数据为主，旧版 `block_storage.yml` 中的厨锅/砧板数据会在区块加载时迁移到 CE 数据并从旧文件中移除。
+厨锅、砧板、炉灶和煎锅的方块运行数据都保存在 CraftEngine BlockEntity 数据中。旧版本生成过的 `block_storage.yml` 只作为迁移源读取；对应区块加载后，旧数据会写入 CE 方块实体并从旧文件中移除。新安装不会生成 `block_storage.yml`。
+
+默认 `config.yml` 按功能归属组织：厨锅相关选项在 `cooking-pot`，砧板在 `cutting-board`，煎锅在 `skillet`，炉灶在 `stove`。旧版本的分散路径仍会被读取作为兼容 fallback，但新配置建议使用默认文件里的新路径。
+
+调试日志在 `debug` 中配置。正常服务器保持关闭；排查问题时需要同时开启总开关并指定分类。`categories` 留空不会输出分类调试日志；需要临时全开时写 `all` 或 `*`。
+
+```yaml
+debug:
+  enabled: true
+  categories:
+    - cooking_pot
+```
 
 ## 3. CraftEngine 侧需要配置什么
 
@@ -136,6 +146,112 @@ behavior:
 | `container-slots` | 容器槽数量，例如碗、瓶等。 |
 
 不写 `custom` 时使用默认厨锅布局，不影响原厨锅。
+
+自定义大锅完整配置入口通常有四处，`id` 必须保持一致。下面以 `large_pot` 为例：
+
+1. CE 方块行为，决定这个锅的实际槽位和配方组 ID：
+
+```yaml
+behavior:
+  - type: farmersdelight:cooking_pot
+    custom:
+      id: large_pot
+      input-slots: 9
+      pending-output-slots: 2
+      output-slots: 3
+      container-slots: 2
+```
+
+2. `gui.yml` 的锅本体 GUI，决定玩家打开锅时看到的槽位布局：
+
+```yaml
+cooking-pot-guis:
+  large_pot:
+    title: "<white><offset><icon><shift:-1600>Large Cooking Pot"
+    fillers-enabled: true
+    rows: 5
+    layout:
+      - "XIIIIIPBX"
+      - "XIIIIIPBX"
+      - "RXXXXXXXO"
+      - "XXHXXCCOO"
+      - "XXXXXXXXX"
+    legend:
+      I: ingredient
+      H: heat
+      C: container
+      P: progress
+      B: buffer
+      O: output
+      R: recipe
+      X: decoration
+    items:
+      background:
+        material: GRAY_STAINED_GLASS_PANE
+        item_model: "air"
+        hide-tooltip: true
+        name: " "
+      decoration:
+        material: BROWN_STAINED_GLASS_PANE
+        name: " "
+      recipe:
+        material: KNOWLEDGE_BOOK
+        name: "查看烹饪配方"
+```
+
+3. `gui.yml` 的配方详情 GUI，决定配方页能显示多少个材料。扩展输入槽后建议同步扩展这里的 `ingredient` 槽：
+
+```yaml
+recipe-view-gui:
+  recipe-detail-cooking-pot-guis:
+    large_pot:
+      title: "<white><offset><icon><shift:-1600>Large Pot Recipe"
+      rows: 6
+      layout:
+        - "B######P#"
+        - "###III###"
+        - "###III###"
+        - "###III###"
+        - "#####C#R#"
+        - "#########"
+      legend:
+        I: ingredient
+        C: container
+        R: result
+        B: back
+        P: fill
+        "#": background
+      items:
+        background:
+          material: GRAY_STAINED_GLASS_PANE
+          item_model: "air"
+          hide-tooltip: true
+          name: " "
+        back:
+          material: ARROW
+          name: "返回"
+        fill:
+          material: HOPPER
+          name: "填入材料"
+```
+
+4. `recipes/cooking_pot_recipes.yml` 的自定义配方组：
+
+```yaml
+custom_cooking_pot_recipes:
+  large_pot:
+    large_stew:
+      ingredients:
+        - "minecraft:beef"
+        - "minecraft:carrot"
+        - "minecraft:potato"
+        - "farmersdelight:onion"
+      container: "minecraft:bowl"
+      result: "farmersdelight:beef_stew"
+      cook-time: 200
+```
+
+如果自定义锅有专用配方但没有 `recipe-detail-cooking-pot-guis.<id>`，插件会在从该锅打开配方 GUI 时向控制台输出 warning，并回退使用默认 `recipe-detail-cooking-pot`。如果某个配方材料数超过详情页 `ingredient` 槽数量，也会在打开该 GUI 时向控制台提示。
 
 ### 3.3 砧板行为
 
@@ -339,32 +455,21 @@ cutting-board:
 煎锅漏斗导热：
 
 ```yaml
-heat-sources:
-  skillet:
+skillet:
+  heat:
     allow-conductors: false
 ```
 
 默认关闭。厨锅仍可使用导热方块判定热源，煎锅不会因为漏斗在下方就被当成加热。
 
-厨锅内容物品提示：
+厨锅破坏掉落：
 
 ```yaml
-cooking-pot-packed-drop:
-  enabled: true
-  durability-bar:
-    enabled: true
-  hide-advanced-durability-tooltip:
-    enabled: true
+cooking-pot:
+  pack-contents-on-break: true
 ```
 
-开启后厨锅被打包成物品时会保存内部内容，并用耐久条表示占用情况，同时隐藏原版高级耐久提示。
-
-说明：
-
-- `cooking-pot-packed-drop.enabled` 控制是否把厨锅内部原料、容器和待输出槽保存进掉落物。
-- `durability-bar.enabled` 只控制是否用耐久条显示内容量。该功能依赖 Paper/Purpur 1.20.5+ 的物品 DataComponent；不支持时会自动跳过，不影响内容保存。
-- `hide-advanced-durability-tooltip.enabled` 只隐藏 F3+H 高级提示里的“耐久度: x / y”。该功能需要 Paper/Purpur 1.21.5+ 的 `TOOLTIP_DISPLAY` 数据组件；旧版本或缺少 API 时会自动跳过。
-- 如果只想保留厨锅内容描述但不要耐久条，把 `durability-bar.enabled` 改成 `false`。
+`true` 表示厨锅被破坏时把内部原料、容器和待输出槽保存进掉落的厨锅物品；`false` 表示掉落空锅并把锅内物品散落到世界中。
 
 ## 6. 物品 ID 与清空写法
 
@@ -391,7 +496,7 @@ minecraft:air
 - `knife-drops.<entity>.normal`
 - `knife-drops.<entity>.burning`
 - `straw-drops.<type>.drop`
-- `container-returns.<item>`
+- `cooking-pot.container-returns.<item>`
 - `gui.yml` 中可选展示物品
 
 配方的 `result` 不建议清空；如果不要某个配方，直接删除那条配方。
@@ -405,8 +510,10 @@ minecraft:air
 ```yaml
 hopper-interactions:
   enabled: false
-  cooking-pot: true
-  cutting-board: true
+cooking-pot:
+  hopper-interactions: true
+cutting-board:
+  hopper-interactions: true
 ```
 
 开启后的设计逻辑：
@@ -416,6 +523,8 @@ hopper-interactions:
 - 下方漏斗：从待输出槽抽取成品。
 
 拿容器右键厨锅取出待输出槽物品时，只处理输出和容器，不会刷新整锅数据导致其它内容丢失。
+
+厨锅正在烹饪时会优先保持当前配方。只要当前配方仍然可以由锅内物品完成，继续放入稻米、其它食材或额外批次材料都不会重置烹饪进度；只有当前配方不再满足并切换到另一条配方时，进度才会重新开始。
 
 厨锅配方示例：
 
@@ -541,11 +650,11 @@ cutting-board:
 
 ### 10.2 煎锅物品展示
 
-煎锅参数在 `display-visuals.skillet`：
+煎锅参数在 `skillet.display`：
 
 ```yaml
-display-visuals:
-  skillet:
+skillet:
+  display:
     scale: 0.5
     y-offset: 0.1
     item-spread: 0.125
@@ -557,11 +666,11 @@ display-visuals:
 
 ### 10.3 炉灶物品展示
 
-炉灶参数在 `display-visuals.stove`：
+炉灶参数在 `stove.display`：
 
 ```yaml
-display-visuals:
-  stove:
+stove:
+  display:
     scale: 0.375
     slot-offsets:
       - "0.3,1.02,0.2"
@@ -579,22 +688,29 @@ display-visuals:
 
 ### 10.4 厨锅进度文字
 
-厨锅悬浮进度文字在 `cooking-pot-progress-display`：
+厨锅悬浮进度文字在 `cooking-pot.progress-display`：
 
 ```yaml
-cooking-pot-progress-display:
-  show-recipe-name: false
-  y-offset: 1.2
-  scale: 0.5
-  visibility-distance: 10.0
-  look-dot-threshold: 0.95
+cooking-pot:
+  progress-display:
+    enabled: true
+    show-recipe-name: false
+    y-offset: 1.2
+    scale: 0.5
+    visibility-distance: 10.0
+    look-dot-threshold: 0.95
+    update-interval-ticks: 8
+    disable-above-active-pots: 512
 ```
 
+- `enabled`：是否启用厨锅烹饪中的悬浮 TextDisplay。大量厨锅压测时可先关掉做基线对比。
 - `show-recipe-name`：是否显示正在烹饪的配方名。
 - `y-offset`：文字高度。更换高锅或矮锅模型后可调整该项。
 - `scale`：文字缩放。
 - `visibility-distance`：玩家离厨锅多少格内才可能看到。
 - `look-dot-threshold`：看向判定阈值，越接近 `1` 要求看得越准。提示太难触发可调到 `0.90`。
+- `update-interval-ticks`：悬浮进度文字刷新间隔。只影响 TextDisplay 更新频率，不会放慢真实烹饪时间。
+- `disable-above-active-pots`：活跃厨锅数量超过该值时自动关闭悬浮 TextDisplay，`0` 表示不按数量自动关闭。
 
 ## 11. GUI
 
@@ -631,6 +747,8 @@ items:
 - Shift 点击：按配方材料循环匹配，尽量填满厨锅输入槽。
 - 完全没有可匹配材料时，不会移动锅内物品，也不会返回厨锅界面。
 - 如果锅内原物品无法安全退回玩家背包，不会执行填入，避免吞物品。
+- 原地刷新配方详情页时会保留详情页烹饪进度条动画，不会因为填入按钮状态变化而把进度条显示重置到起点。
+- 填入材料本身不会强制清零厨锅真实烹饪进度；正在烹饪的配方仍可完成时，进度继续保留。
 
 按钮显示完全在 `gui.yml` 中配置。四个状态分别是：
 
@@ -794,8 +912,9 @@ nourishment-foods:
 容器返还：
 
 ```yaml
-container-returns:
-  farmersdelight:milk_bottle: minecraft:glass_bottle
+cooking-pot:
+  container-returns:
+    farmersdelight:milk_bottle: minecraft:glass_bottle
 ```
 
 ## 14. 命令与权限
@@ -843,6 +962,8 @@ container-returns:
 | --- | --- | --- | --- |
 | `/fd debugtools place <cooking_pot\|skillet\|stove\|stove_blocked\|all> [count] [spacing] [layers]` | `farmersdelight.command` + `farmersdelight.admin` | OP | 批量放置性能测试用方块。只会出现在使用 `-PdebugTools=true` 构建的 jar 中。 |
 | `/fd debugtools activate <cooking_pot\|skillet\|stove\|all>` | `farmersdelight.command` + `farmersdelight.admin` | OP | 激活测试方块的烹饪/显示逻辑。只会出现在调试构建中。 |
+| `/fd debugtools status` | `farmersdelight.command` + `farmersdelight.admin` | OP | 输出当前 TickManager 性能采样、活跃队列、厨锅实体数量。只会出现在调试构建中。 |
+| `/fd debugtools profile [ticks]` | `farmersdelight.command` + `farmersdelight.admin` | OP | 重置 TickManager 采样并在指定 tick 后输出 avg/max/last 耗时，默认 200 ticks。只会出现在调试构建中。 |
 
 正常构建不会包含 `debugtools`、`debug`、`perf` 子命令，也不会把调试工具类打进最终 jar。普通服端不需要给玩家配置任何调试权限。
 
@@ -917,26 +1038,34 @@ CE 物品名称显示成 ID：检查 CE 物品的显示名、语言文件和资�
 
 开发环境通过 Maven 仓库解析 CraftEngine 26.5 依赖，`build.gradle.kts` 已使用 `net.momirealms:craft-engine-*` 坐标。若依赖仓库暂时不可用，可先把对应 CraftEngine 产物安装到 `mavenLocal()`。
 
+常用构建：
+
 ```powershell
 .\gradlew.bat clean build
+.\gradlew.bat buildPaper
+.\gradlew.bat buildFolia
 ```
 
 输出：
 
 ```text
 build/libs/farmersdelight-1.0.0.jar
+build/libs/farmersdelight-1.0.0-paper.jar
+build/libs/farmersdelight-1.0.0-folia.jar
 ```
 
 可选混淆构建：
 
 ```powershell
-.\gradlew.bat clean build -Pobfuscate=true
+.\gradlew.bat buildObfuscated
+.\gradlew.bat buildAllVariants
 ```
 
-输出：
+混淆输出：
 
 ```text
-build/libs/farmersdelight-1.0.0-obf.jar
+build/libs/farmersdelight-1.0.0-paper-obf.jar
+build/libs/farmersdelight-1.0.0-folia-obf.jar
 ```
 
-混淆构建会保留 Bukkit 主类和公开 API 包，避免外部插件调用入口被改名。
+混淆构建会保留 Bukkit 主类、事件监听注解、枚举入口和公开 API 包，避免 Bukkit、CraftEngine 或外部插件需要反射访问的入口被改名。Paper/Folia jar 的 `paper-plugin.yml` 会分别写入对应的 `folia-supported` 值；Folia 构建仍建议在测试服验证区域调度、显示同步和区块卸载保存。

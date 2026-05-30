@@ -1,5 +1,6 @@
 package com.huidu.farmersdelight.config;
 
+import com.huidu.farmersdelight.i18n.I18n;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.property.Property;
@@ -94,7 +95,7 @@ public class HeatSourceConfig {
             vanillaBlocks.add(material);
         } catch (IllegalArgumentException e) {
             if (LOGGER != null) {
-                LOGGER.warning("Invalid vanilla block ID in heat source config: " + blockId);
+                LOGGER.warning(I18n.formatConsole("heat_source.invalid_vanilla_block", "id", blockId));
             }
         }
     }
@@ -122,7 +123,7 @@ public class HeatSourceConfig {
             conductors.add(material);
         } catch (IllegalArgumentException e) {
             if (LOGGER != null) {
-                LOGGER.warning("Invalid vanilla conductor material: " + conductorId);
+                LOGGER.warning(I18n.formatConsole("heat_source.invalid_vanilla_conductor", "id", conductorId));
             }
         }
     }

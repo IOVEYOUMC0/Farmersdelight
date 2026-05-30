@@ -548,8 +548,13 @@ public final class ItemUtils {
         if (item == null || item.getType().isAir() || isEmptyItemId(itemId)) {
             return false;
         }
-        String normalized = itemId.trim().toLowerCase(Locale.ROOT);
-        return getItemIds(item).stream().anyMatch(id -> id.equalsIgnoreCase(normalized));
+        String normalized = itemId.trim();
+        String customId = getCustomItemId(item);
+        if (customId != null && customId.equalsIgnoreCase(normalized)) {
+            return true;
+        }
+        String vanillaId = getVanillaMaterialItemId(item);
+        return vanillaId != null && vanillaId.equalsIgnoreCase(normalized);
     }
 
     public static boolean matchesItemId(ItemStack item, Key itemId) {
@@ -560,16 +565,15 @@ public final class ItemUtils {
         if (item == null || item.getType().isAir()) {
             return Set.of();
         }
-        java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>();
         String customId = getCustomItemId(item);
-        if (customId != null) {
-            ids.add(customId);
-        }
         String vanillaId = getVanillaMaterialItemId(item);
-        if (vanillaId != null) {
-            ids.add(vanillaId);
+        if (customId == null) {
+            return vanillaId == null ? Set.of() : Set.of(vanillaId);
         }
-        return Set.copyOf(ids);
+        if (vanillaId == null || customId.equals(vanillaId)) {
+            return Set.of(customId);
+        }
+        return Set.of(customId, vanillaId);
     }
 
     public static Set<String> getItemTagIds(ItemStack item) {

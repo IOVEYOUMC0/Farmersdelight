@@ -1,6 +1,7 @@
 package com.huidu.farmersdelight.visual;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
+import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.util.scheduler.PluginTask;
 import it.unimi.dsi.fastutil.ints.IntList;
 import net.momirealms.craftengine.bukkit.entity.data.BaseEntityData;
@@ -37,6 +38,7 @@ import org.bukkit.inventory.ItemStack;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
 
@@ -50,6 +52,9 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
     private final Map<Integer, ProxyItemDisplay> displays = new ConcurrentHashMap<>();
     private final Map<UUID, Player> onlinePlayers = new ConcurrentHashMap<>();
     private final Set<Integer> scheduledDisplaySyncs = ConcurrentHashMap.newKeySet();
+    private final AtomicLong displaySnapshotVersion = new AtomicLong();
+    private volatile List<ProxyItemDisplay> displaySnapshot = List.of();
+    private volatile long displaySnapshotCachedVersion = -1L;
     private PluginTask syncTask;
     private double viewDistance = DEFAULT_VIEW_DISTANCE;
     private double viewDistanceSquared = DEFAULT_VIEW_DISTANCE * DEFAULT_VIEW_DISTANCE;
@@ -116,6 +121,7 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
                 destroyPacket
         );
         displays.put(entityId, display);
+        markDisplaySnapshotDirty();
         scheduleSyncDisplay(display);
         return entityId;
     }
@@ -147,6 +153,7 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         scheduledDisplaySyncs.remove(entityId);
         ProxyItemDisplay removed = displays.remove(entityId);
         if (removed != null) {
+            markDisplaySnapshotDirty();
             destroyForAllViewers(removed);
         }
     }
@@ -183,6 +190,8 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         }
         scheduledDisplaySyncs.clear();
         onlinePlayers.clear();
+        displaySnapshot = List.of();
+        markDisplaySnapshotDirty();
         return removed;
     }
 
@@ -250,7 +259,7 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
             return;
         }
 
-        List<ProxyItemDisplay> snapshot = new ArrayList<>(displays.values());
+        List<ProxyItemDisplay> snapshot = getDisplaySnapshot();
         int size = snapshot.size();
         if (size == 0) {
             syncCursor = 0;
@@ -266,6 +275,24 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
             processed++;
         }
         syncCursor = (start + Math.max(1, processed)) % size;
+    }
+
+    private void markDisplaySnapshotDirty() {
+        displaySnapshotVersion.incrementAndGet();
+    }
+
+    private List<ProxyItemDisplay> getDisplaySnapshot() {
+        long version = displaySnapshotVersion.get();
+        List<ProxyItemDisplay> snapshot = displaySnapshot;
+        if (displaySnapshotCachedVersion == version) {
+            return snapshot;
+        }
+
+        List<ProxyItemDisplay> refreshed = new ArrayList<>(displays.values());
+        List<ProxyItemDisplay> updated = refreshed.isEmpty() ? List.of() : Collections.unmodifiableList(refreshed);
+        displaySnapshot = updated;
+        displaySnapshotCachedVersion = version;
+        return updated;
     }
 
     private void scheduleSyncDisplay(ProxyItemDisplay display) {
@@ -342,7 +369,7 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
             return;
         }
         World world = display.spec.location().getWorld();
-        List<Player> players = world == null ? List.of() : List.copyOf(world.getPlayers());
+        List<Player> players = world == null ? List.of() : world.getPlayers();
         syncDisplay(display, players);
     }
 
@@ -404,7 +431,10 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
             user.sendPackets(display.spawnPackets, false);
             display.viewers.add(player.getUniqueId());
         } catch (Exception e) {
-            plugin.getLogger().warning("Failed to spawn CE proxy item display " + display.entityId + " for " + player.getName() + ": " + e.getMessage());
+            plugin.getLogger().warning(I18n.formatConsole("visual.proxy_spawn_failed",
+                    "entity", display.entityId,
+                    "player", player.getName(),
+                    "error", e.getMessage()));
         }
     }
 
@@ -415,7 +445,10 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
                 user.sendPacket(display.destroyPacket, false);
             }
         } catch (Exception e) {
-            plugin.getLogger().warning("Failed to destroy CE proxy item display " + display.entityId + " for " + player.getName() + ": " + e.getMessage());
+            plugin.getLogger().warning(I18n.formatConsole("visual.proxy_destroy_failed",
+                    "entity", display.entityId,
+                    "player", player.getName(),
+                    "error", e.getMessage()));
         } finally {
             display.viewers.remove(player.getUniqueId());
         }
@@ -478,7 +511,10 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
             }
             user.sendPackets(List.of(positionPacket, metadataPacket), false);
         } catch (Exception e) {
-            plugin.getLogger().warning("Failed to update CE proxy item display " + display.entityId + " for " + player.getName() + ": " + e.getMessage());
+            plugin.getLogger().warning(I18n.formatConsole("visual.proxy_update_failed",
+                    "entity", display.entityId,
+                    "player", player.getName(),
+                    "error", e.getMessage()));
         }
     }
 

@@ -23,7 +23,7 @@ import com.huidu.farmersdelight.manager.TickManager;
 import com.huidu.farmersdelight.manager.TrayManager;
 import com.huidu.farmersdelight.recipe.CookingPotRecipeManager;
 import com.huidu.farmersdelight.recipe.CuttingBoardRecipeManager;
-import com.huidu.farmersdelight.storage.BlockStorageManager;
+import com.huidu.farmersdelight.storage.LegacyBlockStorageManager;
 import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.InteractionDebouncer;
@@ -102,7 +102,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private String pendingDatapackSyncRetryReason;
 
     private SchedulerAdapter scheduler;
-    private BlockStorageManager blockStorageManager;
+    private LegacyBlockStorageManager legacyBlockStorageManager;
     private TickManager tickManager;
     private TrayManager trayManager;
     private StoveManager stoveManager;
@@ -133,10 +133,13 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private boolean advancementsEnabled;
     private boolean debugEnabled;
     private boolean showRecipeNameInProgressDisplay;
+    private boolean cookingPotProgressDisplayEnabled = true;
     private double cookingPotProgressDisplayYOffset = 1.2D;
     private float cookingPotProgressDisplayScale = 0.5F;
     private double cookingPotProgressDisplayVisibilityDistanceSquared = 100.0D;
     private double cookingPotProgressDisplayLookDotThreshold = 0.95D;
+    private int cookingPotProgressDisplayUpdateIntervalTicks = 8;
+    private int cookingPotProgressDisplayDisableAboveActivePots = 512;
     private String cuttingBoardInteractionMode;
     private boolean hopperInteractionsEnabled;
     private boolean cookingPotHopperInteractionsEnabled;
@@ -167,17 +170,17 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         }
     }
 
-    private void loadRecipeManagers(String logMessage) {
-        getLogger().info(logMessage);
+    private void loadRecipeManagers(String logKey) {
+        I18n.logInfo(logKey);
         cookingPotRecipeManager.loadRecipes();
         cuttingBoardRecipeManager.loadRecipes();
     }
 
-    private void loadRecipeManagersWhenReady(String logMessage) {
+    private void loadRecipeManagersWhenReady(String logKey) {
         if (areCraftEngineItemsReady()) {
-            loadRecipeManagers(logMessage);
+            loadRecipeManagers(logKey);
         } else {
-            getLogger().info("Skipping recipe load for now because CraftEngine custom items are not ready yet.");
+            I18n.logInfo("plugin.recipe_load_deferred");
         }
     }
 
@@ -191,7 +194,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             achievementListener = null;
         }
         advancementManager = null;
-        queueAdvancementDatapackRemoval("remove disabled FarmersDelight advancements");
+        queueAdvancementDatapackRemoval(I18n.formatConsole("plugin.datapack_reason_remove_disabled_advancements"));
     }
 
     private void refreshAdvancementSystem(boolean reloading) {
@@ -213,13 +216,15 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         }
 
         queueDatapackSync(reloading
-                ? "apply FarmersDelight advancement config changes"
-                : "apply FarmersDelight advancements");
+                ? I18n.formatConsole("plugin.datapack_reason_apply_advancement_config")
+                : I18n.formatConsole("plugin.datapack_reason_apply_advancements"));
     }
 
     @Override
     public void onLoad() {
         instance = this;
+        ensureConfigDefaults();
+        I18n.init(this);
         registerBlockBehaviors();
     }
 
@@ -228,7 +233,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         enabled = true;
 
         if (BuildFlags.DEBUG_TOOLS) {
-            getLogger().warning("This FarmersDelight build includes debug tools and test-only command paths.");
+            I18n.logWarning("plugin.debug_tools_build");
         }
 
         ensureConfigDefaults();
@@ -236,10 +241,10 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
         scheduler = new SchedulerAdapter(this);
         if (scheduler.isFolia()) {
-            getLogger().info("Folia scheduler detected; FarmersDelight will route scheduled work through region/global schedulers.");
+            I18n.logInfo("plugin.folia_scheduler");
         }
 
-        blockStorageManager = new BlockStorageManager(this);
+        legacyBlockStorageManager = createLegacyBlockStorageManager();
 
         loadConfigs();
         logStartupSummary();
@@ -252,7 +257,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
         cuttingBoardRecipeManager = new CuttingBoardRecipeManager(this);
 
-        loadRecipeManagersWhenReady("Loading recipes...");
+        loadRecipeManagersWhenReady("plugin.loading_recipes");
 
         blockBreakListener = new BlockBreakListener();
         getServer().getPluginManager().registerEvents(blockBreakListener, this);
@@ -287,9 +292,9 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
         itemDisplayManager = new ProxyItemDisplayManager(this);
         if (itemDisplayManager.isAvailable()) {
-            getLogger().info("CraftEngine proxy item displays enabled for stove and skillet.");
+            I18n.logInfo("plugin.proxy_display_enabled");
         } else {
-            getLogger().warning("CraftEngine proxy item display pipeline unavailable, stove and skillet visuals will be disabled.");
+            I18n.logWarning("plugin.proxy_display_unavailable");
         }
 
         stoveManager = new StoveManager(this);
@@ -325,7 +330,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
         CraftEngineStateUsageMonitor.logRealStateUsage(this, "startup");
 
-        getLogger().info("FarmersDelight plugin has been enabled!");
+        I18n.logInfo("plugin.enabled");
     }
 
     @Override
@@ -333,84 +338,84 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         enabled = false;
         boolean folia = scheduler != null && scheduler.isFolia();
 
-        runDisableStep("stop tick manager", () -> {
+        runDisableStep("plugin.disable_step_stop_tick_manager", () -> {
             if (tickManager != null) {
                 tickManager.stop();
                 tickManager = null;
             }
         });
 
-        runDisableStep("stop effect listener", () -> {
+        runDisableStep("plugin.disable_step_stop_effect_listener", () -> {
             if (effectListener != null) {
                 effectListener.stop();
                 effectListener = null;
             }
         });
 
-        runDisableStep("stop horse feed tempt listener", () -> {
+        runDisableStep("plugin.disable_step_stop_horse_feed_tempt_listener", () -> {
             if (horseFeedTemptListener != null) {
                 horseFeedTemptListener.stop();
                 horseFeedTemptListener = null;
             }
         });
-        runDisableStep("close cooking pot GUIs", CookingPotGui::cleanupAll);
-        runDisableStep("close recipe view GUIs", RecipeViewGui::cleanupAll);
-        runDisableStep("save block data", this::saveAllBlockData);
+        runDisableStep("plugin.disable_step_close_cooking_pot_guis", CookingPotGui::cleanupAll);
+        runDisableStep("plugin.disable_step_close_recipe_view_guis", RecipeViewGui::cleanupAll);
+        runDisableStep("plugin.disable_step_save_block_data", this::saveAllBlockData);
 
-        runDisableStep("clear placement cache", this::cleanupPlacementCache);
-        runDisableStep("clear interaction debounce cache", this::cleanupInteractionDebouncer);
+        runDisableStep("plugin.disable_step_clear_placement_cache", this::cleanupPlacementCache);
+        runDisableStep("plugin.disable_step_clear_interaction_debounce_cache", this::cleanupInteractionDebouncer);
 
-        runDisableStep("shutdown chunk loader", () -> {
+        runDisableStep("plugin.disable_step_shutdown_chunk_loader", () -> {
             if (chunkLoadListener != null) {
                 chunkLoadListener.shutdown();
             }
         });
 
-        runDisableStep("cleanup trays", () -> {
+        runDisableStep("plugin.disable_step_cleanup_trays", () -> {
             if (trayManager != null) {
                 trayManager.cleanupAll();
                 trayManager = null;
             }
         });
 
-        runDisableStep("cleanup stoves", () -> {
+        runDisableStep("plugin.disable_step_cleanup_stoves", () -> {
             if (stoveManager != null) {
                 stoveManager.cleanup();
                 stoveManager = null;
             }
         });
 
-        runDisableStep("cleanup skillets", () -> {
+        runDisableStep("plugin.disable_step_cleanup_skillets", () -> {
             if (skilletManager != null) {
                 skilletManager.cleanup();
                 skilletManager = null;
             }
         });
 
-        runDisableStep("cleanup item displays", () -> {
+        runDisableStep("plugin.disable_step_cleanup_item_displays", () -> {
             if (itemDisplayManager != null) {
                 itemDisplayManager.cleanup();
                 itemDisplayManager = null;
             }
         });
 
-        runDisableStep("shutdown block storage", () -> {
-            if (blockStorageManager != null) {
-                blockStorageManager.shutdown();
+        runDisableStep("plugin.disable_step_shutdown_legacy_block_storage", () -> {
+            if (legacyBlockStorageManager != null) {
+                legacyBlockStorageManager.shutdown();
             }
         });
 
-        runDisableStep("cleanup cooking pot block entities", () -> CookingPotBlockBehavior.cleanupAll(!folia));
-        runDisableStep("cleanup cutting board block entities", () -> CuttingBoardBlockBehavior.cleanupAll(!folia));
-        runDisableStep("cleanup stove block entities", StoveCookingBlockBehavior::cleanupAll);
-        runDisableStep("cleanup skillet block entities", SkilletBlockBehavior::cleanupAll);
-        runDisableStep("cleanup tall crops", TallCropBlockBehavior::cleanupAll);
-        runDisableStep("cleanup mushroom colonies", MushroomColonyBehavior::cleanupAll);
-        runDisableStep("cleanup wild rice blocks", WildRiceBlockBehavior::cleanupAll);
-        runDisableStep("clear stove recipe cache", StoveCookingBlockBehavior::clearRecipeCache);
-        runDisableStep("clear skillet recipe cache", this::clearLegacySkilletRecipeCache);
+        runDisableStep("plugin.disable_step_cleanup_cooking_pot_block_entities", () -> CookingPotBlockBehavior.cleanupAll(!folia));
+        runDisableStep("plugin.disable_step_cleanup_cutting_board_block_entities", () -> CuttingBoardBlockBehavior.cleanupAll(!folia));
+        runDisableStep("plugin.disable_step_cleanup_stove_block_entities", StoveCookingBlockBehavior::cleanupAll);
+        runDisableStep("plugin.disable_step_cleanup_skillet_block_entities", SkilletBlockBehavior::cleanupAll);
+        runDisableStep("plugin.disable_step_cleanup_tall_crops", TallCropBlockBehavior::cleanupAll);
+        runDisableStep("plugin.disable_step_cleanup_mushroom_colonies", MushroomColonyBehavior::cleanupAll);
+        runDisableStep("plugin.disable_step_cleanup_wild_rice_blocks", WildRiceBlockBehavior::cleanupAll);
+        runDisableStep("plugin.disable_step_clear_stove_recipe_cache", StoveCookingBlockBehavior::clearRecipeCache);
+        runDisableStep("plugin.disable_step_clear_skillet_recipe_cache", this::clearLegacySkilletRecipeCache);
 
-        runDisableStep("cancel pending tasks", () -> {
+        runDisableStep("plugin.disable_step_cancel_pending_tasks", () -> {
             if (pendingCraftEngineReloadTask != null) {
                 pendingCraftEngineReloadTask.cancel();
                 pendingCraftEngineReloadTask = null;
@@ -425,9 +430,9 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             }
         });
 
-        runDisableStep("unregister listeners", () -> HandlerList.unregisterAll((org.bukkit.plugin.Plugin) this));
+        runDisableStep("plugin.disable_step_unregister_listeners", () -> HandlerList.unregisterAll((org.bukkit.plugin.Plugin) this));
 
-        runDisableStep("shutdown scheduler", () -> {
+        runDisableStep("plugin.disable_step_shutdown_scheduler", () -> {
             if (scheduler != null) {
                 scheduler.shutdown();
                 scheduler = null;
@@ -445,19 +450,19 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         cookingPotGuiConfig = null;
         strawDropConfig = null;
 
-        I18n.cleanup();
-
-        blockStorageManager = null;
+        legacyBlockStorageManager = null;
         advancementManager = null;
 
-        getLogger().info("FarmersDelight plugin has been disabled!");
+        I18n.logInfo("plugin.disabled");
+        I18n.cleanup();
     }
 
-    private void runDisableStep(String step, Runnable action) {
+    private void runDisableStep(String stepKey, Runnable action) {
         try {
             action.run();
         } catch (Throwable throwable) {
-            getLogger().log(Level.WARNING, "Failed to " + step + " during disable; continuing shutdown.", throwable);
+            getLogger().log(Level.WARNING, I18n.formatConsole("plugin.disable_step_failed",
+                    "step", I18n.formatConsole(stepKey)), throwable);
         }
     }
 
@@ -485,9 +490,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         SkilletBlockBehavior.saveAllData();
         StoveCookingBlockBehavior.saveAllData();
 
-        if (blockStorageManager != null) {
-            blockStorageManager.saveAll();
-        }
         flushCraftEngineWorldData();
     }
 
@@ -504,7 +506,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                     ceWorld.save();
                 }
             } catch (Throwable throwable) {
-                getLogger().log(Level.WARNING, "Failed to flush CraftEngine world data for " + world.getName(), throwable);
+                getLogger().log(Level.WARNING, I18n.formatConsole("plugin.craftengine_world_flush_failed",
+                        "world", world.getName()), throwable);
             }
         }
     }
@@ -519,8 +522,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         SkilletBlockBehavior.cleanupWorld(worldId);
         StoveCookingBlockBehavior.cleanupWorld(worldId);
 
-        if (blockStorageManager != null) {
-            blockStorageManager.cleanupWorld(worldId);
+        if (legacyBlockStorageManager != null) {
+            legacyBlockStorageManager.cleanupWorld(worldId);
         }
         if (trayManager != null) {
             trayManager.cleanupWorld(worldId);
@@ -555,7 +558,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         if (primaryWorld == null || !primaryWorld.getUID().equals(event.getWorld().getUID())) {
             return;
         }
-        queueDatapackSync("syncing FarmersDelight advancements for world " + event.getWorld().getName());
+        queueDatapackSync(I18n.formatConsole("plugin.datapack_reason_world_sync",
+                "world", event.getWorld().getName()));
     }
 
     private void queueDatapackReload(String reason) {
@@ -567,9 +571,9 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             pendingDatapackReloadTask = null;
             String reloadReason = pendingDatapackReloadReason != null
                     ? pendingDatapackReloadReason
-                    : "apply FarmersDelight advancement changes";
+                    : I18n.formatConsole("plugin.datapack_reason_apply_advancement_changes");
             pendingDatapackReloadReason = null;
-            getLogger().info("Reloading data packs to " + reloadReason + "...");
+            I18n.logInfo("plugin.datapack_reload", "reason", reloadReason);
             getServer().reloadData();
         }, 10L);
     }
@@ -656,10 +660,11 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
         pendingCraftEngineReloadTask = scheduler.runLater(() -> {
             pendingCraftEngineReloadTask = null;
-            getLogger().info("CraftEngine reload detected, refreshing FarmersDelight CE caches and recipes...");
+            I18n.reload();
+            I18n.logInfo("plugin.craftengine_reload");
             refreshAfterCraftEngineReload();
-            loadRecipeManagersWhenReady("Refreshing recipes after CraftEngine reload...");
-            CraftEngineStateUsageMonitor.logRealStateUsage(this, "CraftEngine reload");
+            loadRecipeManagersWhenReady("plugin.refreshing_recipes_after_ce");
+            CraftEngineStateUsageMonitor.logRealStateUsage(this, I18n.formatConsole("plugin.craftengine_reload_reason"));
         }, 1L);
     }
 
@@ -731,10 +736,10 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         if (previousAdvancementsEnabled != advancementsEnabled) {
             refreshAdvancementSystem(true);
         }
-        reloadRecipesWhenReady("Reloading recipes...");
+        reloadRecipesWhenReady("plugin.reloading_recipes");
 
-        logReloadSummary("Configuration reloaded");
-        getLogger().info("Configuration reloaded!");
+        logReloadSummary("plugin.configuration_reloaded");
+        I18n.logInfo("plugin.configuration_reloaded");
     }
 
     public void reloadMainConfigOnly() {
@@ -775,8 +780,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         if (previousAdvancementsEnabled != advancementsEnabled) {
             refreshAdvancementSystem(true);
         }
-        logReloadSummary("Main configuration reloaded");
-        getLogger().info("Main configuration reloaded!");
+        logReloadSummary("plugin.main_configuration_reloaded");
+        I18n.logInfo("plugin.main_configuration_reloaded");
     }
 
     public void reloadGuiConfig() {
@@ -790,23 +795,23 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         RecipeViewGui.clearConfigCache();
         CookingPotGui.closeAllOpenGuis();
         RecipeViewGui.closeAllOpenGuis();
-        getLogger().info("GUI configuration reloaded: gui.yml");
+        I18n.logInfo("plugin.gui_configuration_reloaded", "file", "gui.yml");
     }
 
     public void reloadLanguageFiles() {
         I18n.reload();
-        getLogger().info("Language files reloaded!");
+        I18n.logInfo("plugin.language_files_reloaded");
     }
 
     public void reloadRecipeFiles() {
         refreshAfterCraftEngineReload();
-        reloadRecipesWhenReady("Reloading recipes...");
-        getLogger().info("Recipe files reloaded!");
+        reloadRecipesWhenReady("plugin.reloading_recipes");
+        I18n.logInfo("plugin.recipe_files_reloaded");
     }
 
     public void reloadAdvancements() {
         refreshAdvancementSystem(true);
-        getLogger().info("Advancement data reloaded!");
+        I18n.logInfo("plugin.advancement_data_reloaded");
     }
 
     private void loadConfigs() {
@@ -831,12 +836,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                 .collect(Collectors.toUnmodifiableSet());
         if (knifeTagIds.isEmpty()) {
             knifeTagIds = Set.of(Constants.TAG_KNIVES.toLowerCase(Locale.ROOT));
-        }
-
-        int autoSaveInterval = getConfig().getInt("storage.auto-save-interval", 300);
-        if (autoSaveInterval < 0) {
-            getLogger().warning("storage.auto-save-interval cannot be negative, using default 300");
-            autoSaveInterval = 300;
         }
 
         ConfigurationSection heatSourceSection = getConfig().getConfigurationSection("heat-sources");
@@ -867,7 +866,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             petFoodConfig.loadFromConfig(petFoodSection);
         }
 
-        ConfigurationSection containerReturnSection = getConfig().getConfigurationSection("container-returns");
+        ConfigurationSection containerReturnSection = getFirstConfigSection("cooking-pot.container-returns", "container-returns");
         containerReturnConfig = new ContainerReturnConfig();
         containerReturnConfig.loadDefaults();
         if (containerReturnSection != null) {
@@ -877,28 +876,102 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         cuttingBoardDisplayConfig = new CuttingBoardDisplayConfig();
         cuttingBoardDisplayConfig.loadFromConfig(getConfig().getConfigurationSection("cutting-board"));
 
-        showRecipeNameInProgressDisplay = getConfig().getBoolean("cooking-pot-progress-display.show-recipe-name", false);
-        cookingPotProgressDisplayYOffset = getConfig().getDouble("cooking-pot-progress-display.y-offset", 1.2D);
-        cookingPotProgressDisplayScale = Math.max(0.01F, (float) getConfig().getDouble("cooking-pot-progress-display.scale", 0.5D));
-        double progressDisplayDistance = Math.max(1.0D, getConfig().getDouble("cooking-pot-progress-display.visibility-distance", 10.0D));
+        cookingPotProgressDisplayEnabled = getConfigBoolean(true,
+                "cooking-pot.progress-display.enabled",
+                "cooking-pot-progress-display.enabled");
+        showRecipeNameInProgressDisplay = getConfigBoolean(false,
+                "cooking-pot.progress-display.show-recipe-name",
+                "cooking-pot-progress-display.show-recipe-name");
+        cookingPotProgressDisplayYOffset = getConfigDouble(1.2D,
+                "cooking-pot.progress-display.y-offset",
+                "cooking-pot-progress-display.y-offset");
+        cookingPotProgressDisplayScale = Math.max(0.01F, (float) getConfigDouble(0.5D,
+                "cooking-pot.progress-display.scale",
+                "cooking-pot-progress-display.scale"));
+        double progressDisplayDistance = Math.max(1.0D, getConfigDouble(10.0D,
+                "cooking-pot.progress-display.visibility-distance",
+                "cooking-pot-progress-display.visibility-distance"));
         cookingPotProgressDisplayVisibilityDistanceSquared = progressDisplayDistance * progressDisplayDistance;
-        cookingPotProgressDisplayLookDotThreshold = Math.max(-1.0D, Math.min(1.0D, getConfig().getDouble("cooking-pot-progress-display.look-dot-threshold", 0.95D)));
+        cookingPotProgressDisplayLookDotThreshold = Math.max(-1.0D, Math.min(1.0D, getConfigDouble(0.95D,
+                "cooking-pot.progress-display.look-dot-threshold",
+                "cooking-pot-progress-display.look-dot-threshold")));
+        cookingPotProgressDisplayUpdateIntervalTicks = Math.max(1, getConfigInt(8,
+                "cooking-pot.progress-display.update-interval-ticks",
+                "cooking-pot-progress-display.update-interval-ticks"));
+        cookingPotProgressDisplayDisableAboveActivePots = Math.max(0, getConfigInt(512,
+                "cooking-pot.progress-display.disable-above-active-pots",
+                "cooking-pot-progress-display.disable-above-active-pots"));
         cookingPotPackContentsOnBreak = getConfig().getBoolean("cooking-pot.pack-contents-on-break", true);
         cuttingBoardInteractionMode = normalizeCuttingBoardInteractionMode(
                 getConfig().getString("cutting-board.interaction-mode", "stacking")
         );
         hopperInteractionsEnabled = getConfig().getBoolean("hopper-interactions.enabled", false);
-        cookingPotHopperInteractionsEnabled = getConfig().getBoolean("hopper-interactions.cooking-pot", true);
-        cuttingBoardHopperInteractionsEnabled = getConfig().getBoolean("hopper-interactions.cutting-board", true);
-        skilletConductorsAllowed = getConfig().getBoolean("heat-sources.skillet.allow-conductors", false);
-        skilletDisplayScale = (float) getConfig().getDouble("display-visuals.skillet.scale", 0.5D);
-        skilletDisplayYOffset = getConfig().getDouble("display-visuals.skillet.y-offset", 0.1D);
-        skilletDisplaySpread = Math.max(0.0D, getConfig().getDouble("display-visuals.skillet.item-spread", 0.125D));
-        stoveDisplayScale = (float) getConfig().getDouble("display-visuals.stove.scale", 0.375D);
+        cookingPotHopperInteractionsEnabled = getConfigBoolean(true,
+                "cooking-pot.hopper-interactions",
+                "hopper-interactions.cooking-pot");
+        cuttingBoardHopperInteractionsEnabled = getConfigBoolean(true,
+                "cutting-board.hopper-interactions",
+                "hopper-interactions.cutting-board");
+        skilletConductorsAllowed = getConfigBoolean(false,
+                "skillet.heat.allow-conductors",
+                "heat-sources.skillet.allow-conductors");
+        skilletDisplayScale = (float) getConfigDouble(0.5D,
+                "skillet.display.scale",
+                "display-visuals.skillet.scale");
+        skilletDisplayYOffset = getConfigDouble(0.1D,
+                "skillet.display.y-offset",
+                "display-visuals.skillet.y-offset");
+        skilletDisplaySpread = Math.max(0.0D, getConfigDouble(0.125D,
+                "skillet.display.item-spread",
+                "display-visuals.skillet.item-spread"));
+        stoveDisplayScale = (float) getConfigDouble(0.375D,
+                "stove.display.scale",
+                "display-visuals.stove.scale");
+    }
+
+    public ConfigurationSection getFirstConfigSection(String... paths) {
+        for (String path : paths) {
+            ConfigurationSection section = getConfig().getConfigurationSection(path);
+            if (section != null) {
+                return section;
+            }
+        }
+        return null;
+    }
+
+    public boolean getConfigBoolean(boolean defaultValue, String... paths) {
+        for (String path : paths) {
+            if (getConfig().contains(path)) {
+                return getConfig().getBoolean(path, defaultValue);
+            }
+        }
+        return defaultValue;
+    }
+
+    public double getConfigDouble(double defaultValue, String... paths) {
+        for (String path : paths) {
+            if (getConfig().contains(path)) {
+                return getConfig().getDouble(path, defaultValue);
+            }
+        }
+        return defaultValue;
+    }
+
+    public int getConfigInt(int defaultValue, String... paths) {
+        for (String path : paths) {
+            if (getConfig().contains(path)) {
+                return getConfig().getInt(path, defaultValue);
+            }
+        }
+        return defaultValue;
     }
 
     public boolean isShowRecipeNameInProgressDisplay() {
         return showRecipeNameInProgressDisplay;
+    }
+
+    public boolean isCookingPotProgressDisplayEnabled() {
+        return cookingPotProgressDisplayEnabled;
     }
 
     public double getCookingPotProgressDisplayYOffset() {
@@ -915,6 +988,14 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     public double getCookingPotProgressDisplayLookDotThreshold() {
         return cookingPotProgressDisplayLookDotThreshold;
+    }
+
+    public int getCookingPotProgressDisplayUpdateIntervalTicks() {
+        return cookingPotProgressDisplayUpdateIntervalTicks;
+    }
+
+    public int getCookingPotProgressDisplayDisableAboveActivePots() {
+        return cookingPotProgressDisplayDisableAboveActivePots;
     }
 
     public boolean isCuttingBoardOffhandInteractionsAllowed() {
@@ -971,15 +1052,15 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             if (!isYamlReadable(configPath)) {
                 backupBrokenConfig(configPath);
                 writeBundledConfig(configPath);
-                getLogger().warning("Detected an unreadable config.yml; backed up the original as config.yml.<timestamp>.bak and restored the bundled UTF-8 default config.");
+                I18n.logWarning("plugin.config_unreadable_restored", "file", "config.yml");
             }
             if (!isYamlReadable(guiPath)) {
                 backupBrokenConfig(guiPath);
                 writeBundledResource("gui.yml", guiPath, true);
-                getLogger().warning("Detected an unreadable gui.yml; backed up the original as gui.yml.<timestamp>.bak and restored the bundled UTF-8 default gui config.");
+                I18n.logWarning("plugin.config_unreadable_restored", "file", "gui.yml");
             }
         } catch (IOException e) {
-            getLogger().warning("Failed to prepare configuration files: " + e.getMessage());
+            I18n.logWarning("plugin.config_prepare_failed", "error", e.getMessage());
         }
     }
 
@@ -1044,14 +1125,14 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         YamlConfiguration yaml = new YamlConfiguration();
         if (Files.notExists(guiPath)) {
             if (isDebugEnabled("config")) {
-                getLogger().info("gui.yml is missing, using bundled defaults in memory until reload writes it back.");
+                I18n.logInfo("plugin.gui_missing_defaults");
             }
             return yaml;
         }
         try (InputStreamReader reader = new InputStreamReader(Files.newInputStream(guiPath), StandardCharsets.UTF_8)) {
             yaml.load(reader);
         } catch (Exception e) {
-            getLogger().warning("Failed to load gui.yml: " + e.getMessage());
+            I18n.logWarning("plugin.gui_load_failed", "error", e.getMessage());
         }
         return yaml;
     }
@@ -1068,7 +1149,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         registerBehavior(Constants.BEHAVIOR_ROPE, RopeBlockBehavior.FACTORY);
         registerBehavior(Constants.BEHAVIOR_MUSHROOM_COLONY, MushroomColonyBehavior.FACTORY);
 
-        getLogger().info("Registered custom block behaviors");
+        getLogger().info(I18n.formatConsole("plugin.registered_block_behaviors"));
     }
 
     private void registerBehavior(String key, BlockBehaviorFactory<?> factory) {
@@ -1089,6 +1170,15 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         return scheduler;
     }
 
+    private LegacyBlockStorageManager createLegacyBlockStorageManager() {
+        Path legacyStoragePath = getDataFolder().toPath().resolve("block_storage.yml");
+        if (Files.notExists(legacyStoragePath)) {
+            return null;
+        }
+        I18n.logInfo("plugin.legacy_storage_found");
+        return new LegacyBlockStorageManager(this);
+    }
+
     public boolean isDebugEnabled() {
         return debugEnabled;
     }
@@ -1096,9 +1186,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     public boolean isDebugEnabled(String category) {
         if (!debugEnabled) {
             return false;
-        }
-        if (debugCategories.isEmpty()) {
-            return true;
         }
         if (category == null || category.isBlank()) {
             return false;
@@ -1110,8 +1197,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                 || debugCategories.contains(normalized);
     }
 
-    public BlockStorageManager getBlockStorageManager() {
-        return blockStorageManager;
+    public LegacyBlockStorageManager getLegacyBlockStorageManager() {
+        return legacyBlockStorageManager;
     }
 
     public KnifeDropHandler getKnifeDrops() {
@@ -1178,7 +1265,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             try {
                 configs.put(id, GuiConfig.fromConfig(guiSection));
             } catch (Exception e) {
-                getLogger().warning("Failed to load custom cooking pot GUI '" + id + "': " + e.getMessage());
+                I18n.logWarning("plugin.custom_cooking_pot_gui_load_failed", "id", id, "error", e.getMessage());
             }
         }
         return Collections.unmodifiableMap(configs);
@@ -1256,30 +1343,28 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private String normalizeCuttingBoardInteractionMode(String value) {
         String mode = value == null ? "stacking" : value.trim().toLowerCase(Locale.ROOT);
         if (!mode.equals("stacking") && !mode.equals("offhand")) {
-            getLogger().warning("Invalid cutting-board.interaction-mode '" + value + "', falling back to stacking.");
+            I18n.logWarning("plugin.invalid_cutting_board_mode", "value", value);
             return "stacking";
         }
         return mode;
     }
 
     private void logStartupSummary() {
-        getLogger().info(
-                "Startup config: cutting-board mode=" + cuttingBoardInteractionMode
-                        + ", hopper=" + hopperInteractionsEnabled
-                        + ", cooking-pot-hopper=" + cookingPotHopperInteractionsEnabled
-                        + ", cutting-board-hopper=" + cuttingBoardHopperInteractionsEnabled
-                        + ", advancements=" + advancementsEnabled
-        );
+        logConfigSummary(I18n.formatConsole("plugin.startup_config"));
     }
 
-    private void logReloadSummary(String label) {
-        getLogger().info(
-                label + ": cutting-board mode=" + cuttingBoardInteractionMode
-                        + ", hopper=" + hopperInteractionsEnabled
-                        + ", cooking-pot-hopper=" + cookingPotHopperInteractionsEnabled
-                        + ", cutting-board-hopper=" + cuttingBoardHopperInteractionsEnabled
-                        + ", advancements=" + advancementsEnabled
-        );
+    private void logReloadSummary(String labelKey) {
+        logConfigSummary(I18n.formatConsole(labelKey));
+    }
+
+    private void logConfigSummary(String label) {
+        I18n.logInfo("plugin.config_summary",
+                "label", label,
+                "mode", cuttingBoardInteractionMode,
+                "hopper", hopperInteractionsEnabled,
+                "cooking_pot_hopper", cookingPotHopperInteractionsEnabled,
+                "cutting_board_hopper", cuttingBoardHopperInteractionsEnabled,
+                "advancements", advancementsEnabled);
     }
 
     public TickManager getTickManager() {
@@ -1323,7 +1408,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             properties.load(reader);
             return properties.getProperty("level-name");
         } catch (IOException e) {
-            getLogger().fine("Failed to read server.properties level-name: " + e.getMessage());
+            getLogger().fine(I18n.formatConsole("plugin.server_properties_read_failed", "error", e.getMessage()));
             return null;
         }
     }
@@ -1340,7 +1425,10 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             try {
                 updated |= copyResourceIfChanged(resourcePath, target);
             } catch (IOException e) {
-                getLogger().warning("Failed to sync advancement resource " + resourcePath + " for world " + worldName + ": " + e.getMessage());
+                I18n.logWarning("plugin.advancement_resource_sync_failed",
+                        "resource", resourcePath,
+                        "world", worldName,
+                        "error", e.getMessage());
             }
         }
 
@@ -1365,7 +1453,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         try {
             return Files.deleteIfExists(path);
         } catch (IOException e) {
-            getLogger().warning("Failed to delete advancement datapack file " + path + ": " + e.getMessage());
+            I18n.logWarning("plugin.advancement_file_delete_failed", "path", path, "error", e.getMessage());
             return false;
         }
     }
@@ -1380,7 +1468,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                 removed |= deleteIfExists(path);
             }
         } catch (IOException e) {
-            getLogger().warning("Failed to delete advancement datapack directory " + root + ": " + e.getMessage());
+            I18n.logWarning("plugin.advancement_directory_delete_failed", "path", root, "error", e.getMessage());
         }
         return removed;
     }
@@ -1436,7 +1524,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                     }
                 }
             } catch (IOException e) {
-                getLogger().warning("Failed to prune obsolete advancement files in " + mainDir + ": " + e.getMessage());
+                I18n.logWarning("plugin.advancement_prune_failed", "path", mainDir, "error", e.getMessage());
             }
         }
         return updated;
@@ -1450,7 +1538,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private boolean copyResourceIfChanged(String resourcePath, Path target) throws IOException {
         try (InputStream input = getResource(resourcePath)) {
             if (input == null) {
-                getLogger().warning("Missing bundled advancement resource: " + resourcePath);
+                I18n.logWarning("plugin.advancement_resource_missing", "resource", resourcePath);
                 return false;
             }
 
