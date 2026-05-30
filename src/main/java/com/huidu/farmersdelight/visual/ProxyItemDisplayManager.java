@@ -13,7 +13,6 @@ import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.Clientbo
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundSetEntityDataPacketProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundTeleportEntityPacketProxy;
-import net.momirealms.craftengine.proxy.minecraft.network.syncher.EntityDataSerializersProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.syncher.SynchedEntityDataProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.EntityTypeProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.entity.PositionMoveRotationProxy;
@@ -697,27 +696,27 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
 
         private static EntityDataBindings resolve() {
             return new EntityDataBindings(
-                    base("NoGravity", ENTITY_DATA_NO_GRAVITY, EntityDataSerializersProxy.BOOLEAN),
-                    base("Silent", ENTITY_DATA_SILENT, EntityDataSerializersProxy.BOOLEAN),
-                    itemDisplay("ItemStack", ITEM_DISPLAY_DATA_ITEM_STACK, EntityDataSerializersProxy.ITEM_STACK),
-                    itemDisplay("Translation", ITEM_DISPLAY_DATA_TRANSLATION, EntityDataSerializersProxy.VECTOR3),
-                    itemDisplay("Scale", ITEM_DISPLAY_DATA_SCALE, EntityDataSerializersProxy.VECTOR3),
-                    itemDisplay("LeftRotation", ITEM_DISPLAY_DATA_LEFT_ROTATION, EntityDataSerializersProxy.QUATERNION),
-                    itemDisplay("RightRotation", ITEM_DISPLAY_DATA_RIGHT_ROTATION, EntityDataSerializersProxy.QUATERNION),
-                    itemDisplay("ItemTransform", ITEM_DISPLAY_DATA_ITEM_TRANSFORM, EntityDataSerializersProxy.BYTE),
-                    itemDisplay("ShadowRadius", ITEM_DISPLAY_DATA_SHADOW_RADIUS, EntityDataSerializersProxy.FLOAT),
-                    itemDisplay("ShadowStrength", ITEM_DISPLAY_DATA_SHADOW_STRENGTH, EntityDataSerializersProxy.FLOAT),
-                    itemDisplay("Width", ITEM_DISPLAY_DATA_WIDTH, EntityDataSerializersProxy.FLOAT),
-                    itemDisplay("Height", ITEM_DISPLAY_DATA_HEIGHT, EntityDataSerializersProxy.FLOAT),
-                    itemDisplay("ViewRange", ITEM_DISPLAY_DATA_VIEW_RANGE, EntityDataSerializersProxy.FLOAT)
+                    base("NoGravity", ENTITY_DATA_NO_GRAVITY, SerializerBinding.BOOLEAN),
+                    base("Silent", ENTITY_DATA_SILENT, SerializerBinding.BOOLEAN),
+                    itemDisplay("ItemStack", ITEM_DISPLAY_DATA_ITEM_STACK, SerializerBinding.ITEM_STACK),
+                    itemDisplay("Translation", ITEM_DISPLAY_DATA_TRANSLATION, SerializerBinding.VECTOR3),
+                    itemDisplay("Scale", ITEM_DISPLAY_DATA_SCALE, SerializerBinding.VECTOR3),
+                    itemDisplay("LeftRotation", ITEM_DISPLAY_DATA_LEFT_ROTATION, SerializerBinding.QUATERNION),
+                    itemDisplay("RightRotation", ITEM_DISPLAY_DATA_RIGHT_ROTATION, SerializerBinding.QUATERNION),
+                    itemDisplay("ItemTransform", ITEM_DISPLAY_DATA_ITEM_TRANSFORM, SerializerBinding.BYTE),
+                    itemDisplay("ShadowRadius", ITEM_DISPLAY_DATA_SHADOW_RADIUS, SerializerBinding.FLOAT),
+                    itemDisplay("ShadowStrength", ITEM_DISPLAY_DATA_SHADOW_STRENGTH, SerializerBinding.FLOAT),
+                    itemDisplay("Width", ITEM_DISPLAY_DATA_WIDTH, SerializerBinding.FLOAT),
+                    itemDisplay("Height", ITEM_DISPLAY_DATA_HEIGHT, SerializerBinding.FLOAT),
+                    itemDisplay("ViewRange", ITEM_DISPLAY_DATA_VIEW_RANGE, SerializerBinding.FLOAT)
             );
         }
 
-        private static EntityDataBinding base(String fieldName, int fallbackId, Object fallbackSerializer) {
+        private static EntityDataBinding base(String fieldName, int fallbackId, SerializerBinding fallbackSerializer) {
             return new EntityDataBinding(readEntityData(BASE_ENTITY_DATA_CLASS, fieldName), fallbackId, fallbackSerializer);
         }
 
-        private static EntityDataBinding itemDisplay(String fieldName, int fallbackId, Object fallbackSerializer) {
+        private static EntityDataBinding itemDisplay(String fieldName, int fallbackId, SerializerBinding fallbackSerializer) {
             return new EntityDataBinding(readEntityData(CURRENT_ITEM_DISPLAY_DATA_CLASS, fieldName),
                     fallbackId, fallbackSerializer);
         }
@@ -737,9 +736,9 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         private final Object entityData;
         private final Method addEntityDataMethod;
         private final int fallbackId;
-        private final Object fallbackSerializer;
+        private final SerializerBinding fallbackSerializer;
 
-        private EntityDataBinding(Object entityData, int fallbackId, Object fallbackSerializer) {
+        private EntityDataBinding(Object entityData, int fallbackId, SerializerBinding fallbackSerializer) {
             this.entityData = entityData;
             this.addEntityDataMethod = resolveAddEntityDataMethod(entityData);
             this.fallbackId = fallbackId;
@@ -755,7 +754,7 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
                     // Fall through to the protocol-level DataValue path below.
                 }
             }
-            values.add(SynchedEntityDataProxy.DataValueProxy.INSTANCE.newInstance(fallbackId, fallbackSerializer, value));
+            values.add(SynchedEntityDataProxy.DataValueProxy.INSTANCE.newInstance(fallbackId, fallbackSerializer.resolve(), value));
             return true;
         }
 
@@ -766,6 +765,63 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
             try {
                 return entityData.getClass().getMethod("addEntityData", Object.class, List.class);
             } catch (NoSuchMethodException | SecurityException ignored) {
+                return null;
+            }
+        }
+    }
+
+    private static final class SerializerBinding {
+        private static final String SERIALIZERS_CLASS =
+                "net.momirealms.craftengine.proxy.minecraft.network.syncher.EntityDataSerializersProxy";
+        private static final SerializerBinding BOOLEAN = new SerializerBinding("BOOLEAN", "getBoolean");
+        private static final SerializerBinding BYTE = new SerializerBinding("BYTE", "getByte");
+        private static final SerializerBinding FLOAT = new SerializerBinding("FLOAT", "getFloat");
+        private static final SerializerBinding ITEM_STACK = new SerializerBinding("ITEM_STACK", "getItemStack");
+        private static final SerializerBinding QUATERNION = new SerializerBinding("QUATERNION", "getQuaternion");
+        private static final SerializerBinding VECTOR3 = new SerializerBinding("VECTOR3", "getVector3");
+
+        private final String fieldName;
+        private final String getterName;
+        private volatile Object serializer;
+
+        private SerializerBinding(String fieldName, String getterName) {
+            this.fieldName = fieldName;
+            this.getterName = getterName;
+        }
+
+        private Object resolve() {
+            Object resolved = serializer;
+            if (resolved != null) {
+                return resolved;
+            }
+
+            resolved = resolveByGetter();
+            if (resolved == null) {
+                resolved = resolveByStaticField();
+            }
+            if (resolved == null) {
+                throw new IllegalStateException("CraftEngine EntityDataSerializersProxy serializer is unavailable: " + fieldName);
+            }
+            serializer = resolved;
+            return resolved;
+        }
+
+        private Object resolveByGetter() {
+            try {
+                Class<?> serializersClass = Class.forName(SERIALIZERS_CLASS, true, BukkitCraftEngine.class.getClassLoader());
+                Object instance = serializersClass.getField("INSTANCE").get(null);
+                Method getter = serializersClass.getMethod(getterName);
+                return getter.invoke(instance);
+            } catch (ReflectiveOperationException | LinkageError ignored) {
+                return null;
+            }
+        }
+
+        private Object resolveByStaticField() {
+            try {
+                Class<?> serializersClass = Class.forName(SERIALIZERS_CLASS, true, BukkitCraftEngine.class.getClassLoader());
+                return serializersClass.getField(fieldName).get(null);
+            } catch (ReflectiveOperationException | LinkageError ignored) {
                 return null;
             }
         }
