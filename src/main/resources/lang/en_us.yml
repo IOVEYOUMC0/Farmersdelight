@@ -113,7 +113,6 @@ console:
     advancement_resource_missing: "Missing bundled advancement resource: {resource}"
     debug_tools_missing: "Debug tools were requested by the build flag, but the debug tools class is missing."
     craftengine_world_flush_failed: "Failed to flush CraftEngine world data for {world}"
-    craftengine_world_save_unavailable: "CraftEngine CEWorld.save() is unavailable; skipping explicit CraftEngine world data flush."
     server_properties_read_failed: "Failed to read server.properties level-name: {error}"
     disable_step_failed: "Failed to {step} during disable; continuing shutdown."
     disable_step_stop_tick_manager: "stop tick manager"
