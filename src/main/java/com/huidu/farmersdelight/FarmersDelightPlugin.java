@@ -574,9 +574,24 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                     ? pendingDatapackReloadReason
                     : I18n.formatConsole("plugin.datapack_reason_apply_advancement_changes");
             pendingDatapackReloadReason = null;
-            I18n.logInfo("plugin.datapack_reload", "reason", reloadReason);
-            getServer().reloadData();
+            reloadServerDataPacks(reloadReason);
         }, 10L);
+    }
+
+    private void reloadServerDataPacks(String reason) {
+        if (scheduler != null && scheduler.isFolia()) {
+            I18n.logWarning("plugin.datapack_reload_skipped_folia", "reason", reason);
+            return;
+        }
+        try {
+            I18n.logInfo("plugin.datapack_reload", "reason", reason);
+            getServer().reloadData();
+        } catch (UnsupportedOperationException e) {
+            I18n.logWarning("plugin.datapack_reload_skipped_unsupported", "reason", reason);
+        } catch (Throwable throwable) {
+            getLogger().log(Level.WARNING, I18n.formatConsole("plugin.datapack_reload_failed",
+                    "reason", reason), throwable);
+        }
     }
 
     private void queueDatapackSync(String reason) {
