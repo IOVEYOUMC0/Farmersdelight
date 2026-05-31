@@ -474,10 +474,6 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
             }
 
             if (!mainHandEmpty) {
-                if (bukkitPlayer.isSneaking() && mainHandTool) {
-                    return InteractionResult.PASS;
-                }
-
                 if (tryPlaceOnEmptyBoard(mainHand, false, bukkitPlayer, world, posKey, facing, blockEntity)) {
                     return InteractionResult.SUCCESS_AND_CANCEL;
                 }
@@ -710,7 +706,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         }
     }
 
-    private boolean isTool(ItemStack item) {
+    public boolean isTool(ItemStack item) {
         if (item == null || item.getType().isAir()) return false;
 
         if (isKnifeTool(item) || isAxeTool(item) || isPickaxeTool(item) || isConfiguredToolItem(item)) {
@@ -943,4 +939,3 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         return customId != null ? customId + " x" + item.getAmount() : item.getType().name() + " x" + item.getAmount();
     }
 }
-
