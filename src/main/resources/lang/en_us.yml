@@ -3,6 +3,7 @@ messages:
     no_recipe: "&cThat item has no valid cutting board recipe."
     need_tool: "&cYou need the correct tool for this item."
     wrong_tool: "&cWrong tool. Use the correct tool for this item."
+    no_output: "&cThis cutting recipe produced no output. Check the recipe result item."
 crop:
   need_water: "&cRice must be planted in water."
   invalid_soil: "&cThis crop needs suitable soil."

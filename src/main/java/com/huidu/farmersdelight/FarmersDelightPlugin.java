@@ -148,7 +148,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private boolean skilletConductorsAllowed;
     private float skilletDisplayScale = 0.5F;
     private double skilletDisplayYOffset = 0.1D;
-    private double skilletDisplaySpread = 0.125D;
+    private double skilletDisplaySpread = 0.15D;
     private float stoveDisplayScale = 0.375F;
     private Set<String> knifeItemIds = Set.of();
     private Set<String> knifeTagIds = Set.of();
@@ -724,7 +724,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         clearLegacySkilletRecipeCache();
 
         if (knifeDropHandler != null) {
-            knifeDropHandler.reload();
+            knifeDropHandler.loadConfig();
         }
         if (trayManager != null) {
             trayManager.reload();
@@ -768,7 +768,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         clearLegacySkilletRecipeCache();
 
         if (knifeDropHandler != null) {
-            knifeDropHandler.reload();
+            knifeDropHandler.loadConfig();
         }
         if (trayManager != null) {
             trayManager.reload();
@@ -937,7 +937,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         skilletDisplayYOffset = getConfigDouble(0.1D,
                 "skillet.display.y-offset",
                 "display-visuals.skillet.y-offset");
-        skilletDisplaySpread = Math.max(0.0D, getConfigDouble(0.125D,
+        skilletDisplaySpread = Math.max(0.0D, getConfigDouble(0.15D,
                 "skillet.display.item-spread",
                 "display-visuals.skillet.item-spread"));
         stoveDisplayScale = (float) getConfigDouble(0.375D,
