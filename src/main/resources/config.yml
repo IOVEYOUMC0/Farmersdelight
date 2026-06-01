@@ -432,8 +432,8 @@ nourishment-foods:
       duration: 300
 
 # 食物食用后的通用自定义效果。默认关闭。
-# 支持原版药水效果、FarmersDelight 自带 Comfort/Nourishment，以及命令钩子。
-# 命令钩子可用于 AuraSkills、MMOCore 等外部插件；本插件不会硬编码外部插件的技能名或命令。
+# 支持原版药水效果、FarmersDelight 自带 Comfort/Nourishment、AuraSkills 经验，以及命令钩子。
+# AuraSkills 走官方 API；命令钩子可用于 MMOCore 等其它外部插件。
 # 可用占位符：{player}、{uuid}、{food}、{world}，也支持对应的 %player% 风格。
 food-effects:
   enabled: false
@@ -453,6 +453,12 @@ food-effects:
       farmersdelight-effects:
         comfort:
           duration: 300
+      # AuraSkills 官方 API 经验钩子。默认技能可写 farming，也可写 auraskills/farming；自定义技能写 namespace/skill。
+      # raw=false 会走 AuraSkills 自身倍率/修饰；raw=true 直接添加原始经验。
+      auraskills:
+        farming:
+          amount: 5.0
+          raw: false
       # 外部插件命令钩子。按目标插件实际命令填写；requires-plugin 不存在或未启用时会跳过。
       commands: []
       # 例如：

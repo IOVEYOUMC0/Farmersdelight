@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.listener;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.advancement.AdvancementManager;
+import com.huidu.farmersdelight.compat.AuraSkillsHook;
 import com.huidu.farmersdelight.config.FoodEffectConfig;
 import com.huidu.farmersdelight.effect.EffectManager;
 import com.huidu.farmersdelight.util.Constants;
@@ -27,11 +28,13 @@ public class FoodEatListener implements Listener {
     private final Map<String, Integer> comfortFoodDurations = new HashMap<>();
     private final Map<String, Integer> nourishmentFoodDurations = new HashMap<>();
     private final FoodEffectConfig foodEffectConfig = new FoodEffectConfig();
+    private final AuraSkillsHook auraSkillsHook;
     private boolean comfortFoodsEnabled;
     private boolean nourishmentFoodsEnabled;
 
     public FoodEatListener(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
+        this.auraSkillsHook = new AuraSkillsHook(plugin);
         loadNourishmentFoods();
     }
 
@@ -168,6 +171,13 @@ public class FoodEatListener implements Listener {
             ));
         }
 
+        for (FoodEffectConfig.AuraSkillsXpDefinition auraSkillsXp : definition.auraSkillsXp()) {
+            if (!shouldApply(auraSkillsXp.chance())) {
+                continue;
+            }
+            auraSkillsHook.addXp(player, auraSkillsXp);
+        }
+
         for (FoodEffectConfig.CommandDefinition command : definition.commands()) {
             if (!shouldApply(command.chance()) || !requiredPluginsEnabled(command)) {
                 continue;
@@ -232,4 +242,3 @@ public class FoodEatListener implements Listener {
         return "minecraft:" + type.name().toLowerCase();
     }
 }
-
