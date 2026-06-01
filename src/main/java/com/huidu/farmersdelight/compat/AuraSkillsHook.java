@@ -1,7 +1,6 @@
 package com.huidu.farmersdelight.compat;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
-import com.huidu.farmersdelight.config.FoodEffectConfig;
 import com.huidu.farmersdelight.i18n.I18n;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -46,7 +45,11 @@ public final class AuraSkillsHook {
         this.plugin = plugin;
     }
 
-    public void addXp(Player player, FoodEffectConfig.AuraSkillsXpDefinition definition) {
+    public void addXp(Player player, String skill, double amount, boolean raw) {
+        addXp(player, new XpDefinition(skill, amount, raw));
+    }
+
+    public void addXp(Player player, XpDefinition definition) {
         if (player == null || definition == null || definition.amount() <= 0.0D || !ensureAvailable()) {
             return;
         }
@@ -214,5 +217,8 @@ public final class AuraSkillsHook {
                 .toLowerCase(Locale.ROOT)
                 .replace(' ', '_')
                 .replace(':', '/');
+    }
+
+    public record XpDefinition(String skill, double amount, boolean raw) {
     }
 }

@@ -5,10 +5,12 @@ import com.huidu.farmersdelight.block.behavior.*;
 import com.huidu.farmersdelight.listener.*;
 import com.huidu.farmersdelight.command.FarmersDelightCommand;
 import com.huidu.farmersdelight.config.ContainerReturnConfig;
+import com.huidu.farmersdelight.config.CookingPotExperienceRewardConfig;
 import com.huidu.farmersdelight.config.CuttingBoardDisplayConfig;
 import com.huidu.farmersdelight.config.HeatSourceConfig;
 import com.huidu.farmersdelight.config.PetFoodConfig;
 import com.huidu.farmersdelight.config.StrawDropConfig;
+import com.huidu.farmersdelight.compat.AuraSkillsHook;
 import com.huidu.farmersdelight.compat.CraftEngineStateUsageMonitor;
 import com.huidu.farmersdelight.effect.EffectListener;
 import com.huidu.farmersdelight.gui.CookingPotGui;
@@ -32,6 +34,7 @@ import com.huidu.farmersdelight.util.scheduler.PluginTask;
 import com.huidu.farmersdelight.util.scheduler.SchedulerAdapter;
 import com.huidu.farmersdelight.visual.ProxyItemDisplayManager;
 import com.huidu.farmersdelight.visual.ItemDisplayManager;
+import fr.ateastudio.farmersdelight.api.event.ProfessionCookingExperienceEvent;
 import net.momirealms.craftengine.bukkit.api.event.CraftEngineReloadEvent;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.world.BukkitWorldManager;
@@ -43,6 +46,7 @@ import net.momirealms.craftengine.core.world.CEWorld;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
@@ -69,6 +73,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.logging.Level;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -130,6 +135,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private HorseFeedTemptListener horseFeedTemptListener;
     private AchievementListener achievementListener;
     private EffectListener effectListener;
+    private AuraSkillsHook auraSkillsHook;
 
     private HeatSourceConfig heatSourceConfig;
     private GuiConfig cookingPotGuiConfig;
@@ -139,6 +145,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private PetFoodConfig petFoodConfig;
     private ContainerReturnConfig containerReturnConfig;
     private CuttingBoardDisplayConfig cuttingBoardDisplayConfig;
+    private CookingPotExperienceRewardConfig cookingPotExperienceRewardConfig;
     private AdvancementManager advancementManager;
     private boolean advancementsEnabled;
     private boolean debugEnabled;
@@ -456,9 +463,11 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         blockBreakListener = null;
         strawDropListener = null;
         foodEatListener = null;
+        auraSkillsHook = null;
 
         heatSourceConfig = null;
         cookingPotGuiConfig = null;
+        cookingPotExperienceRewardConfig = null;
         strawDropConfig = null;
 
         legacyBlockStorageManager = null;
@@ -929,6 +938,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                 "cooking-pot.progress-display.disable-above-active-pots",
                 "cooking-pot-progress-display.disable-above-active-pots"));
         cookingPotPackContentsOnBreak = getConfig().getBoolean("cooking-pot.pack-contents-on-break", true);
+        cookingPotExperienceRewardConfig = new CookingPotExperienceRewardConfig();
+        cookingPotExperienceRewardConfig.loadFromConfig(getConfig().getConfigurationSection("cooking-pot.experience-reward"));
         cuttingBoardInteractionMode = normalizeCuttingBoardInteractionMode(
                 getConfig().getString("cutting-board.interaction-mode", "stacking")
         );
@@ -1043,6 +1054,61 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     public boolean isCookingPotPackContentsOnBreak() {
         return cookingPotPackContentsOnBreak;
+    }
+
+    public boolean shouldDropCookingPotVanillaExperience() {
+        return getCookingPotExperienceRewardConfig().shouldDropVanillaExperience();
+    }
+
+    public boolean shouldAwardCookingPotAuraSkillsExperience() {
+        return getCookingPotExperienceRewardConfig().shouldAwardAuraSkillsExperience();
+    }
+
+    public void awardCookingPotAuraSkillsExperience(Player player, double baseExperience) {
+        if (player == null || baseExperience <= 0.0D || !shouldAwardCookingPotAuraSkillsExperience()) {
+            return;
+        }
+        for (CookingPotExperienceRewardConfig.AuraSkillsReward reward
+                : getCookingPotExperienceRewardConfig().auraSkillsRewards()) {
+            if (!shouldApplyReward(reward.chance())) {
+                continue;
+            }
+            var xpDefinition = reward.toXpDefinition(baseExperience);
+            if (xpDefinition.amount() > 0.0D) {
+                getAuraSkillsHook().addXp(player, xpDefinition);
+            }
+        }
+    }
+
+    public void callCookingPotExperienceEvent(Player player, org.bukkit.inventory.ItemStack result, double baseExperience) {
+        if (player == null) {
+            return;
+        }
+        getServer().getPluginManager().callEvent(new ProfessionCookingExperienceEvent(
+                player.getUniqueId(),
+                player.getName(),
+                "cooking_pot",
+                result,
+                (float) Math.max(0.0D, baseExperience)
+        ));
+    }
+
+    private boolean shouldApplyReward(double chance) {
+        return chance >= 1.0D || (chance > 0.0D && ThreadLocalRandom.current().nextDouble() < chance);
+    }
+
+    public AuraSkillsHook getAuraSkillsHook() {
+        if (auraSkillsHook == null) {
+            auraSkillsHook = new AuraSkillsHook(this);
+        }
+        return auraSkillsHook;
+    }
+
+    private CookingPotExperienceRewardConfig getCookingPotExperienceRewardConfig() {
+        if (cookingPotExperienceRewardConfig == null) {
+            cookingPotExperienceRewardConfig = new CookingPotExperienceRewardConfig();
+        }
+        return cookingPotExperienceRewardConfig;
     }
 
     public boolean isCuttingBoardHopperInteractionsEnabled() {

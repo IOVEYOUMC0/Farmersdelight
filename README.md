@@ -471,6 +471,20 @@ cooking-pot:
 
 `true` 表示厨锅被破坏时把内部原料、容器和待输出槽保存进掉落的厨锅物品；`false` 表示掉落空锅并把锅内物品散落到世界中。
 
+厨锅成品经验奖励：
+
+```yaml
+cooking-pot:
+  experience-reward:
+    mode: vanilla
+    auraskills:
+      skill: farming
+      multiplier: 1.0
+      raw: false
+```
+
+`mode` 可以写 `vanilla`、`auraskills`、`both`、`none`。奖励在玩家从厨锅输出槽取走成品，或拿容器右键取出待输出成品时结算；漏斗自动取出没有玩家上下文，因此不会触发 AuraSkills 经验。`multiplier` 使用配方 `experience` 乘倍率，写 `amount` 则改为每次取出固定经验。
+
 ## 6. 物品 ID 与清空写法
 
 物品 ID 可以写原版或 CE 物品：
