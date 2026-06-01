@@ -68,6 +68,7 @@ public class FoodEffectConfig {
         FoodEffectDefinition definition = new FoodEffectDefinition(Math.max(0L, section.getLong("delay-ticks", 1L)));
         loadPotionEffects(section, definition);
         loadFarmersDelightEffects(section, definition);
+        loadAuraSkillsXp(section, definition);
         loadCommands(section, definition);
         return definition;
     }
@@ -137,6 +138,117 @@ public class FoodEffectConfig {
                 ));
             }
         }
+    }
+
+    private void loadAuraSkillsXp(ConfigurationSection section, FoodEffectDefinition definition) {
+        loadAuraSkillsXp(section, definition, "auraskills");
+        loadAuraSkillsXp(section, definition, "aura-skills");
+        loadAuraSkillsXp(section, definition, "auraskills-xp");
+    }
+
+    private void loadAuraSkillsXp(ConfigurationSection section, FoodEffectDefinition definition, String path) {
+        Object raw = section.get(path);
+        if (raw instanceof List<?> list) {
+            for (Object entry : list) {
+                AuraSkillsXpDefinition xpDefinition = parseAuraSkillsEntry(entry, null);
+                if (xpDefinition != null) {
+                    definition.auraSkillsXp.add(xpDefinition);
+                }
+            }
+            return;
+        }
+
+        ConfigurationSection auraSection = section.getConfigurationSection(path);
+        if (auraSection == null) {
+            return;
+        }
+
+        if (auraSection.contains("skill") || auraSection.contains("amount") || auraSection.contains("xp")) {
+            AuraSkillsXpDefinition xpDefinition = parseAuraSkillsEntry(auraSection.getValues(false), null);
+            if (xpDefinition != null) {
+                definition.auraSkillsXp.add(xpDefinition);
+            }
+        }
+
+        for (Map<?, ?> entry : getMapEntries(auraSection, "xp")) {
+            AuraSkillsXpDefinition xpDefinition = parseAuraSkillsEntry(entry, null);
+            if (xpDefinition != null) {
+                definition.auraSkillsXp.add(xpDefinition);
+            }
+        }
+
+        for (String key : auraSection.getKeys(false)) {
+            if (isAuraSkillsControlKey(key)) {
+                continue;
+            }
+
+            ConfigurationSection skillSection = auraSection.getConfigurationSection(key);
+            if (skillSection != null) {
+                Map<String, Object> values = new HashMap<>(skillSection.getValues(false));
+                values.putIfAbsent("skill", key);
+                AuraSkillsXpDefinition xpDefinition = parseAuraSkillsEntry(values, key);
+                if (xpDefinition != null) {
+                    definition.auraSkillsXp.add(xpDefinition);
+                }
+                continue;
+            }
+
+            Object amount = auraSection.get(key);
+            if (amount == null) {
+                continue;
+            }
+            AuraSkillsXpDefinition xpDefinition = parseAuraSkillsEntry(Map.of("skill", key, "amount", amount), key);
+            if (xpDefinition != null) {
+                definition.auraSkillsXp.add(xpDefinition);
+            }
+        }
+    }
+
+    private boolean isAuraSkillsControlKey(String key) {
+        return "enabled".equalsIgnoreCase(key)
+                || "skill".equalsIgnoreCase(key)
+                || "amount".equalsIgnoreCase(key)
+                || "xp".equalsIgnoreCase(key)
+                || "value".equalsIgnoreCase(key)
+                || "raw".equalsIgnoreCase(key)
+                || "chance".equalsIgnoreCase(key)
+                || "probability".equalsIgnoreCase(key);
+    }
+
+    private AuraSkillsXpDefinition parseAuraSkillsEntry(Object entry, String fallbackSkill) {
+        if (entry instanceof Map<?, ?> mapEntry) {
+            Object rawSkill = firstPresent(mapEntry, "skill", "id", "name");
+            String skill = normalizeSkillId(rawSkill != null ? String.valueOf(rawSkill) : fallbackSkill);
+            if (skill.isEmpty()) {
+                return null;
+            }
+
+            double amount = getDouble(firstPresent(mapEntry, "amount", "xp", "value"), 0.0D);
+            if (amount <= 0.0D) {
+                return null;
+            }
+
+            boolean raw = getBoolean(firstPresent(mapEntry,
+                    "raw",
+                    "bypass-multipliers",
+                    "ignore-multipliers",
+                    "exact"), false);
+            return new AuraSkillsXpDefinition(skill, amount, raw, getChance(mapEntry));
+        }
+
+        if (entry instanceof String text) {
+            String[] parts = text.trim().split("\\s+", 2);
+            if (parts.length != 2) {
+                return null;
+            }
+            String skill = normalizeSkillId(parts[0]);
+            double amount = getDouble(parts[1], 0.0D);
+            return skill.isEmpty() || amount <= 0.0D
+                    ? null
+                    : new AuraSkillsXpDefinition(skill, amount, false, 1.0D);
+        }
+
+        return null;
     }
 
     private void loadCommands(ConfigurationSection section, FoodEffectDefinition definition) {
@@ -371,6 +483,16 @@ public class FoodEffectConfig {
         return normalized;
     }
 
+    private String normalizeSkillId(String skillId) {
+        if (skillId == null) {
+            return "";
+        }
+        return skillId.trim()
+                .toLowerCase(Locale.ROOT)
+                .replace(' ', '_')
+                .replace(':', '/');
+    }
+
     private String normalizeFoodId(String foodId) {
         return foodId.trim().toLowerCase(Locale.ROOT);
     }
@@ -384,6 +506,7 @@ public class FoodEffectConfig {
     public static final class FoodEffectDefinition {
         private final List<PotionEffectDefinition> potionEffects = new ArrayList<>();
         private final List<CustomEffectDefinition> customEffects = new ArrayList<>();
+        private final List<AuraSkillsXpDefinition> auraSkillsXp = new ArrayList<>();
         private final List<CommandDefinition> commands = new ArrayList<>();
         private final long delayTicks;
 
@@ -399,6 +522,10 @@ public class FoodEffectConfig {
             return customEffects;
         }
 
+        public List<AuraSkillsXpDefinition> auraSkillsXp() {
+            return auraSkillsXp;
+        }
+
         public List<CommandDefinition> commands() {
             return commands;
         }
@@ -408,7 +535,7 @@ public class FoodEffectConfig {
         }
 
         private boolean hasActions() {
-            return !potionEffects.isEmpty() || !customEffects.isEmpty() || !commands.isEmpty();
+            return !potionEffects.isEmpty() || !customEffects.isEmpty() || !auraSkillsXp.isEmpty() || !commands.isEmpty();
         }
     }
 
@@ -417,6 +544,9 @@ public class FoodEffectConfig {
     }
 
     public record CustomEffectDefinition(CustomEffectType type, int durationSeconds, double chance) {
+    }
+
+    public record AuraSkillsXpDefinition(String skill, double amount, boolean raw, double chance) {
     }
 
     public record CommandDefinition(CommandSenderType sender, String command, List<String> requiredPlugins,

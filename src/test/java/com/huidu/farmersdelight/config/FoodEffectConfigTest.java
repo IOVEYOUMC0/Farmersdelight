@@ -38,6 +38,12 @@ class FoodEffectConfigTest {
                       comfort:
                         duration: 120
                       nourishment: 60
+                    auraskills:
+                      farming:
+                        amount: 5.5
+                        raw: true
+                        chance: 25
+                      custom_namespace/custom_skill: 2
                     commands:
                       - sender: player
                         requires-plugin: AuraSkills
@@ -58,6 +64,15 @@ class FoodEffectConfigTest {
         assertEquals(120, definition.customEffects().getFirst().durationSeconds());
         assertEquals(FoodEffectConfig.CustomEffectType.NOURISHMENT, definition.customEffects().get(1).type());
         assertEquals(60, definition.customEffects().get(1).durationSeconds());
+
+        assertEquals(2, definition.auraSkillsXp().size());
+        FoodEffectConfig.AuraSkillsXpDefinition farmingXp = definition.auraSkillsXp().getFirst();
+        assertEquals("farming", farmingXp.skill());
+        assertEquals(5.5D, farmingXp.amount(), 0.0001D);
+        assertEquals(true, farmingXp.raw());
+        assertEquals(0.25D, farmingXp.chance(), 0.0001D);
+        assertEquals("custom_namespace/custom_skill", definition.auraSkillsXp().get(1).skill());
+        assertEquals(2.0D, definition.auraSkillsXp().get(1).amount(), 0.0001D);
 
         assertEquals(2, definition.commands().size());
         FoodEffectConfig.CommandDefinition auraSkillsCommand = definition.commands().getFirst();
