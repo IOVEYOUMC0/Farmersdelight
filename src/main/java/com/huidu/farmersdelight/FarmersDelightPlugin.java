@@ -53,6 +53,13 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystemAlreadyExistsException;
+import java.nio.file.FileSystems;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -66,6 +73,9 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class FarmersDelightPlugin extends JavaPlugin implements Listener {
+
+    private static final String CRAFTENGINE_RESOURCE_ROOT = "craftengine/farmersdelight";
+    private static final Path CRAFTENGINE_RESOURCE_TARGET = Path.of("CraftEngine", "resources", "farmersdelight");
 
     private static final List<String> ADVANCEMENT_RESOURCES = List.of(
             "advancements/pack.mcmeta",
@@ -225,6 +235,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         instance = this;
         ensureConfigDefaults();
         I18n.init(this);
+        releaseBundledCraftEngineResourcesOnce();
         registerBlockBehaviors();
     }
 
@@ -1133,6 +1144,159 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                         StandardOpenOption.WRITE
                 );
             }
+        }
+    }
+
+    private void releaseBundledCraftEngineResourcesOnce() {
+        Path pluginsFolder = getDataFolder().toPath().getParent();
+        if (pluginsFolder == null) {
+            I18n.logWarning("plugin.craftengine_resources_release_failed",
+                    "error", "Unable to resolve the plugins folder.");
+            return;
+        }
+
+        Path targetRoot = pluginsFolder.resolve(CRAFTENGINE_RESOURCE_TARGET);
+        if (Files.exists(targetRoot)) {
+            return;
+        }
+
+        try {
+            int copiedFiles = copyBundledResourceDirectory(CRAFTENGINE_RESOURCE_ROOT, targetRoot);
+            I18n.logInfo("plugin.craftengine_resources_released",
+                    "path", targetRoot,
+                    "count", copiedFiles);
+        } catch (IOException e) {
+            I18n.logWarning("plugin.craftengine_resources_release_failed", "error", e.getMessage());
+        }
+    }
+
+    private int copyBundledResourceDirectory(String resourceRoot, Path targetRoot) throws IOException {
+        List<String> resourcePaths = listBundledResourceFiles(resourceRoot);
+        if (resourcePaths.isEmpty()) {
+            throw new IOException("No bundled CraftEngine resources found at " + resourceRoot);
+        }
+
+        Path parent = Objects.requireNonNull(targetRoot.getParent(), "targetRoot parent");
+        Files.createDirectories(parent);
+        Path tempRoot = Files.createTempDirectory(parent, targetRoot.getFileName() + "-");
+        boolean moved = false;
+
+        try {
+            int copiedFiles = 0;
+            for (String resourcePath : resourcePaths) {
+                String relativePath = resourcePath.substring(resourceRoot.length() + 1);
+                Path targetPath = resolveSafeChild(tempRoot, relativePath);
+                Files.createDirectories(Objects.requireNonNull(targetPath.getParent(), "targetPath parent"));
+                try (InputStream inputStream = getResource(resourcePath)) {
+                    if (inputStream == null) {
+                        throw new IOException("Bundled " + resourcePath + " was not found in the plugin jar.");
+                    }
+                    Files.copy(inputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                    copiedFiles++;
+                }
+            }
+
+            try {
+                Files.move(tempRoot, targetRoot, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException ignored) {
+                Files.move(tempRoot, targetRoot);
+            }
+            moved = true;
+            return copiedFiles;
+        } finally {
+            if (!moved) {
+                deleteTreeQuietly(tempRoot);
+            }
+        }
+    }
+
+    private Path resolveSafeChild(Path root, String relativePath) throws IOException {
+        Path normalizedRoot = root.normalize();
+        Path targetPath = normalizedRoot.resolve(relativePath).normalize();
+        if (!targetPath.startsWith(normalizedRoot)) {
+            throw new IOException("Invalid bundled resource path: " + relativePath);
+        }
+        return targetPath;
+    }
+
+    private List<String> listBundledResourceFiles(String resourceRoot) throws IOException {
+        URL resourceUrl = getClass().getClassLoader().getResource(resourceRoot);
+        if (resourceUrl == null) {
+            return List.of();
+        }
+
+        try {
+            URI resourceUri = resourceUrl.toURI();
+            if ("file".equals(resourceUrl.getProtocol())) {
+                return listFileResourceFiles(resourceRoot, Path.of(resourceUri));
+            }
+            if ("jar".equals(resourceUrl.getProtocol())) {
+                return listJarResourceFiles(resourceRoot, resourceUri);
+            }
+            throw new IOException("Unsupported bundled resource protocol: " + resourceUrl.getProtocol());
+        } catch (URISyntaxException e) {
+            throw new IOException("Invalid bundled resource URI for " + resourceRoot, e);
+        }
+    }
+
+    private List<String> listFileResourceFiles(String resourceRoot, Path rootPath) throws IOException {
+        try (Stream<Path> stream = Files.walk(rootPath)) {
+            return stream
+                    .filter(Files::isRegularFile)
+                    .map(rootPath::relativize)
+                    .map(path -> resourceRoot + "/" + path.toString().replace('\\', '/'))
+                    .sorted()
+                    .toList();
+        }
+    }
+
+    private List<String> listJarResourceFiles(String resourceRoot, URI resourceUri) throws IOException {
+        String uriText = resourceUri.toString();
+        int separatorIndex = uriText.indexOf("!/");
+        if (separatorIndex < 0) {
+            throw new IOException("Invalid jar resource URI: " + resourceUri);
+        }
+
+        URI jarUri = URI.create(uriText.substring(0, separatorIndex));
+        FileSystem fileSystem = null;
+        boolean closeFileSystem = false;
+
+        try {
+            try {
+                fileSystem = FileSystems.newFileSystem(jarUri, Map.of());
+                closeFileSystem = true;
+            } catch (FileSystemAlreadyExistsException ignored) {
+                fileSystem = FileSystems.getFileSystem(jarUri);
+            }
+
+            Path rootPath = fileSystem.getPath("/" + resourceRoot);
+            try (Stream<Path> stream = Files.walk(rootPath)) {
+                return stream
+                        .filter(Files::isRegularFile)
+                        .map(rootPath::relativize)
+                        .map(path -> resourceRoot + "/" + path.toString().replace('\\', '/'))
+                        .sorted()
+                        .toList();
+            }
+        } finally {
+            if (closeFileSystem && fileSystem != null) {
+                fileSystem.close();
+            }
+        }
+    }
+
+    private void deleteTreeQuietly(Path root) {
+        if (root == null || !Files.exists(root)) {
+            return;
+        }
+        try (Stream<Path> stream = Files.walk(root)) {
+            for (Path path : stream.sorted((left, right) -> right.getNameCount() - left.getNameCount()).toList()) {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException ignored) {
+                }
+            }
+        } catch (IOException ignored) {
         }
     }
 

@@ -430,3 +430,33 @@ nourishment-foods:
       duration: 300
     farmersdelight:fried_rice:
       duration: 300
+
+# 食物食用后的通用自定义效果。默认关闭。
+# 支持原版药水效果、FarmersDelight 自带 Comfort/Nourishment，以及命令钩子。
+# 命令钩子可用于 AuraSkills、MMOCore 等外部插件；本插件不会硬编码外部插件的技能名或命令。
+# 可用占位符：{player}、{uuid}、{food}、{world}，也支持对应的 %player% 风格。
+food-effects:
+  enabled: false
+  foods:
+    farmersdelight:pasta_with_meatballs:
+      # 食用事件完成后延迟多少 tick 执行动作。1 tick 可避免和原版食用结算抢时序。
+      delay-ticks: 1
+      # 药水效果。duration-ticks 是 tick；也可写 duration-seconds。
+      effects:
+        - type: regeneration
+          duration-ticks: 100
+          amplifier: 0
+          ambient: false
+          particles: true
+          icon: true
+      # FarmersDelight 自带效果。这里的 duration 单位是秒，和 comfort-foods / nourishment-foods 保持一致。
+      farmersdelight-effects:
+        comfort:
+          duration: 300
+      # 外部插件命令钩子。按目标插件实际命令填写；requires-plugin 不存在或未启用时会跳过。
+      commands: []
+      # 例如：
+      # commands:
+      #   - sender: console
+      #     requires-plugin: AuraSkills
+      #     command: "在这里填写 AuraSkills 的经验/属性命令，支持 {player} 占位符"
