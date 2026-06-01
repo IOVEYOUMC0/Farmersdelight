@@ -2,9 +2,11 @@ package com.huidu.farmersdelight.listener;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.advancement.AdvancementManager;
+import com.huidu.farmersdelight.config.FoodEffectConfig;
 import com.huidu.farmersdelight.effect.EffectManager;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.ItemUtils;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
@@ -13,15 +15,18 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.potion.PotionEffect;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class FoodEatListener implements Listener {
 
     private final FarmersDelightPlugin plugin;
     private final Map<String, Integer> comfortFoodDurations = new HashMap<>();
     private final Map<String, Integer> nourishmentFoodDurations = new HashMap<>();
+    private final FoodEffectConfig foodEffectConfig = new FoodEffectConfig();
     private boolean comfortFoodsEnabled;
     private boolean nourishmentFoodsEnabled;
 
@@ -81,6 +86,9 @@ public class FoodEatListener implements Listener {
                 nourishmentFoodDurations.put(foodId, duration);
             }
         }
+
+        FoodEffectConfig.setLogger(plugin.getLogger());
+        foodEffectConfig.loadFromConfig(plugin.getConfig().getConfigurationSection("food-effects"));
     }
 
     public void reload() {
@@ -120,6 +128,95 @@ public class FoodEatListener implements Listener {
                 advancementManager.award(player, "eat_nourishing_food");
             }
         }
+
+        FoodEffectConfig.FoodEffectDefinition foodEffects = foodEffectConfig.getFoodDefinition(itemId);
+        if (foodEffects != null) {
+            plugin.scheduler().runLaterForEntity(
+                    player,
+                    () -> applyConfiguredFoodEffects(player, itemId, foodEffects),
+                    foodEffects.delayTicks()
+            );
+        }
+    }
+
+    private void applyConfiguredFoodEffects(Player player, String foodId, FoodEffectConfig.FoodEffectDefinition definition) {
+        if (player == null || !player.isOnline() || player.isDead()) {
+            return;
+        }
+
+        for (FoodEffectConfig.CustomEffectDefinition customEffect : definition.customEffects()) {
+            if (!shouldApply(customEffect.chance())) {
+                continue;
+            }
+            switch (customEffect.type()) {
+                case COMFORT -> EffectManager.applyComfort(player, customEffect.durationSeconds());
+                case NOURISHMENT -> EffectManager.applyNourishment(player, customEffect.durationSeconds());
+            }
+        }
+
+        for (FoodEffectConfig.PotionEffectDefinition effect : definition.potionEffects()) {
+            if (!shouldApply(effect.chance())) {
+                continue;
+            }
+            player.addPotionEffect(new PotionEffect(
+                    effect.type(),
+                    effect.durationTicks(),
+                    effect.amplifier(),
+                    effect.ambient(),
+                    effect.particles(),
+                    effect.icon()
+            ));
+        }
+
+        for (FoodEffectConfig.CommandDefinition command : definition.commands()) {
+            if (!shouldApply(command.chance()) || !requiredPluginsEnabled(command)) {
+                continue;
+            }
+            dispatchConfiguredCommand(player, foodId, command);
+        }
+    }
+
+    private boolean shouldApply(double chance) {
+        return chance >= 1.0D || ThreadLocalRandom.current().nextDouble() < chance;
+    }
+
+    private boolean requiredPluginsEnabled(FoodEffectConfig.CommandDefinition command) {
+        for (String pluginName : command.requiredPlugins()) {
+            if (!Bukkit.getPluginManager().isPluginEnabled(pluginName)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void dispatchConfiguredCommand(Player player, String foodId, FoodEffectConfig.CommandDefinition command) {
+        String commandText = applyCommandPlaceholders(player, foodId, command.command());
+        if (commandText.isBlank()) {
+            return;
+        }
+
+        if (command.sender() == FoodEffectConfig.CommandSenderType.PLAYER) {
+            plugin.scheduler().runForEntity(player, () -> {
+                if (player.isOnline()) {
+                    player.performCommand(commandText);
+                }
+            });
+            return;
+        }
+
+        plugin.scheduler().run(() -> Bukkit.dispatchCommand(Bukkit.getConsoleSender(), commandText));
+    }
+
+    private String applyCommandPlaceholders(Player player, String foodId, String command) {
+        return command
+                .replace("{player}", player.getName())
+                .replace("%player%", player.getName())
+                .replace("{uuid}", player.getUniqueId().toString())
+                .replace("%uuid%", player.getUniqueId().toString())
+                .replace("{food}", foodId)
+                .replace("%food%", foodId)
+                .replace("{world}", player.getWorld().getName())
+                .replace("%world%", player.getWorld().getName());
     }
 
     private String getItemId(ItemStack item) {
