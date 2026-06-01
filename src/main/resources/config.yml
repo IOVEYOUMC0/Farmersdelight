@@ -100,6 +100,18 @@ cooking-pot:
   hopper-interactions: true
   # true = 打包锅内物品到掉落的厨锅物品；false = 掉落空锅并把锅内物品散落出来。
   pack-contents-on-break: true
+  # 玩家从厨锅输出槽/待取出成品中拿走烹饪成品时，如何结算配方 experience。
+  # vanilla = 掉落原版经验球；auraskills = 只给 AuraSkills 经验；both = 两者都有；none = 不给经验奖励。
+  # base experience 仍由 recipes/cooking_pot_recipes.yml 里的每个配方 experience 字段决定。
+  experience-reward:
+    mode: vanilla
+    # mode 为 auraskills 或 both 时生效。技能 ID 可写 farming、auraskills/farming，或 namespace/custom_skill。
+    # multiplier 会用“配方 experience × 倍率”作为 AuraSkills 经验；如果写 amount，则改为每次取出固定给 amount。
+    # raw=false 走 AuraSkills 自身倍率/修饰；raw=true 直接添加原始经验。
+    auraskills:
+      skill: farming
+      multiplier: 1.0
+      raw: false
   # 厨锅烹饪中的悬浮 TextDisplay。
   progress-display:
     # false = 完全关闭厨锅烹饪进度 TextDisplay。大量厨锅压测或服务器性能优先时建议关闭。
@@ -430,39 +442,3 @@ nourishment-foods:
       duration: 300
     farmersdelight:fried_rice:
       duration: 300
-
-# 食物食用后的通用自定义效果。默认关闭。
-# 支持原版药水效果、FarmersDelight 自带 Comfort/Nourishment、AuraSkills 经验，以及命令钩子。
-# AuraSkills 走官方 API；命令钩子可用于 MMOCore 等其它外部插件。
-# 可用占位符：{player}、{uuid}、{food}、{world}，也支持对应的 %player% 风格。
-food-effects:
-  enabled: false
-  foods:
-    farmersdelight:pasta_with_meatballs:
-      # 食用事件完成后延迟多少 tick 执行动作。1 tick 可避免和原版食用结算抢时序。
-      delay-ticks: 1
-      # 药水效果。duration-ticks 是 tick；也可写 duration-seconds。
-      effects:
-        - type: regeneration
-          duration-ticks: 100
-          amplifier: 0
-          ambient: false
-          particles: true
-          icon: true
-      # FarmersDelight 自带效果。这里的 duration 单位是秒，和 comfort-foods / nourishment-foods 保持一致。
-      farmersdelight-effects:
-        comfort:
-          duration: 300
-      # AuraSkills 官方 API 经验钩子。默认技能可写 farming，也可写 auraskills/farming；自定义技能写 namespace/skill。
-      # raw=false 会走 AuraSkills 自身倍率/修饰；raw=true 直接添加原始经验。
-      auraskills:
-        farming:
-          amount: 5.0
-          raw: false
-      # 外部插件命令钩子。按目标插件实际命令填写；requires-plugin 不存在或未启用时会跳过。
-      commands: []
-      # 例如：
-      # commands:
-      #   - sender: console
-      #     requires-plugin: AuraSkills
-      #     command: "在这里填写 AuraSkills 的经验/属性命令，支持 {player} 占位符"
