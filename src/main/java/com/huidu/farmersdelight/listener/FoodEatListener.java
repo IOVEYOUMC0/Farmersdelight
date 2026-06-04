@@ -132,6 +132,6 @@ public class FoodEatListener implements Listener {
         if (type.isAir()) {
             return null;
         }
-        return "minecraft:" + type.name().toLowerCase();
+        return "minecraft:" + type.name().toLowerCase(java.util.Locale.ROOT);
     }
 }

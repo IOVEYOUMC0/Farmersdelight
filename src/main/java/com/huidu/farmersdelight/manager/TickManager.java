@@ -7,6 +7,7 @@ import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.recipe.CookingPotRecipe;
 import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
+import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ManagerSupport;
 import com.huidu.farmersdelight.util.scheduler.PluginTask;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
@@ -151,6 +152,7 @@ public class TickManager {
     
     private void performCleanup() {
         checkPerformanceWarnings();
+        pruneOldPerformanceWarnings();
         if (plugin.scheduler().isFolia()) {
             scheduleCookingPotCleanup();
             return;
@@ -207,6 +209,13 @@ public class TickManager {
                                 "threshold", cookingPotDensityWarningThreshold));
             }
         }
+    }
+
+    private void pruneOldPerformanceWarnings() {
+        // The warning-times map is keyed by world/chunk and would otherwise grow without bound; drop
+        // entries past their cooldown (a future warning for the same key just re-adds it).
+        long cutoff = System.currentTimeMillis() - performanceWarningCooldownMillis;
+        performanceWarningTimes.entrySet().removeIf(entry -> entry.getValue() < cutoff);
     }
 
     private void warnWithCooldown(String key, String message) {
@@ -590,7 +599,10 @@ public class TickManager {
         }
 
         entity.setHasHeatSource(hasHeat);
-        emitCookingPotEffects(world, posKey, entity, hasHeat);
+        // Resolve the behavior from the already-fetched block state instead of re-reading the block
+        // (and its CE custom state) again inside emitCookingPotEffects every tick.
+        CookingPotBlockBehavior behavior = CustomBlockUtils.getBehavior(state, CookingPotBlockBehavior.class);
+        emitCookingPotEffects(world, posKey, entity, hasHeat, behavior);
 
         boolean canCook = hasHeat && entity.canCook();
         CookingPotRecipe recipe = canCook ? entity.getCurrentRecipe() : null;
@@ -665,7 +677,8 @@ public class TickManager {
         return true;
     }
 
-    private void emitCookingPotEffects(World world, BlockPosKey posKey, CookingPotBlockEntity entity, boolean hasHeat) {
+    private void emitCookingPotEffects(World world, BlockPosKey posKey, CookingPotBlockEntity entity, boolean hasHeat,
+                                       CookingPotBlockBehavior behavior) {
         if (!hasHeat) {
             return;
         }
@@ -680,7 +693,6 @@ public class TickManager {
         }
 
         ThreadLocalRandom random = ThreadLocalRandom.current();
-        CookingPotBlockBehavior behavior = CookingPotBlockBehavior.getBlockBehavior(posKey.toLocation(world));
         Location center = ManagerSupport.toLocation(world, posKey);
         if (center == null) {
             return;

@@ -132,7 +132,7 @@ public class TatamiPairingBehavior extends BlockBehavior {
     private ImmutableBlockState withFacingAndPair(ImmutableBlockState state, BlockFace facing, boolean paired) {
         ImmutableBlockState result = state;
         if (facingProperty != null) {
-            result = withPropertyValue(result, facingProperty, facing.name().toLowerCase());
+            result = withPropertyValue(result, facingProperty, facing.name().toLowerCase(java.util.Locale.ROOT));
         }
         if (pairedProperty != null) {
             result = result.with(pairedProperty, paired);

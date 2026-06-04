@@ -603,8 +603,16 @@ public class StoveManager {
 
         boolean isLit = isStoveLit(state);
         BlockFace facing = CustomBlockUtils.getFacing(block).getOppositeFace();
-        debug(() -> "tick state: lit=" + isLit + ", hasAnyItem=" + hasAnyItem(stove)
-                + ", location=" + formatLocation(location));
+        // Cache the debug flag so the per-slot debug lambdas are only allocated when debug is on.
+        boolean debugStove = plugin.isDebugEnabled("stove");
+        // Resolve the crackle sound (a CE block-state lookup) at most once per tick, lazily, rather
+        // than once per crackling slot.
+        String crackleSound = null;
+        boolean crackleResolved = false;
+        if (debugStove) {
+            debug(() -> "tick state: lit=" + isLit + ", hasAnyItem=" + hasAnyItem(stove)
+                    + ", location=" + formatLocation(location));
+        }
         for (int i = 0; i < SLOT_COUNT; i++) {
             if (stove.items[i] == null || stove.items[i].getType().isAir()) {
                 continue;
@@ -612,9 +620,11 @@ public class StoveManager {
 
             ensureVisualExists(location, stove, i, facing);
             int slot = i;
-            debug(() -> "tick slot: slot=" + slot + ", progress=" + stove.cookingTime[slot] + "/" + stove.maxTime[slot]
-                    + ", item=" + formatItem(stove.items[slot]) + ", lit=" + isLit
-                    + ", location=" + formatLocation(location));
+            if (debugStove) {
+                debug(() -> "tick slot: slot=" + slot + ", progress=" + stove.cookingTime[slot] + "/" + stove.maxTime[slot]
+                        + ", item=" + formatItem(stove.items[slot]) + ", lit=" + isLit
+                        + ", location=" + formatLocation(location));
+            }
 
             if (isLit) {
                 stove.cookingTime[i]++;
@@ -623,12 +633,18 @@ public class StoveManager {
                     spawnCookingParticles(location, i, facing);
                 }
                 if (Math.random() < Constants.STOVE_CRACKLE_CHANCE) {
-                    SoundUtils.play(world, location, getCrackleSound(location), Sound.BLOCK_CAMPFIRE_CRACKLE, 1.0f, 1.0f);
+                    if (!crackleResolved) {
+                        crackleSound = getCrackleSound(location);
+                        crackleResolved = true;
+                    }
+                    SoundUtils.play(world, location, crackleSound, Sound.BLOCK_CAMPFIRE_CRACKLE, 1.0f, 1.0f);
                 }
                 if (stove.cookingTime[i] >= stove.maxTime[i]) {
                     int finishedSlot = i;
-                    debug(() -> "tick finish: slot=" + finishedSlot + ", item=" + formatItem(stove.items[finishedSlot])
-                            + ", location=" + formatLocation(location));
+                    if (debugStove) {
+                        debug(() -> "tick finish: slot=" + finishedSlot + ", item=" + formatItem(stove.items[finishedSlot])
+                                + ", location=" + formatLocation(location));
+                    }
                     finishCooking(location, stove, i);
                 }
             } else {

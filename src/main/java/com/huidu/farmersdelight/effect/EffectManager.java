@@ -17,6 +17,9 @@ public final class EffectManager {
 
     private static final int EFFECT_FADE_WARNING_TICKS = 200;
     private static final int COMFORT_HEAL_INTERVAL_TICKS = 80;
+    // Must match the period of the effect task (EffectListener). Durations are stored as real-tick
+    // counts, so they must be decremented by the number of real ticks elapsed between invocations.
+    private static final int TICK_INTERVAL = (int) EffectListener.TICK_INTERVAL;
     private static final Map<UUID, Integer> comfortDurations = new ConcurrentHashMap<>();
     private static final Map<UUID, Integer> nourishmentDurations = new ConcurrentHashMap<>();
 
@@ -126,7 +129,7 @@ public final class EffectManager {
                                 durationPlaceholders(comfortDuration)
                         ));
                     }
-                    int newDuration = comfortDuration - 1;
+                    int newDuration = comfortDuration - TICK_INTERVAL;
                     if (newDuration > 0) {
                         comfortDurations.put(playerId, newDuration);
                     } else {
@@ -147,7 +150,7 @@ public final class EffectManager {
                             durationPlaceholders(nourishmentDuration)
                     ));
                 }
-                int newDuration = nourishmentDuration - 1;
+                int newDuration = nourishmentDuration - TICK_INTERVAL;
                 if (newDuration > 0) {
                     nourishmentDurations.put(playerId, newDuration);
                 } else {
@@ -156,7 +159,7 @@ public final class EffectManager {
                 }
             }
 
-            if (comfortDuration <= 1 && nourishmentDuration <= 1) {
+            if (comfortDuration <= TICK_INTERVAL && nourishmentDuration <= TICK_INTERVAL) {
                 EffectListener.untrackPlayer(playerId);
             }
         } catch (Exception e) {

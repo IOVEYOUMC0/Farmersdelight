@@ -265,15 +265,6 @@ command:
   help_help: "Show help information"
   help_cleanup: "Remove plugin-spawned item display entities"
   cleanup_done: "&aCleanup complete, {count} entities removed."
-effects:
-  comfort:
-    start: "&6Warm food helps you recover. {time} remaining."
-    fade: "&eYour comfort is fading. {seconds}s remaining."
-    end: "&7The comforting warmth fades."
-  nourishment:
-    start: "&6A hearty meal keeps hunger away for {time}."
-    fade: "&eYour fullness is gradually fading. {seconds}s remaining."
-    end: "&7You feel hunger returning."
 item:
   farmersdelight:
     raw_pasta: "Raw Pasta"

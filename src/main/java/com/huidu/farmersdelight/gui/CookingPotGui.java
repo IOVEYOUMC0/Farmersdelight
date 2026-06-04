@@ -22,6 +22,8 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.ClickType;
+import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
@@ -145,12 +147,25 @@ public class CookingPotGui implements InventoryHolder {
     private void tick() {
         if (closed) return;
 
-        if (world != null && blockBehavior != null) {
-            blockEntity.setHasHeatSource(blockBehavior.checkHeatSource(blockEntity.getPos(), world));
-        }
+        // The tick callback runs on the VIEWER's region/entity thread (GuiTickManager uses
+        // runForEntity). Reading the pot's block from here would be a cross-region access on Folia,
+        // so dispatch the heat-source block read to the pot's own region; the result is stored on
+        // the thread-safe block entity and consumed by updateDisplayItems below / the next tick.
+        refreshHeatStateOnRegion();
 
         blockEntity.tryMovePendingToOutput();
         updateDisplayItems();
+    }
+
+    private void refreshHeatStateOnRegion() {
+        if (world == null || blockBehavior == null) {
+            return;
+        }
+        plugin.scheduler().runAt(cookingPotLocation, () -> {
+            if (!closed && world != null && blockBehavior != null) {
+                blockEntity.setHasHeatSource(blockBehavior.checkHeatSource(blockEntity.getPos(), world));
+            }
+        });
     }
 
     @Override
@@ -435,9 +450,9 @@ public class CookingPotGui implements InventoryHolder {
                     tickManager.unregisterActiveBlock(world, blockEntity.getPosKey(), TickManager.BlockType.COOKING_POT);
                 }
             }
-            if (blockBehavior != null) {
-                blockEntity.setHasHeatSource(blockBehavior.checkHeatSource(blockEntity.getPos(), world));
-            }
+            // Heat-source detection reads the pot's block, so it is dispatched to the pot's region
+            // via refreshHeatStateOnRegion() (called by the sync/tick path) rather than read here,
+            // where we may be on the viewer's thread.
         }
     }
 
@@ -468,6 +483,24 @@ public class CookingPotGui implements InventoryHolder {
         Inventory clickedInventory = event.getClickedInventory();
         boolean clickedTop = clickedInventory != null && clickedInventory.equals(inventory);
         boolean clickedBottom = clickedInventory != null && clickedInventory.getType() == InventoryType.PLAYER;
+
+        // Double-click "collect to cursor" gathers matching stacks from BOTH inventories,
+        // including the read-only top display/output/buffer slots that mirror the block entity.
+        // syncToBlockEntity only writes back the writable slots, so a collect would pull items
+        // out of the display slots without removing them from the entity -> duplication. Reject it.
+        InventoryAction action = event.getAction();
+        if (action == InventoryAction.COLLECT_TO_CURSOR || action == InventoryAction.UNKNOWN) {
+            event.setCancelled(true);
+            return;
+        }
+        // Hotbar number-key / offhand swaps that target a top (GUI) slot do not fit this GUI's
+        // slot model (they would fall into the cursor-pickup branch). Reject them on the top
+        // inventory; the player can still reorganize their own inventory freely.
+        ClickType click = event.getClick();
+        if (clickedTop && (click == ClickType.NUMBER_KEY || click == ClickType.SWAP_OFFHAND)) {
+            event.setCancelled(true);
+            return;
+        }
         if (rawSlot == heatSlot || rawSlot == progressSlot || config.isBufferSlot(rawSlot)) {
             event.setCancelled(true);
             return;
@@ -528,7 +561,7 @@ public class CookingPotGui implements InventoryHolder {
             return;
         }
 
-        scheduleGuiSync();
+        scheduleGuiSync(event.getWhoClicked() instanceof Player p ? p : null);
     }
 
     void onDrag(InventoryDragEvent event) {
@@ -541,7 +574,7 @@ public class CookingPotGui implements InventoryHolder {
             }
         }
 
-        scheduleGuiSync();
+        scheduleGuiSync(event.getWhoClicked() instanceof Player p ? p : null);
     }
 
     private void handleTopInventoryInteraction(InventoryClickEvent event) {
@@ -644,13 +677,13 @@ public class CookingPotGui implements InventoryHolder {
         inventory.setItem(rawSlot, leftover.clone());
     }
 
-    private void scheduleGuiSync() {
+    private void scheduleGuiSync(Player viewer) {
         if (closed || syncQueued) {
             return;
         }
 
         syncQueued = true;
-        plugin.scheduler().runAt(cookingPotLocation, () -> {
+        Runnable syncTask = () -> {
             if (closed) {
                 syncQueued = false;
                 return;
@@ -662,7 +695,16 @@ public class CookingPotGui implements InventoryHolder {
                 syncQueued = false;
             }
             updateDisplayItems();
-        });
+            refreshHeatStateOnRegion();
+        };
+        // The GUI inventory is owned by the viewer's region/entity thread, so the deferred read/write
+        // must run there (not on the pot's region) to avoid cross-thread Bukkit inventory access on
+        // Folia. Block-touching work is dispatched to the pot's region from inside syncTask.
+        if (viewer != null) {
+            plugin.scheduler().runForEntity(viewer, syncTask);
+        } else {
+            plugin.scheduler().runAt(cookingPotLocation, syncTask);
+        }
     }
 
     void onClose(InventoryCloseEvent event) {
@@ -683,6 +725,10 @@ public class CookingPotGui implements InventoryHolder {
         }
         activeGuis.clear();
         GuiTickManager.cleanup();
+        // HandlerList.unregisterAll(plugin) on disable removes the EventDispatcher, but the
+        // static flag must also be reset so a soft re-enable re-registers a fresh dispatcher;
+        // otherwise GUI clicks would no longer be cancelled (dupe/loss).
+        listenerRegistered = false;
     }
 
     public static void closeAllOpenGuis() {
@@ -972,7 +1018,7 @@ public class CookingPotGui implements InventoryHolder {
         if (customId != null && plugin.getCookingPotRecipes().getValidContainerKeys().contains(customId)) {
             return true;
         }
-        String materialKey = "minecraft:" + item.getType().name().toLowerCase();
+        String materialKey = "minecraft:" + item.getType().name().toLowerCase(java.util.Locale.ROOT);
         return plugin.getCookingPotRecipes().getValidContainerKeys().contains(materialKey);
     }
 

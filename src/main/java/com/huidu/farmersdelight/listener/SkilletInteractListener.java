@@ -93,6 +93,7 @@ public class SkilletInteractListener implements Listener {
         }
 
         if (mainHand != null && !mainHand.getType().isAir()
+                && InteractionDebouncer.tryAcquire(player.getUniqueId(), block.getLocation())
                 && plugin.getSkilletManager().handleInteract(player, block, mainHand, EquipmentSlot.HAND)) {
             event.setUseItemInHand(Event.Result.DENY);
             event.setUseInteractedBlock(Event.Result.DENY);
@@ -146,7 +147,7 @@ public class SkilletInteractListener implements Listener {
         if (customItemId != null) {
             return customItemId;
         }
-        return "minecraft:" + item.getType().name().toLowerCase();
+        return "minecraft:" + item.getType().name().toLowerCase(java.util.Locale.ROOT);
     }
 
     private boolean isSkilletBlock(String ceBlockId) {

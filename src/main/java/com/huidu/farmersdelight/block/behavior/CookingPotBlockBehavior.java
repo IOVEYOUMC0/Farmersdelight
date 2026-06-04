@@ -70,14 +70,25 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
 
     private static final Map<UUID, Map<BlockPosKey, CookingPotBlockEntity>> worldBlockEntities = new ConcurrentHashMap<>();
     private static final Map<UUID, Map<BlockPosKey, TextDisplay>> worldProgressDisplays = new ConcurrentHashMap<>();
-    private static final Map<BlockPosKey, Set<UUID>> displayVisibleToPlayers = new ConcurrentHashMap<>();
-    private static final Map<BlockPosKey, Long> displayVisibilityLastCheckTick = new ConcurrentHashMap<>();
-    private static final Map<BlockPosKey, Long> progressDisplayCreateLastCheckTick = new ConcurrentHashMap<>();
-    private static final Map<BlockPosKey, String> progressDisplayTextCache = new ConcurrentHashMap<>();
+    // These per-pot display caches must be keyed by world too: BlockPosKey carries no world, so two
+    // pots at identical x,y,z in different worlds would otherwise share progress text / visibility
+    // throttle / recipe-name state.
+    private static final Map<DisplayStateKey, Set<UUID>> displayVisibleToPlayers = new ConcurrentHashMap<>();
+    private static final Map<DisplayStateKey, Long> displayVisibilityLastCheckTick = new ConcurrentHashMap<>();
+    private static final Map<DisplayStateKey, Long> progressDisplayCreateLastCheckTick = new ConcurrentHashMap<>();
+    private static final Map<DisplayStateKey, String> progressDisplayTextCache = new ConcurrentHashMap<>();
     private static final int VISIBILITY_CHECK_INTERVAL_TICKS = 100;
-    private static final Map<BlockPosKey, ItemStack> cookingRecipeItems = new ConcurrentHashMap<>();
+    private static final Map<DisplayStateKey, ItemStack> cookingRecipeItems = new ConcurrentHashMap<>();
     private static final Map<BlockPosKey, Long> recentPlacements = new ConcurrentHashMap<>();
     private static final long PLACE_INTERACTION_COOLDOWN_MS = 1000L;
+
+    /** World-scoped key for the per-pot display caches above. */
+    private record DisplayStateKey(UUID worldId, BlockPosKey pos) {
+    }
+
+    private static DisplayStateKey stateKey(World world, BlockPosKey posKey) {
+        return new DisplayStateKey(world.getUID(), posKey);
+    }
 
     private final String permission;
     private final boolean openWhileSneaking;
@@ -308,11 +319,12 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
                 if (removeDisplayEntities && display != null && display.isValid()) {
                     display.remove();
                 }
-                displayVisibleToPlayers.remove(posKey);
-                displayVisibilityLastCheckTick.remove(posKey);
-                progressDisplayCreateLastCheckTick.remove(posKey);
-                progressDisplayTextCache.remove(posKey);
-                cookingRecipeItems.remove(posKey);
+                DisplayStateKey stateKey = new DisplayStateKey(worldId, posKey);
+                displayVisibleToPlayers.remove(stateKey);
+                displayVisibilityLastCheckTick.remove(stateKey);
+                progressDisplayCreateLastCheckTick.remove(stateKey);
+                progressDisplayTextCache.remove(stateKey);
+                cookingRecipeItems.remove(stateKey);
             }
             displays.clear();
         }
@@ -349,6 +361,9 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             return;
         }
         long now = System.currentTimeMillis();
+        // Drop expired entries here too: isRecentlyPlaced() only prunes on lookup, so a pot that is
+        // placed but never interacted with would otherwise leak its entry until cleanup.
+        recentPlacements.entrySet().removeIf(entry -> now - entry.getValue() > PLACE_INTERACTION_COOLDOWN_MS);
         recentPlacements.put(new BlockPosKey(location), now);
     }
 
@@ -374,9 +389,10 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             return;
         }
 
+        DisplayStateKey stateKey = stateKey(world, posKey);
         String text;
         if (plugin != null && plugin.isShowRecipeNameInProgressDisplay()) {
-            ItemStack recipeItem = cookingRecipeItems.get(posKey);
+            ItemStack recipeItem = cookingRecipeItems.get(stateKey);
             if (recipeItem != null) {
                 String recipeName = com.huidu.farmersdelight.util.ItemUtils.getDisplayName(recipeItem);
                 text = recipeName + " " + progressPercent + "%";
@@ -388,7 +404,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         }
 
         TextDisplay display = getProgressDisplay(world, posKey);
-        String previousText = progressDisplayTextCache.get(posKey);
+        String previousText = progressDisplayTextCache.get(stateKey);
         if (display != null && text.equals(previousText)) {
             updateDisplayVisibility(world, posKey, display);
             return;
@@ -404,16 +420,20 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             return;
         }
 
-        progressDisplayTextCache.put(posKey, text);
+        progressDisplayTextCache.put(stateKey, text);
         display.text(net.kyori.adventure.text.Component.text(text));
         updateDisplayVisibility(world, posKey, display);
     }
 
-    public static void setCookingRecipeItem(BlockPosKey posKey, ItemStack recipeItem) {
+    public static void setCookingRecipeItem(World world, BlockPosKey posKey, ItemStack recipeItem) {
+        if (world == null || posKey == null) {
+            return;
+        }
+        DisplayStateKey stateKey = stateKey(world, posKey);
         if (recipeItem != null && !recipeItem.getType().isAir()) {
-            cookingRecipeItems.put(posKey, recipeItem);
+            cookingRecipeItems.put(stateKey, recipeItem);
         } else {
-            cookingRecipeItems.remove(posKey);
+            cookingRecipeItems.remove(stateKey);
         }
     }
 
@@ -430,11 +450,12 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             }
         }
 
-        displayVisibleToPlayers.remove(posKey);
-        displayVisibilityLastCheckTick.remove(posKey);
-        progressDisplayCreateLastCheckTick.remove(posKey);
-        progressDisplayTextCache.remove(posKey);
-        cookingRecipeItems.remove(posKey);
+        DisplayStateKey stateKey = stateKey(world, posKey);
+        displayVisibleToPlayers.remove(stateKey);
+        displayVisibilityLastCheckTick.remove(stateKey);
+        progressDisplayCreateLastCheckTick.remove(stateKey);
+        progressDisplayTextCache.remove(stateKey);
+        cookingRecipeItems.remove(stateKey);
     }
 
     private static TextDisplay getProgressDisplay(World world, BlockPosKey posKey) {
@@ -447,9 +468,10 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             return display;
         }
         displays.remove(posKey);
-        displayVisibleToPlayers.remove(posKey);
-        displayVisibilityLastCheckTick.remove(posKey);
-        progressDisplayTextCache.remove(posKey);
+        DisplayStateKey stateKey = stateKey(world, posKey);
+        displayVisibleToPlayers.remove(stateKey);
+        displayVisibilityLastCheckTick.remove(stateKey);
+        progressDisplayTextCache.remove(stateKey);
         return null;
     }
 
@@ -485,12 +507,15 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     }
 
     private static boolean shouldCreateProgressDisplay(World world, BlockPosKey posKey) {
-        long currentTick = System.nanoTime() / 50_000_000L;
-        Long lastCheckTick = progressDisplayCreateLastCheckTick.get(posKey);
+        // Use the real server tick (not wall-clock) so the throttle interval reflects actual ticks
+        // and degrades gracefully under TPS lag instead of re-checking more often.
+        long currentTick = Bukkit.getCurrentTick();
+        DisplayStateKey stateKey = stateKey(world, posKey);
+        Long lastCheckTick = progressDisplayCreateLastCheckTick.get(stateKey);
         if (lastCheckTick != null && currentTick - lastCheckTick < VISIBILITY_CHECK_INTERVAL_TICKS) {
             return false;
         }
-        progressDisplayCreateLastCheckTick.put(posKey, currentTick);
+        progressDisplayCreateLastCheckTick.put(stateKey, currentTick);
 
         Location potLoc = posKey.toLocation(world).add(0.5, 0, 0.5);
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
@@ -516,22 +541,25 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         if (display == null || !display.isValid()) return;
 
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        DisplayStateKey stateKey = stateKey(world, posKey);
         if (plugin != null && plugin.scheduler().isFolia()) {
             display.setVisibleByDefault(true);
-            displayVisibleToPlayers.remove(posKey);
+            displayVisibleToPlayers.remove(stateKey);
             return;
         }
 
-        long currentTick = System.nanoTime() / 50_000_000L;
-        Long lastCheckTick = displayVisibilityLastCheckTick.get(posKey);
+        // Use the real server tick (not wall-clock) so the throttle interval reflects actual ticks
+        // and degrades gracefully under TPS lag instead of re-checking more often.
+        long currentTick = Bukkit.getCurrentTick();
+        Long lastCheckTick = displayVisibilityLastCheckTick.get(stateKey);
         if (lastCheckTick != null && currentTick - lastCheckTick < VISIBILITY_CHECK_INTERVAL_TICKS) {
             return;
         }
-        displayVisibilityLastCheckTick.put(posKey, currentTick);
+        displayVisibilityLastCheckTick.put(stateKey, currentTick);
 
         Location potLoc = posKey.toLocation(world).add(0.5, 0, 0.5);
         Set<UUID> nearbyUUIDs = new HashSet<>();
-        Set<UUID> visibleTo = displayVisibleToPlayers.computeIfAbsent(posKey, k -> ConcurrentHashMap.newKeySet());
+        Set<UUID> visibleTo = displayVisibleToPlayers.computeIfAbsent(stateKey, k -> ConcurrentHashMap.newKeySet());
         double visibleDistanceSquared = plugin != null
                 ? plugin.getCookingPotProgressDisplayVisibilityDistanceSquared()
                 : 100.0D;
@@ -953,15 +981,8 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             CookingPotBlockEntity entity = worldEntities.get(posKey);
             if (entity == null) return 0;
 
-            int filledSlots = 0;
-            ItemStack[] inventory = entity.getInventory();
             CookingPotLayout layout = entity.getLayout();
-            for (int i : layout.inputSlots()) {
-                ItemStack item = inventory[i];
-                if (item != null && !item.getType().isAir()) {
-                    filledSlots++;
-                }
-            }
+            int filledSlots = entity.countFilledInputSlots();
 
             if (entity.getMealDisplayItem() != null) {
                 filledSlots++;

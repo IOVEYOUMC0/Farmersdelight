@@ -24,7 +24,7 @@ public class EffectListener implements Listener {
     private static final Set<UUID> playersWithEffects = ConcurrentHashMap.newKeySet();
     private static final Map<UUID, Player> trackedPlayers = new ConcurrentHashMap<>();
     private static final Set<UUID> scheduledTicks = ConcurrentHashMap.newKeySet();
-    private static final long TICK_INTERVAL = 4L;
+    static final long TICK_INTERVAL = 4L;
     private final FarmersDelightPlugin plugin;
     private PluginTask effectTask;
 

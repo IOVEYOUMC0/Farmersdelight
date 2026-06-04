@@ -1,5 +1,5 @@
 {
-  "parent": "farmersdelight:main/eat_nourishing_food",
+  "parent": "farmersdelight:main/place_cooking_pot",
   "criteria": {
     "feast": {
       "trigger": "minecraft:impossible"

@@ -205,11 +205,23 @@ public class MushroomColonyBehavior extends BlockBehavior {
         if (player.getGameMode() == GameMode.CREATIVE) {
             return;
         }
-        if (!(item.getItemMeta() instanceof Damageable damageable)) {
+        if (!(item.getItemMeta() instanceof Damageable damageable) || damageable.isUnbreakable()) {
             return;
         }
-        damageable.setDamage(damageable.getDamage() + 1);
-        item.setItemMeta(damageable);
+        // Use the item's effective max damage (custom items carry a custom max_damage component) and
+        // actually consume the tool at max instead of letting damage grow unbounded past durability.
+        int maxDamage = damageable.hasMaxDamage() ? damageable.getMaxDamage() : item.getType().getMaxDurability();
+        if (maxDamage <= 0) {
+            return;
+        }
+        int newDamage = damageable.getDamage() + 1;
+        if (newDamage >= maxDamage) {
+            item.setAmount(0);
+            player.playSound(player.getLocation(), Sound.ENTITY_ITEM_BREAK, 1.0f, 1.0f);
+        } else {
+            damageable.setDamage(newDamage);
+            item.setItemMeta(damageable);
+        }
     }
 
     private boolean isShearsHarvestTool(ItemStack item) {

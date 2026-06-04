@@ -16,12 +16,16 @@ import java.util.concurrent.ConcurrentHashMap;
 public class CookingPotRecipeManager {
 
     private final FarmersDelightPlugin plugin;
-    private final Map<String, CookingPotRecipe> recipes = new HashMap<>();
-    private final Map<String, Map<String, CookingPotRecipe>> customRecipes = new HashMap<>();
-    private final Map<String, Set<String>> ingredientToRecipes = new HashMap<>();
-    private final Map<String, Map<String, Set<String>>> customIngredientToRecipes = new HashMap<>();
-    private List<CookingPotRecipe> sortedRecipes = List.of();
-    private final Map<String, List<CookingPotRecipe>> sortedCustomRecipes = new HashMap<>();
+    // These lookup structures are rebuilt on /fd reload. They are published as whole, freshly-built
+    // immutable-after-publish maps via single volatile writes so concurrent readers (cooking-pot
+    // ticks / GUIs, which run on Folia region threads while reload runs on the global thread) never
+    // observe a half-cleared map. Never mutate these in place after publishing.
+    private volatile Map<String, CookingPotRecipe> recipes = Map.of();
+    private volatile Map<String, Map<String, CookingPotRecipe>> customRecipes = Map.of();
+    private volatile Map<String, Set<String>> ingredientToRecipes = Map.of();
+    private volatile Map<String, Map<String, Set<String>>> customIngredientToRecipes = Map.of();
+    private volatile List<CookingPotRecipe> sortedRecipes = List.of();
+    private volatile Map<String, List<CookingPotRecipe>> sortedCustomRecipes = Map.of();
     private final Map<Key, Set<String>> vanillaItemIdsByTagCache = new ConcurrentHashMap<>();
     private final Map<String, CookingPotRecipe> recipeCache = new LinkedHashMap<>(MAX_CACHE_SIZE + 1, 0.75f, true) {
         @Override
@@ -30,38 +34,59 @@ public class CookingPotRecipeManager {
         }
     };
     private static final int MAX_CACHE_SIZE = 100;
-    private final Set<String> validContainerKeys = new HashSet<>();
+    private volatile Set<String> validContainerKeys = Set.of();
 
     public CookingPotRecipeManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
     }
 
     public void loadRecipes() {
-        recipes.clear();
-        customRecipes.clear();
-        ingredientToRecipes.clear();
-        customIngredientToRecipes.clear();
-        sortedRecipes = List.of();
-        sortedCustomRecipes.clear();
-        vanillaItemIdsByTagCache.clear();
-        synchronized (recipeCache) {
-            recipeCache.clear();
-        }
-        validContainerKeys.clear();
+        // Build everything into fresh local collections, then publish atomically (below) so readers
+        // never see a partially-cleared map. Do NOT clear()/repopulate the live fields in place.
+        Map<String, CookingPotRecipe> newRecipes = new HashMap<>();
+        Map<String, Map<String, CookingPotRecipe>> newCustomRecipes = new HashMap<>();
+        Map<String, Set<String>> newIngredientToRecipes = new HashMap<>();
+        Map<String, Map<String, Set<String>>> newCustomIngredientToRecipes = new HashMap<>();
+        Set<String> newValidContainerKeys = new HashSet<>();
+
         YamlConfiguration config = RecipeFileLoader.loadRecipeFile(plugin, "recipes/cooking_pot_recipes.yml");
         RecipeFileLoader.loadRecipeSections(plugin, config, "cooking_pot_recipes", "cooking pot",
                 (recipeId, section) -> {
                     CookingPotRecipe recipe = parseRecipe(recipeId, section, 6);
-                    recipes.put(recipeId, recipe);
+                    newRecipes.put(recipeId, recipe);
 
-                    indexDefaultRecipe(recipeId, recipe);
-                    indexContainer(recipe);
+                    indexDefaultRecipe(newIngredientToRecipes, recipeId, recipe);
+                    indexContainer(newValidContainerKeys, recipe);
                 });
-        loadCustomRecipes(config);
-        rebuildSortedRecipeLists();
+        loadCustomRecipes(config, newCustomRecipes, newCustomIngredientToRecipes, newValidContainerKeys);
+
+        List<CookingPotRecipe> newSortedRecipes = sortedRecipeList(newRecipes);
+        Map<String, List<CookingPotRecipe>> newSortedCustomRecipes = new HashMap<>();
+        for (Map.Entry<String, Map<String, CookingPotRecipe>> entry : newCustomRecipes.entrySet()) {
+            Map<String, CookingPotRecipe> merged = new LinkedHashMap<>(newRecipes);
+            merged.putAll(entry.getValue());
+            newSortedCustomRecipes.put(entry.getKey(), sortedRecipeList(merged));
+        }
+
+        // Publish the freshly-built structures (single volatile write each).
+        this.recipes = newRecipes;
+        this.customRecipes = newCustomRecipes;
+        this.ingredientToRecipes = newIngredientToRecipes;
+        this.customIngredientToRecipes = newCustomIngredientToRecipes;
+        this.sortedRecipes = newSortedRecipes;
+        this.sortedCustomRecipes = newSortedCustomRecipes;
+        this.validContainerKeys = Collections.unmodifiableSet(newValidContainerKeys);
+
+        vanillaItemIdsByTagCache.clear();
+        synchronized (recipeCache) {
+            recipeCache.clear();
+        }
     }
 
-    private void loadCustomRecipes(YamlConfiguration config) {
+    private void loadCustomRecipes(YamlConfiguration config,
+                                   Map<String, Map<String, CookingPotRecipe>> targetCustomRecipes,
+                                   Map<String, Map<String, Set<String>>> targetCustomIndex,
+                                   Set<String> targetContainerKeys) {
         ConfigurationSection root = config.getConfigurationSection("custom_cooking_pot_recipes");
         if (root == null) {
             return;
@@ -73,7 +98,7 @@ public class CookingPotRecipeManager {
             if (groupSection == null) {
                 continue;
             }
-            Map<String, CookingPotRecipe> groupRecipes = customRecipes.computeIfAbsent(groupId, key -> new LinkedHashMap<>());
+            Map<String, CookingPotRecipe> groupRecipes = targetCustomRecipes.computeIfAbsent(groupId, key -> new LinkedHashMap<>());
             for (String recipeId : groupSection.getKeys(false)) {
                 ConfigurationSection section = groupSection.getConfigurationSection(recipeId);
                 if (section == null) {
@@ -82,8 +107,8 @@ public class CookingPotRecipeManager {
                 try {
                     CookingPotRecipe recipe = parseRecipe(recipeId, section, 54);
                     groupRecipes.put(recipeId, recipe);
-                    indexCustomRecipe(groupId, recipeId, recipe);
-                    indexContainer(recipe);
+                    indexCustomRecipe(targetCustomIndex, groupId, recipeId, recipe);
+                    indexContainer(targetContainerKeys, recipe);
                     loadedCount++;
                 } catch (Exception e) {
                     I18n.logWarning("recipe.custom_cooking_pot_load_failed",
@@ -97,16 +122,6 @@ public class CookingPotRecipeManager {
         }
     }
 
-    private void rebuildSortedRecipeLists() {
-        sortedRecipes = sortedRecipeList(recipes);
-        sortedCustomRecipes.clear();
-        for (Map.Entry<String, Map<String, CookingPotRecipe>> entry : customRecipes.entrySet()) {
-            Map<String, CookingPotRecipe> merged = new LinkedHashMap<>(recipes);
-            merged.putAll(entry.getValue());
-            sortedCustomRecipes.put(entry.getKey(), sortedRecipeList(merged));
-        }
-    }
-
     private List<CookingPotRecipe> sortedRecipeList(Map<String, CookingPotRecipe> source) {
         if (source.isEmpty()) {
             return List.of();
@@ -116,16 +131,16 @@ public class CookingPotRecipeManager {
         return Collections.unmodifiableList(sorted);
     }
 
-    private void indexDefaultRecipe(String recipeId, CookingPotRecipe recipe) {
+    private void indexDefaultRecipe(Map<String, Set<String>> ingredientIndex, String recipeId, CookingPotRecipe recipe) {
         for (RecipeIngredient ingredient : recipe.getIngredients()) {
             for (String ingredientKey : flattenIngredientKeys(ingredient)) {
-                ingredientToRecipes.computeIfAbsent(ingredientKey, k -> new HashSet<>()).add(recipeId);
+                ingredientIndex.computeIfAbsent(ingredientKey, k -> new HashSet<>()).add(recipeId);
             }
         }
     }
 
-    private void indexCustomRecipe(String groupId, String recipeId, CookingPotRecipe recipe) {
-        Map<String, Set<String>> groupIndex = customIngredientToRecipes.computeIfAbsent(groupId, key -> new HashMap<>());
+    private void indexCustomRecipe(Map<String, Map<String, Set<String>>> customIndex, String groupId, String recipeId, CookingPotRecipe recipe) {
+        Map<String, Set<String>> groupIndex = customIndex.computeIfAbsent(groupId, key -> new HashMap<>());
         for (RecipeIngredient ingredient : recipe.getIngredients()) {
             for (String ingredientKey : flattenIngredientKeys(ingredient)) {
                 groupIndex.computeIfAbsent(ingredientKey, key -> new HashSet<>()).add(recipeId);
@@ -133,14 +148,14 @@ public class CookingPotRecipeManager {
         }
     }
 
-    private void indexContainer(CookingPotRecipe recipe) {
+    private void indexContainer(Set<String> containerKeys, CookingPotRecipe recipe) {
         ItemStack container = recipe.getContainer();
         if (container != null && !container.getType().isAir()) {
             String customId = ItemUtils.getCustomItemId(container);
             if (customId != null) {
-                validContainerKeys.add(customId);
+                containerKeys.add(customId);
             }
-            validContainerKeys.add("minecraft:" + container.getType().name().toLowerCase());
+            containerKeys.add("minecraft:" + container.getType().name().toLowerCase(java.util.Locale.ROOT));
         }
     }
 

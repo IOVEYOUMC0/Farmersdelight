@@ -27,6 +27,7 @@ public class HeatSourceConfig {
     private final Set<Material> vanillaBlocks = new HashSet<>();
     private final Set<Material> vanillaLitBlocks = new HashSet<>();
     private final Set<String> vanillaTags = new HashSet<>();
+    private final Set<org.bukkit.Tag<Material>> resolvedVanillaBlockTags = new HashSet<>();
     private final Set<Key> customBlockTags = new HashSet<>();
     private final Set<CustomBlockStateMatcher> customBlockStates = new HashSet<>();
     private final Set<Material> conductors = new HashSet<>();
@@ -90,8 +91,16 @@ public class HeatSourceConfig {
 
     public void addVanillaBlock(String blockId) {
         try {
-            NamespacedKey key = NamespacedKey.minecraft(blockId.replace("minecraft:", "").toLowerCase());
+            NamespacedKey key = NamespacedKey.minecraft(blockId.replace("minecraft:", "").toLowerCase(java.util.Locale.ROOT));
             Material material = Registry.MATERIAL.get(key);
+            // Registry.get returns null (does not throw) for a well-formed but unknown id, so a typo'd
+            // block id would otherwise add a null to the set with no diagnostic.
+            if (material == null) {
+                if (LOGGER != null) {
+                    LOGGER.warning(I18n.formatConsole("heat_source.invalid_vanilla_block", "id", blockId));
+                }
+                return;
+            }
             vanillaBlocks.add(material);
         } catch (IllegalArgumentException e) {
             if (LOGGER != null) {
@@ -103,9 +112,27 @@ public class HeatSourceConfig {
     public void addVanillaTag(String tagId) {
         vanillaTags.add(tagId);
         if (tagId.contains("campfires") || tagId.contains("fire")) {
+            // Campfires only count as a heat source while lit, so they are handled specially via
+            // vanillaLitBlocks below rather than generic tag membership (which ignores the lit state).
             vanillaLitBlocks.add(Material.CAMPFIRE);
             vanillaLitBlocks.add(Material.SOUL_CAMPFIRE);
+            return;
         }
+        org.bukkit.Tag<Material> blockTag = resolveVanillaBlockTag(tagId);
+        if (blockTag != null) {
+            resolvedVanillaBlockTags.add(blockTag);
+        } else if (LOGGER != null) {
+            LOGGER.warning(I18n.formatConsole("heat_source.invalid_vanilla_block", "id", tagId));
+        }
+    }
+
+    private static org.bukkit.Tag<Material> resolveVanillaBlockTag(String tagId) {
+        String normalized = (tagId.startsWith("#") ? tagId.substring(1) : tagId).toLowerCase(java.util.Locale.ROOT);
+        NamespacedKey key = NamespacedKey.fromString(normalized);
+        if (key == null) {
+            return null;
+        }
+        return org.bukkit.Bukkit.getTag(org.bukkit.Tag.REGISTRY_BLOCKS, key, Material.class);
     }
 
     public void addCustomBlockTag(Key tag) {
@@ -118,8 +145,14 @@ public class HeatSourceConfig {
 
     public void addVanillaConductor(String conductorId) {
         try {
-            NamespacedKey key = NamespacedKey.minecraft(conductorId.replace("minecraft:", "").toLowerCase());
+            NamespacedKey key = NamespacedKey.minecraft(conductorId.replace("minecraft:", "").toLowerCase(java.util.Locale.ROOT));
             Material material = Registry.MATERIAL.get(key);
+            if (material == null) {
+                if (LOGGER != null) {
+                    LOGGER.warning(I18n.formatConsole("heat_source.invalid_vanilla_conductor", "id", conductorId));
+                }
+                return;
+            }
             conductors.add(material);
         } catch (IllegalArgumentException e) {
             if (LOGGER != null) {
@@ -164,6 +197,12 @@ public class HeatSourceConfig {
                 return lightable.isLit();
             }
             return false;
+        }
+
+        for (org.bukkit.Tag<Material> tag : resolvedVanillaBlockTags) {
+            if (tag.isTagged(blockType)) {
+                return true;
+            }
         }
 
         ImmutableBlockState customState = CraftEngineBlocks.getCustomBlockState(block);
