@@ -57,6 +57,9 @@ public final class CookingPotBlockEntityController extends BlockEntityController
     private int maxStackSize = 99;
     private boolean allSlotsDirty;
     private CompoundTag pendingLoadData;
+    // The block position is fixed for this controller's lifetime; cache the key so getItem/contents
+    // (called per-slot by container scans) don't re-allocate it on every access.
+    private BlockPosKey cachedPosKey;
 
     public CookingPotBlockEntityController(BlockEntity blockEntity, CookingPotBlockBehavior behavior) {
         super(blockEntity);
@@ -206,7 +209,10 @@ public final class CookingPotBlockEntityController extends BlockEntityController
     private CookingPotBlockEntity getOrCreateEntity() {
         World world = getBukkitWorld();
         if (world == null) return null;
-        return CookingPotBlockBehavior.getOrCreateBlockEntity(new BlockPosKey(this.blockEntity.pos).toLocation(world));
+        if (this.cachedPosKey == null) {
+            this.cachedPosKey = new BlockPosKey(this.blockEntity.pos);
+        }
+        return CookingPotBlockBehavior.getOrCreateBlockEntity(this.cachedPosKey.toLocation(world));
     }
 
     void refreshFromEntity(CookingPotBlockEntity entity) {

@@ -67,11 +67,15 @@ public class BlockPlaceListener implements Listener {
     );
     private static final Map<PlacedItemKey, ItemStack> pendingPlacedItems = new ConcurrentHashMap<>();
     private static PluginTask cleanupTask;
+    // cleanupTask is started from per-player region threads and cleared from the scheduler thread.
+    private static final Object cleanupTaskLock = new Object();
 
     public static void cleanup() {
-        if (cleanupTask != null) {
-            cleanupTask.cancel();
-            cleanupTask = null;
+        synchronized (cleanupTaskLock) {
+            if (cleanupTask != null) {
+                cleanupTask.cancel();
+                cleanupTask = null;
+            }
         }
         pendingPlacedItems.clear();
     }
@@ -283,17 +287,21 @@ public class BlockPlaceListener implements Listener {
     }
 
     private void ensureCleanupTask() {
-        if (cleanupTask != null) {
-            return;
-        }
+        synchronized (cleanupTaskLock) {
+            if (cleanupTask != null) {
+                return;
+            }
 
-        cleanupTask = FarmersDelightPlugin.getInstance().scheduler().runLater(
-                () -> {
-                    pendingPlacedItems.clear();
-                    cleanupTask = null;
-                },
-                2L
-        );
+            cleanupTask = FarmersDelightPlugin.getInstance().scheduler().runLater(
+                    () -> {
+                        pendingPlacedItems.clear();
+                        synchronized (cleanupTaskLock) {
+                            cleanupTask = null;
+                        }
+                    },
+                    2L
+            );
+        }
     }
 
     private record PlacedItemKey(UUID playerId, InteractionHand hand, String blockId) {

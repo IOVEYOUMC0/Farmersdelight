@@ -14,29 +14,31 @@ import java.util.*;
 public class CuttingBoardRecipeManager {
 
     private final FarmersDelightPlugin plugin;
-    private final Map<String, CuttingBoardRecipe> recipes = new java.util.HashMap<>();
-    private List<CuttingBoardRecipe> sortedRecipes = List.of();
+    // Rebuilt on reload; published whole via volatile writes so readers on Folia region/entity
+    // threads never observe a half-cleared map. Never mutate in place after publishing.
+    private volatile Map<String, CuttingBoardRecipe> recipes = Map.of();
+    private volatile List<CuttingBoardRecipe> sortedRecipes = List.of();
 
     public CuttingBoardRecipeManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
     }
 
     public void loadRecipes() {
-        recipes.clear();
-        sortedRecipes = List.of();
+        Map<String, CuttingBoardRecipe> newRecipes = new HashMap<>();
         RecipeFileLoader.loadRecipeSections(plugin, "recipes/cutting_board_recipes.yml", "cutting_board_recipes", "cutting board",
-                (recipeId, section) -> recipes.put(recipeId, parseRecipe(recipeId, section)));
-        rebuildSortedRecipeList();
-    }
+                (recipeId, section) -> newRecipes.put(recipeId, parseRecipe(recipeId, section)));
 
-    private void rebuildSortedRecipeList() {
-        if (recipes.isEmpty()) {
-            sortedRecipes = List.of();
-            return;
+        List<CuttingBoardRecipe> newSorted;
+        if (newRecipes.isEmpty()) {
+            newSorted = List.of();
+        } else {
+            List<CuttingBoardRecipe> sorted = new ArrayList<>(newRecipes.values());
+            sorted.sort(Comparator.comparing(CuttingBoardRecipe::getId));
+            newSorted = Collections.unmodifiableList(sorted);
         }
-        List<CuttingBoardRecipe> sorted = new ArrayList<>(recipes.values());
-        sorted.sort(Comparator.comparing(CuttingBoardRecipe::getId));
-        sortedRecipes = Collections.unmodifiableList(sorted);
+
+        this.recipes = newRecipes;
+        this.sortedRecipes = newSorted;
     }
 
     private CuttingBoardRecipe parseRecipe(String id, ConfigurationSection section) {
@@ -51,14 +53,15 @@ public class CuttingBoardRecipeManager {
             throw new IllegalArgumentException("Invalid input ingredient: " + inputStr);
         }
 
+        // Support either a scalar 'tool:' or a plural 'tools:' list (or both). 'tools' takes
+        // precedence; 'tool' is the fallback. Only require that at least one is present.
         String toolStr = section.getString("tool");
-        if (toolStr == null) {
-            throw new IllegalArgumentException("Recipe must have a tool");
-        }
-
         List<String> toolStrings = section.getStringList("tools");
-        if (toolStrings.isEmpty() && toolStr != null) {
+        if (toolStrings.isEmpty() && toolStr != null && !toolStr.isBlank()) {
             toolStrings = Collections.singletonList(toolStr);
+        }
+        if (toolStrings.isEmpty()) {
+            throw new IllegalArgumentException("Recipe must have a tool");
         }
 
         List<CuttingBoardRecipe.ToolRequirement> tools = new ArrayList<>();

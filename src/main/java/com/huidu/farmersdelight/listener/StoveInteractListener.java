@@ -165,7 +165,7 @@ public class StoveInteractListener implements Listener {
         if (customItemId != null) {
             return customItemId;
         }
-        return "minecraft:" + item.getType().name().toLowerCase();
+        return "minecraft:" + item.getType().name().toLowerCase(java.util.Locale.ROOT);
     }
 
     private boolean isStoveBlock(String ceBlockId) {

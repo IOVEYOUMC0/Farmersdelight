@@ -298,6 +298,20 @@ public class CookingPotBlockEntity {
         return false;
     }
 
+    /** Counts filled input slots without copying the inventory (for the redstone comparator signal). */
+    public int countFilledInputSlots() {
+        int count = 0;
+        synchronized (inventoryLock) {
+            for (int i : layout.inputSlots()) {
+                ItemStack item = inventory[i];
+                if (item != null && !item.getType().isAir()) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
     public boolean hasStoredContents() {
         synchronized (inventoryLock) {
             for (ItemStack item : inventory) {
@@ -487,7 +501,7 @@ public class CookingPotBlockEntity {
                 return true;
             }
 
-            Key itemKey = Key.of("minecraft:" + item.getType().name().toLowerCase());
+            Key itemKey = Key.of("minecraft:" + item.getType().name().toLowerCase(java.util.Locale.ROOT));
             boolean matchesBase = FarmersDelightPlugin.getInstance().getCraftEngine().itemManager()
                     .vanillaItemIdsByTag(tagIngredient.key()).stream()
                     .anyMatch(key -> key.toString().equals(itemKey.toString()))
@@ -675,7 +689,7 @@ public class CookingPotBlockEntity {
         if (customId != null) {
             return customId;
         }
-        return "minecraft:" + item.getType().name().toLowerCase();
+        return "minecraft:" + item.getType().name().toLowerCase(java.util.Locale.ROOT);
     }
     
     public boolean doesMealHaveContainer() {
@@ -862,11 +876,19 @@ public class CookingPotBlockEntity {
     public void dropExperience(World world, double totalExp) {
         if (world == null || totalExp <= 0.0D) return;
 
+        // Probabilistically round so sub-1.0 experience (e.g. taking meals one at a time, where each
+        // portion's share is < 1) is not floored away to 0 every time; the expected total still
+        // equals the configured experience over many takes.
         int expValue = (int) Math.floor(totalExp);
+        double fraction = totalExp - expValue;
+        if (fraction > 0.0D && java.util.concurrent.ThreadLocalRandom.current().nextDouble() < fraction) {
+            expValue += 1;
+        }
 
         if (expValue > 0) {
+            int amount = expValue;
             Location expLocation = new Location(world, posKey.x() + 0.5, posKey.y() + 1.0, posKey.z() + 0.5);
-            world.spawn(expLocation, ExperienceOrb.class, orb -> orb.setExperience(expValue));
+            world.spawn(expLocation, ExperienceOrb.class, orb -> orb.setExperience(amount));
         }
     }
 
@@ -1198,23 +1220,19 @@ public class CookingPotBlockEntity {
     }
 
     public void setCookingProgress(int progress) {
-        int previous = cookingProgress.getAndSet(progress);
-        if (previous != progress) {
-            syncWorldlyContainer();
-        }
+        // Progress is a transient counter advanced every tick. Marking the block entity dirty on
+        // every change forced a chunk re-serialization each tick for every actively-cooking pot
+        // (defeating "save only changed chunks"). The live value is still persisted by saveData()
+        // on chunk save/unload, and a meaningful state change (ingredients/output) marks dirty.
+        cookingProgress.set(progress);
     }
 
     public void incrementCookingProgress() {
         cookingProgress.incrementAndGet();
-        syncWorldlyContainer();
     }
 
     public void decrementCookingProgress() {
-        int previous = cookingProgress.get();
-        int updated = cookingProgress.updateAndGet(v -> Math.max(0, v - 2));
-        if (previous != updated) {
-            syncWorldlyContainer();
-        }
+        cookingProgress.updateAndGet(v -> Math.max(0, v - 2));
     }
 
     public int getCookingDuration() {

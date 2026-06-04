@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.listener;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.config.PetFoodConfig;
+import com.huidu.farmersdelight.util.InteractionDebouncer;
 import com.huidu.farmersdelight.util.ItemUtils;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -48,7 +49,14 @@ public class PetFoodListener implements Listener {
         if (definition == null) return;
         
         if (!definition.entities.contains(entity.getType())) return;
-        
+
+        // PlayerInteractEntityEvent fires once per hand. If the same pet food is held in both hands,
+        // debounce on (player, entity) so a single right-click can't consume/apply the food twice.
+        if (!InteractionDebouncer.tryAcquire(player.getUniqueId(), entity.getLocation())) {
+            event.setCancelled(true);
+            return;
+        }
+
         if (handlePetFood(player, entity, item, definition)) {
             event.setCancelled(true);
         }

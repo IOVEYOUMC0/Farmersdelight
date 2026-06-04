@@ -31,8 +31,8 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 @SuppressWarnings("unchecked")
 public class RicePlantListener implements Listener {
@@ -43,7 +43,9 @@ public class RicePlantListener implements Listener {
     private static final Key WILD_RICE_BLOCK_KEY = Key.of(WILD_RICE_BLOCK_ID);
 
     private final FarmersDelightPlugin plugin;
-    private final Set<String> pendingRiceStabilizations = new HashSet<>();
+    // Mutated from region-thread runLaterAt callbacks (different regions = different threads on
+    // Folia), so it must be a concurrent set.
+    private final Set<String> pendingRiceStabilizations = ConcurrentHashMap.newKeySet();
 
     public RicePlantListener(FarmersDelightPlugin plugin) {
         this.plugin = plugin;

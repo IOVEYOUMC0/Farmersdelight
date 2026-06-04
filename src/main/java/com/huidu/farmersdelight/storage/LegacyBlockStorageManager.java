@@ -354,6 +354,7 @@ public class LegacyBlockStorageManager {
         File tempFile = new File(plugin.getDataFolder(), "block_storage.tmp");
         File backupFile = new File(plugin.getDataFolder(), "block_storage.bak");
 
+        boolean preserveTemp = false;
         try {
             config.save(tempFile);
 
@@ -393,10 +394,13 @@ public class LegacyBlockStorageManager {
             }
 
             if (!restored && tempFile.exists()) {
+                // We are intentionally keeping the freshly-written temp file for manual recovery;
+                // the finally block must not delete it (it is the only up-to-date copy of the data).
+                preserveTemp = true;
                 I18n.logWarning("legacy_storage.preserve_temp", "path", tempFile.getAbsolutePath());
             }
         } finally {
-            if (tempFile.exists() && storageFile.exists()) {
+            if (!preserveTemp && tempFile.exists() && storageFile.exists()) {
                 tempFile.delete();
             }
         }
@@ -508,7 +512,7 @@ public class LegacyBlockStorageManager {
             if (materialName == null) return null;
 
             org.bukkit.Material material = org.bukkit.Registry.MATERIAL.get(
-                    org.bukkit.NamespacedKey.minecraft(materialName.toLowerCase()));
+                    org.bukkit.NamespacedKey.minecraft(materialName.toLowerCase(java.util.Locale.ROOT)));
             if (material == null) return null;
             int amount = section.getInt("amount", 1);
 
