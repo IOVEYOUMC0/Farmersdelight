@@ -98,7 +98,7 @@ public class StrawDropListener implements Listener {
             return config.getRule("mature_rice");
         }
 
-        return config.getRule(type.name().toLowerCase());
+        return config.getRule(type.name().toLowerCase(java.util.Locale.ROOT));
     }
 
     private boolean isMatureRicePanicles(Block block) {
@@ -145,10 +145,13 @@ public class StrawDropListener implements Listener {
         ItemStack drop = ItemUtils.createItem(dropKey);
         if (drop != null) {
             int minAmount = rule.getMinAmount();
-            int maxAmount = rule.getMaxAmount();
+            int maxAmount = Math.max(minAmount, rule.getMaxAmount());
             int amount = minAmount + ThreadLocalRandom.current().nextInt(maxAmount - minAmount + 1);
+            if (amount <= 0) {
+                return;
+            }
             drop.setAmount(amount);
-            
+
             block.getWorld().dropItemNaturally(block.getLocation().add(0.5, 0.5, 0.5), drop);
         }
     }

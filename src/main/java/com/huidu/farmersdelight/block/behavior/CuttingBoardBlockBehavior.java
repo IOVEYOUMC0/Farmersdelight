@@ -189,9 +189,12 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         if (world == null || posKey == null || playerId == null) {
             return;
         }
-        recentManualInsertions
-                .computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>())
-                .put(posKey, System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        Map<BlockPosKey, Long> guarded = recentManualInsertions.computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>());
+        // Drop expired guard entries that were never consumed by a follow-up event, so the map does
+        // not accumulate stale positions.
+        guarded.entrySet().removeIf(entry -> now - entry.getValue() > MANUAL_INSERT_GUARD_MILLIS);
+        guarded.put(posKey, now);
     }
 
     private static boolean consumeManualInsertionGuard(UUID playerId, BlockPosKey posKey) {
@@ -722,11 +725,12 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
             }
         }
 
+        String vanillaId = "minecraft:" + item.getType().name().toLowerCase(java.util.Locale.ROOT);
         for (Key toolTag : toolTags) {
             var vanillaItems = FarmersDelightPlugin.getInstance().getCraftEngine().itemManager()
                     .vanillaItemIdsByTag(toolTag);
             for (var vanillaItem : vanillaItems) {
-                if (vanillaItem.toString().equals("minecraft:" + item.getType().name().toLowerCase()))
+                if (vanillaItem.toString().equals(vanillaId))
                     return true;
             }
         }
@@ -781,9 +785,11 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
             ItemStack result = resultEntry.item().clone();
 
             if (fortuneLevel > 0 && resultEntry.chance() < 1.0d) {
-                double adjustedChance = Math.min(1.0d, resultEntry.chance() + 0.1d * fortuneLevel);
-                if (ThreadLocalRandom.current().nextDouble() > adjustedChance) {
-                    result.setAmount(Math.max(0, result.getAmount() - 1));
+                // Fortune grants a chance at one EXTRA unit of a secondary (chance-based) result.
+                // (Previously this rolled a chance to SUBTRACT one, making Fortune a downgrade.)
+                double bonusChance = Math.min(1.0d, 0.1d * fortuneLevel);
+                if (ThreadLocalRandom.current().nextDouble() < bonusChance) {
+                    result.setAmount(result.getAmount() + 1);
                 }
             }
 
@@ -822,15 +828,20 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         }
 
         if (player.getGameMode() != GameMode.CREATIVE) {
-            if (tool.getItemMeta() instanceof Damageable damageable) {
-                int maxDamage = tool.getType().getMaxDurability();
-                int currentDamage = damageable.getDamage();
-                if (currentDamage + 1 >= maxDamage) {
-                    tool.setAmount(0);
-                    player.playSound(location, Sound.ENTITY_ITEM_BREAK, 1.0f, 1.0f);
-                } else {
-                    damageable.setDamage(currentDamage + 1);
-                    tool.setItemMeta(damageable);
+            if (tool.getItemMeta() instanceof Damageable damageable && !damageable.isUnbreakable()) {
+                // Use the item's effective max damage (CraftEngine custom knives carry a custom
+                // max_damage component); fall back to the vanilla material only when absent. Skip
+                // non-damageable items (maxDamage <= 0) so they are never destroyed on the first cut.
+                int maxDamage = damageable.hasMaxDamage() ? damageable.getMaxDamage() : tool.getType().getMaxDurability();
+                if (maxDamage > 0) {
+                    int currentDamage = damageable.getDamage();
+                    if (currentDamage + 1 >= maxDamage) {
+                        tool.setAmount(0);
+                        player.playSound(location, Sound.ENTITY_ITEM_BREAK, 1.0f, 1.0f);
+                    } else {
+                        damageable.setDamage(currentDamage + 1);
+                        tool.setItemMeta(damageable);
+                    }
                 }
             }
         }

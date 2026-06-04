@@ -94,13 +94,11 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             "advancements/data/farmersdelight/advancement/main/harvest_straw.json",
             "advancements/data/farmersdelight/advancement/main/place_cooking_pot.json",
             "advancements/data/farmersdelight/advancement/main/place_skillet.json",
-            "advancements/data/farmersdelight/advancement/main/eat_comfort_food.json",
             "advancements/data/farmersdelight/advancement/main/place_feast.json",
             "advancements/data/farmersdelight/advancement/main/use_cutting_board.json",
             "advancements/data/farmersdelight/advancement/main/plant_rice.json",
             "advancements/data/farmersdelight/advancement/main/plant_all_crops.json",
             "advancements/data/farmersdelight/advancement/main/get_ham.json",
-            "advancements/data/farmersdelight/advancement/main/eat_nourishing_food.json",
             "advancements/data/farmersdelight/advancement/main/master_chef.json"
     );
 
@@ -292,16 +290,18 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         getServer().getPluginManager().registerEvents(new RicePlantListener(this), this);
         getServer().getPluginManager().registerEvents(new UpperHalfLootRelayListener(), this);
 
-        foodEatListener = new FoodEatListener(this);
-        getServer().getPluginManager().registerEvents(foodEatListener, this);
+        // WIP feature set aside (comfort/nourishment foods) — listener not registered until completed.
+        // foodEatListener = new FoodEatListener(this);
+        // getServer().getPluginManager().registerEvents(foodEatListener, this);
 
         petFoodListener = new PetFoodListener(this);
         getServer().getPluginManager().registerEvents(petFoodListener, this);
         horseFeedTemptListener = new HorseFeedTemptListener(this);
         getServer().getPluginManager().registerEvents(horseFeedTemptListener, this);
         horseFeedTemptListener.start();
-        effectListener = new EffectListener(this);
-        effectListener.start();
+        // WIP feature set aside (comfort/nourishment effects) — effect task not started until completed.
+        // effectListener = new EffectListener(this);
+        // effectListener.start();
 
         getServer().getPluginManager().registerEvents(this, this);
 
@@ -322,7 +322,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         getServer().getPluginManager().registerEvents(new AutoTrayFurnitureListener(this), this);
 
         getServer().getPluginManager().registerEvents(new RopeBlockListener(this), this);
-        getServer().getPluginManager().registerEvents(new RopeFallListener(), this);
 
         chunkLoadListener = new ChunkLoadListener(this);
         getServer().getPluginManager().registerEvents(chunkLoadListener, this);
@@ -548,6 +547,11 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         }
         if (trayManager != null) {
             trayManager.cleanupWorld(worldId);
+        }
+        if (itemDisplayManager != null) {
+            // Remove any proxy displays for the unloaded world so orphaned entries don't linger
+            // in the displays map until a chunk-unload event that may never fire.
+            itemDisplayManager.cleanupWorld(worldId);
         }
     }
 
@@ -836,6 +840,11 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     public void reloadLanguageFiles() {
         I18n.reload();
+        // GUI item names/lore are derived from the language files and cached, so invalidate those
+        // caches and close open GUIs to force a rebuild with the new language.
+        RecipeViewGui.clearConfigCache();
+        CookingPotGui.closeAllOpenGuis();
+        RecipeViewGui.closeAllOpenGuis();
         I18n.logInfo("plugin.language_files_reloaded");
     }
 
@@ -1389,7 +1398,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         registerBehavior(Constants.BEHAVIOR_SKILLET, SkilletBlockBehavior.FACTORY);
         registerBehavior(Constants.BEHAVIOR_STOVE, StoveCookingBlockBehavior.FACTORY);
         registerBehavior(Constants.BEHAVIOR_TALL_CROP, TallCropBlockBehavior.FACTORY);
-        registerBehavior(Constants.BEHAVIOR_TATAMI, TatamiPairingBehavior.FACTORY);
+        // WIP feature set aside (tatami pairing) — behavior not registered until completed.
+        // registerBehavior(Constants.BEHAVIOR_TATAMI, TatamiPairingBehavior.FACTORY);
         registerBehavior(Constants.BEHAVIOR_UPPER_HALF_LOOT_RELAY, UpperHalfLootRelayBehavior.FACTORY);
         registerBehavior(Constants.BEHAVIOR_WILD_RICE, WildRiceBlockBehavior.FACTORY);
         registerBehavior(Constants.BEHAVIOR_ROPE, RopeBlockBehavior.FACTORY);

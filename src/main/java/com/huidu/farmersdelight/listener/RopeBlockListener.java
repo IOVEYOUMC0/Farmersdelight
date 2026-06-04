@@ -25,9 +25,16 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
 public class RopeBlockListener implements Listener {
 
     private final FarmersDelightPlugin plugin;
+    // Positions with a rope refresh already queued for the next tick. Coalesces the high-frequency
+    // BlockPhysicsEvent storm (flowing water / redstone / pistons near a rope) so each position is
+    // scanned and refreshed at most once per tick instead of every physics event.
+    private final Set<String> pendingRopeRefreshes = ConcurrentHashMap.newKeySet();
 
     public RopeBlockListener(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
@@ -105,14 +112,29 @@ public class RopeBlockListener implements Listener {
     }
 
     private void scheduleRopeRefreshIfNearby(Block block) {
-        if (block == null || !hasNearbyRope(block)) {
+        if (block == null) {
             return;
         }
 
         World world = block.getWorld();
+        String key = world.getUID() + ":" + block.getX() + ":" + block.getY() + ":" + block.getZ();
+        // Already queued for this position this tick: skip both the expensive nearby-rope scan and
+        // re-scheduling.
+        if (pendingRopeRefreshes.contains(key)) {
+            return;
+        }
+        if (!hasNearbyRope(block)) {
+            return;
+        }
+        if (!pendingRopeRefreshes.add(key)) {
+            return;
+        }
+
         BlockPos pos = new BlockPos(block.getX(), block.getY(), block.getZ());
-        plugin.scheduler().runAt(block.getLocation(), () ->
-                RopeBlockBehavior.refreshAdjacentRopes(world, pos));
+        plugin.scheduler().runLaterAt(block.getLocation(), () -> {
+            pendingRopeRefreshes.remove(key);
+            RopeBlockBehavior.refreshAdjacentRopes(world, pos);
+        }, 1L);
     }
 
     private boolean hasNearbyRope(Block block) {

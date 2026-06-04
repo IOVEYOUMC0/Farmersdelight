@@ -216,10 +216,12 @@ public class HorseFeedTemptListener implements Listener {
             return;
         }
 
+        // player.getLocation() already returns a fresh copy and the scheduled tasks only read it, so
+        // a single shared snapshot is safe — no need to clone per nearby mob.
         Location targetLocation = player.getLocation();
         for (Entity nearby : player.getNearbyEntities(definition.temptRange, definition.temptRange, definition.temptRange)) {
             if (nearby instanceof Mob mob) {
-                scheduleMobTempt(mob, playerId, targetLocation.clone(), definition);
+                scheduleMobTempt(mob, playerId, targetLocation, definition);
             }
         }
     }

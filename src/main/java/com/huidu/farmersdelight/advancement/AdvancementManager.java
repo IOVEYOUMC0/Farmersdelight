@@ -10,11 +10,17 @@ import org.bukkit.entity.Player;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class AdvancementManager {
 
     private final FarmersDelightPlugin plugin;
     private final Map<String, NamespacedKey> advancementKeys = new HashMap<>();
+    // Players already granted the "root" advancement this session, so award()/awardCriteria() don't
+    // re-resolve and re-award root (two extra advancement lookups) on every single award call.
+    private final Set<UUID> rootAwarded = ConcurrentHashMap.newKeySet();
 
     public AdvancementManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
@@ -38,8 +44,7 @@ public class AdvancementManager {
         registerAdvancement("get_ham", "main/get_ham");
         registerAdvancement("netherite_knife", "main/obtain_netherite_knife");
         registerAdvancement("rotten_tomato_throw", "main/hit_raider_with_rotten_tomato");
-        registerAdvancement("eat_comfort_food", "main/eat_comfort_food");
-        registerAdvancement("eat_nourishing_food", "main/eat_nourishing_food");
+        // WIP feature set aside (comfort/nourishment foods) — advancements not registered until completed.
         registerAdvancement("master_chef", "main/master_chef");
 
         I18n.logInfo("advancement.loaded_keys", "count", advancementKeys.size());
@@ -55,7 +60,7 @@ public class AdvancementManager {
         if (player == null || advancementId == null) return;
 
         if (!"root".equals(advancementId)) {
-            award(player, "root");
+            ensureRoot(player);
         }
 
         NamespacedKey key = advancementKeys.get(advancementId);
@@ -88,12 +93,27 @@ public class AdvancementManager {
         }
     }
 
+    private void ensureRoot(Player player) {
+        if (rootAwarded.contains(player.getUniqueId())) {
+            return;
+        }
+        award(player, "root");
+        rootAwarded.add(player.getUniqueId());
+    }
+
+    /** Drops a player's cached root-awarded state (call on quit) so the set stays bounded. */
+    public void forgetPlayer(UUID playerId) {
+        if (playerId != null) {
+            rootAwarded.remove(playerId);
+        }
+    }
+
     public void awardCriteria(Player player, String advancementId, String criterion) {
         if (!plugin.isAdvancementsEnabled()) return;
         if (player == null || advancementId == null || criterion == null) return;
 
         if (!"root".equals(advancementId)) {
-            award(player, "root");
+            ensureRoot(player);
         }
 
         NamespacedKey key = advancementKeys.get(advancementId);

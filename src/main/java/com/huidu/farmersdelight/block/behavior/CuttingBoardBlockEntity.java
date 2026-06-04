@@ -107,12 +107,9 @@ public class CuttingBoardBlockEntity {
         ItemDisplayManager visualManager = FarmersDelightPlugin.getInstance().getItemDisplayManager();
         if (visualManager == null || !visualManager.isAvailable()) return;
 
-        CuttingBoardDisplayConfig.DisplayOverride displayOverride = FarmersDelightPlugin.getInstance()
-                .getCuttingBoardDisplayConfig()
-                .getOverride(storedItem);
-        ItemStack visualItem = FarmersDelightPlugin.getInstance()
-                .getCuttingBoardDisplayConfig()
-                .resolveDisplayItem(storedItem);
+        CuttingBoardDisplayConfig displayConfig = FarmersDelightPlugin.getInstance().getCuttingBoardDisplayConfig();
+        CuttingBoardDisplayConfig.DisplayOverride displayOverride = displayConfig.getOverride(storedItem);
+        ItemStack visualItem = displayConfig.resolveDisplayItem(storedItem, displayOverride);
         if (visualItem == null || visualItem.getType().isAir()) {
             removeDisplayEntity();
             return;

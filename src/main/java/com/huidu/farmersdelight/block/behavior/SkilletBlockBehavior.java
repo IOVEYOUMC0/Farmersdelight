@@ -6,6 +6,7 @@ import com.huidu.farmersdelight.manager.SkilletManager;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
+import com.huidu.farmersdelight.util.InteractionDebouncer;
 import com.huidu.farmersdelight.util.WorldGuardCompat;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -146,6 +147,11 @@ public class SkilletBlockBehavior extends BlockBehavior implements EntityBlock {
             return InteractionResult.FAIL;
         }
 
+        // Both this CraftEngine behavior and SkilletInteractListener can receive the same
+        // right-click; share a debounce token so handleInteract mutates the skillet at most once.
+        if (!InteractionDebouncer.tryAcquire(player.getUniqueId(), block.getLocation())) {
+            return InteractionResult.SUCCESS_AND_CANCEL;
+        }
         if (manager.handleInteract(player, block, mainHand, EquipmentSlot.HAND)) {
             player.updateInventory();
             return InteractionResult.SUCCESS_AND_CANCEL;
@@ -251,7 +257,7 @@ public class SkilletBlockBehavior extends BlockBehavior implements EntityBlock {
         if (customItemId != null) {
             return customItemId;
         }
-        return "minecraft:" + item.getType().name().toLowerCase();
+        return "minecraft:" + item.getType().name().toLowerCase(java.util.Locale.ROOT);
     }
 }
 

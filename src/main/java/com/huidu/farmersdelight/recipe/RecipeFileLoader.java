@@ -6,6 +6,11 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.function.BiConsumer;
 
 final class RecipeFileLoader {
@@ -27,7 +32,16 @@ final class RecipeFileLoader {
             plugin.saveResource(relativePath, false);
         }
 
-        return YamlConfiguration.loadConfiguration(recipesFile);
+        // Read explicitly as UTF-8 (like config.yml / lang files) rather than via the deprecated
+        // platform-default-charset loadConfiguration(File), so non-ASCII recipe content is not
+        // corrupted on servers whose default charset is not UTF-8 (common on Windows).
+        try (Reader reader = new InputStreamReader(Files.newInputStream(recipesFile.toPath()), StandardCharsets.UTF_8)) {
+            return YamlConfiguration.loadConfiguration(reader);
+        } catch (IOException e) {
+            plugin.getLogger().warning("Failed to read recipe file " + relativePath
+                    + " as UTF-8; falling back to platform charset. " + e.getMessage());
+            return YamlConfiguration.loadConfiguration(recipesFile);
+        }
     }
 
     static void loadRecipeSections(FarmersDelightPlugin plugin,
