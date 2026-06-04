@@ -47,7 +47,7 @@ public class KnifeDropHandler implements Listener {
                 double baseChance = entitySection.getDouble("chance", 1.0);
                 double lootingMultiplier = entitySection.getDouble("looting-multiplier", 0.0);
 
-                dropRules.put(entityType.toLowerCase(), new KnifeDropRule(
+                dropRules.put(entityType.toLowerCase(java.util.Locale.ROOT), new KnifeDropRule(
                         entityType, normalItem, burningItem, baseChance, lootingMultiplier
                 ));
             }
@@ -69,7 +69,11 @@ public class KnifeDropHandler implements Listener {
             }
             List<String> configuredItems = knifeSection.getStringList("items");
             if (!configuredItems.isEmpty()) {
-                knifeItems = configuredItems;
+                // CraftEngine item ids are lowercase; normalize configured ids so an uppercase-typed
+                // entry still matches (consistent with the case-insensitive straw-drop matcher).
+                knifeItems = configuredItems.stream()
+                        .map(id -> id.toLowerCase(java.util.Locale.ROOT))
+                        .toList();
             }
         }
 
@@ -110,7 +114,7 @@ public class KnifeDropHandler implements Listener {
         ItemStack mainHand = killer.getInventory().getItemInMainHand();
         if (!isKnife(mainHand)) return;
 
-        String entityKey = entity.getType().name().toLowerCase();
+        String entityKey = entity.getType().name().toLowerCase(java.util.Locale.ROOT);
         KnifeDropRule rule = dropRules.get(entityKey);
         if (rule == null) return;
 
@@ -155,7 +159,7 @@ public class KnifeDropHandler implements Listener {
     // Checks whether the configured drop is one of the ham variants.
     private boolean isHamItem(String itemId) {
         if (itemId == null) return false;
-        String id = itemId.toLowerCase();
+        String id = itemId.toLowerCase(java.util.Locale.ROOT);
         return id.equals(Constants.ITEM_HAM)
                 || id.equals(Constants.ITEM_SMOKED_HAM)
                 || id.equals(Constants.ITEM_HONEY_GLAZED_HAM);
@@ -204,11 +208,11 @@ public class KnifeDropHandler implements Listener {
     }
 
     public void addDropRule(String entityType, KnifeDropRule rule) {
-        dropRules.put(entityType.toLowerCase(), rule);
+        dropRules.put(entityType.toLowerCase(java.util.Locale.ROOT), rule);
     }
 
     public void removeDropRule(String entityType) {
-        dropRules.remove(entityType.toLowerCase());
+        dropRules.remove(entityType.toLowerCase(java.util.Locale.ROOT));
     }
 
     public Map<String, KnifeDropRule> getDropRules() {

@@ -51,6 +51,8 @@ public class TrayManager {
     private int skilletSyncCursor;
     private int trayOwnerSyncCursor;
     private PluginTask queuedSyncTask;
+    // Guards queuedSyncTask, which is started/stopped from region-thread queueTraySync callbacks.
+    private final Object queuedSyncTaskLock = new Object();
 
     public TrayManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
@@ -75,7 +77,10 @@ public class TrayManager {
     private void loadConfig() {
         ConfigurationSection config = plugin.getFirstConfigSection("cooking-pot.tray", "tray");
         if (config == null) {
-            config = plugin.getConfig().createSection("cooking-pot.tray");
+            // Use a detached empty section so absent config falls back to the per-field defaults
+            // below without mutating the live FileConfiguration (createSection would inject an
+            // unexpected empty section the user never wrote).
+            config = new org.bukkit.configuration.MemoryConfiguration();
         }
 
         enabled = config.getBoolean("enabled", true);
@@ -119,9 +124,11 @@ public class TrayManager {
             syncTask.cancel();
             syncTask = null;
         }
-        if (queuedSyncTask != null) {
-            queuedSyncTask.cancel();
-            queuedSyncTask = null;
+        synchronized (queuedSyncTaskLock) {
+            if (queuedSyncTask != null) {
+                queuedSyncTask.cancel();
+                queuedSyncTask = null;
+            }
         }
     }
 
@@ -135,7 +142,8 @@ public class TrayManager {
         }
 
         Location trayLoc = getTrayLocation(world, potPos);
-        if (trayLoc.getY() < world.getMinHeight() || trayLoc.getY() > world.getMaxHeight()) {
+        // getMaxHeight() is exclusive (highest placeable Y is getMaxHeight() - 1).
+        if (trayLoc.getY() < world.getMinHeight() || trayLoc.getY() >= world.getMaxHeight()) {
             return;
         }
 
@@ -274,10 +282,12 @@ public class TrayManager {
     }
 
     private void ensureQueuedSyncTask() {
-        if (queuedSyncTask != null) {
-            return;
+        synchronized (queuedSyncTaskLock) {
+            if (queuedSyncTask != null) {
+                return;
+            }
+            queuedSyncTask = plugin.scheduler().runRepeating(this::processQueuedTraySyncs, 1L, 1L);
         }
-        queuedSyncTask = plugin.scheduler().runRepeating(this::processQueuedTraySyncs, 1L, 1L);
     }
 
     private void processQueuedTraySyncs() {
@@ -301,11 +311,13 @@ public class TrayManager {
     }
 
     private void stopQueuedSyncTaskIfIdle() {
-        if (!queuedTraySyncs.isEmpty() || queuedSyncTask == null) {
-            return;
+        synchronized (queuedSyncTaskLock) {
+            if (!queuedTraySyncs.isEmpty() || queuedSyncTask == null) {
+                return;
+            }
+            queuedSyncTask.cancel();
+            queuedSyncTask = null;
         }
-        queuedSyncTask.cancel();
-        queuedSyncTask = null;
     }
 
     private boolean isPotOrSkilletAt(World world, BlockPos pos) {

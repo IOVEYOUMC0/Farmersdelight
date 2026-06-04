@@ -93,9 +93,13 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
                 "performance.proxy-item-display-sync-interval-ticks", DEFAULT_SYNC_INTERVAL_TICKS));
         syncBatchSize = Math.max(1, plugin.getConfig().getInt(
                 "performance.proxy-item-display-sync-batch-size", DEFAULT_SYNC_BATCH_SIZE));
+        // Restart the sync task so the new interval takes effect; also (re)start it if displays
+        // exist but no task is running, so the reloaded interval/distance is actually applied.
         if (syncTask != null) {
             syncTask.cancel();
             syncTask = null;
+        }
+        if (!displays.isEmpty()) {
             startSyncTask();
         }
     }
@@ -319,8 +323,14 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         if (displays.get(display.entityId) != display) {
             return;
         }
+        World displayWorld = display.spec.location().getWorld();
+        if (displayWorld == null) {
+            return;
+        }
         for (Player player : onlinePlayers.values()) {
-            if (player == null) {
+            // Cheap pre-filter: skip players in other worlds before paying the per-player scheduling
+            // cost. syncDisplayForPlayer still re-checks distance on the player's own thread.
+            if (player == null || !displayWorld.equals(player.getWorld())) {
                 continue;
             }
             try {

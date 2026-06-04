@@ -49,6 +49,10 @@ public class RecipeViewGui implements InventoryHolder {
     private static final Set<String> warnedMissingCustomCookingPotDetailConfigs = ConcurrentHashMap.newKeySet();
     private static final Set<String> warnedCookingPotDetailCapacityConfigs = ConcurrentHashMap.newKeySet();
     private static final Map<Key, ItemStack> itemCache = new ConcurrentHashMap<>();
+    // Resolved tag-ingredient option lists (O(items x excludedTags x items) + CE item creation to
+    // build) are fixed per tag ingredient; cache the computed list, cleared on reload. Callers get
+    // clones so they can freely mutate display meta.
+    private static final Map<RecipeIngredient.Tag, List<ItemStack>> tagOptionsCache = new ConcurrentHashMap<>();
     private static final ItemStack EMPTY_SLOT_BACKGROUND = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
     private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
     private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
@@ -57,6 +61,9 @@ public class RecipeViewGui implements InventoryHolder {
     private static final int MAX_COMPACT_INGREDIENT_LINE_LENGTH = 42;
     private static final int GUI_TICK_INTERVAL_TICKS = 4;
     private static final int COOKING_PROCESS_BAR_FRAMES = 20;
+    // The N+1 distinct process-bar frame items are identical per frame; cache them (cleared on
+    // reload) so the per-GUI-tick animation does not recreate a CraftEngine item every 4 ticks.
+    private static final ItemStack[] processBarFrameCache = new ItemStack[COOKING_PROCESS_BAR_FRAMES + 1];
 
     static {
         ItemMeta meta = EMPTY_SLOT_BACKGROUND.getItemMeta();
@@ -97,6 +104,10 @@ public class RecipeViewGui implements InventoryHolder {
     
     private final boolean fromCookingPot;
     private final Location cookingPotLocation;
+    // Resolved once (lazily, during the initial open while the viewer is at the pot = same Folia
+    // region) and memoized, so the per-tick/redraw paths never repeat a cross-region block read.
+    private boolean recipeGroupResolved;
+    private String cachedRecipeGroupId;
     private final Consumer<Void> tickCallback;
     private boolean ignoreNextClose = false;
     private FillButtonState fillButtonState = FillButtonState.READY;
@@ -162,6 +173,11 @@ public class RecipeViewGui implements InventoryHolder {
 
     public static void clearConfigCache() {
         cachedConfig = null;
+        // Built display items cache resolved names/lore (derived from the language files), so clear
+        // them too; otherwise a /fd reload lang/gui would leave stale item names in the recipe view.
+        itemCache.clear();
+        tagOptionsCache.clear();
+        java.util.Arrays.fill(processBarFrameCache, null);
         warnedMissingCustomCookingPotDetailConfigs.clear();
         warnedCookingPotDetailCapacityConfigs.clear();
     }
@@ -628,6 +644,11 @@ public class RecipeViewGui implements InventoryHolder {
 
     private ItemStack createCookingPotProcessBarItem(int frame) {
         int safeFrame = Math.max(0, Math.min(COOKING_PROCESS_BAR_FRAMES, frame));
+        ItemStack cached = processBarFrameCache[safeFrame];
+        if (cached != null) {
+            return cached.clone();
+        }
+
         ItemStack item = ItemUtils.createItem("farmersdelight:" + safeFrame);
         if (item == null) {
             item = new ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE);
@@ -639,6 +660,7 @@ public class RecipeViewGui implements InventoryHolder {
             meta.lore(List.of());
             item.setItemMeta(meta);
         }
+        processBarFrameCache[safeFrame] = item.clone();
         return item;
     }
 
@@ -1112,6 +1134,15 @@ public class RecipeViewGui implements InventoryHolder {
     }
 
     private List<ItemStack> resolveTagIngredientOptions(RecipeIngredient.Tag tagIngredient) {
+        List<ItemStack> cached = tagOptionsCache.computeIfAbsent(tagIngredient, this::computeTagIngredientOptions);
+        List<ItemStack> copy = new ArrayList<>(cached.size());
+        for (ItemStack item : cached) {
+            copy.add(item.clone());
+        }
+        return copy;
+    }
+
+    private List<ItemStack> computeTagIngredientOptions(RecipeIngredient.Tag tagIngredient) {
         Map<String, ItemStack> uniqueDisplays = new LinkedHashMap<>();
         for (UniqueKey uniqueKey : plugin.getCraftEngine().itemManager().itemIdsByTag(tagIngredient.key())) {
             if (tagIngredient.excludedItems().contains(uniqueKey.key())) {
@@ -1246,7 +1277,7 @@ public class RecipeViewGui implements InventoryHolder {
         if (customId != null) {
             return customId;
         }
-        return "minecraft:" + item.getType().name().toLowerCase();
+        return "minecraft:" + item.getType().name().toLowerCase(java.util.Locale.ROOT);
     }
 
     private ItemStack createItemFromKey(Key key) {
@@ -2403,8 +2434,12 @@ public class RecipeViewGui implements InventoryHolder {
         if (!fromCookingPot || cookingPotLocation == null) {
             return null;
         }
-        CookingPotBlockBehavior behavior = CookingPotBlockBehavior.getBlockBehavior(cookingPotLocation);
-        return behavior == null ? null : behavior.getCustomRecipeGroupId();
+        if (!recipeGroupResolved) {
+            CookingPotBlockBehavior behavior = CookingPotBlockBehavior.getBlockBehavior(cookingPotLocation);
+            cachedRecipeGroupId = behavior == null ? null : behavior.getCustomRecipeGroupId();
+            recipeGroupResolved = true;
+        }
+        return cachedRecipeGroupId;
     }
 
     private void navigateToState(Player player, GuiState newState) {
@@ -2507,6 +2542,9 @@ public class RecipeViewGui implements InventoryHolder {
         activeGuis.clear();
         cachedConfig = null;
         itemCache.clear();
+        // Reset so a soft re-enable re-registers a fresh EventDispatcher; otherwise recipe-view
+        // clicks would no longer be cancelled after disable removed the old listener.
+        listenerRegistered = false;
     }
 
     public static void closeAllOpenGuis() {

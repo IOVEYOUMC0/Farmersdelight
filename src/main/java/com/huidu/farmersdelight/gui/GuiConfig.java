@@ -455,7 +455,7 @@ public class GuiConfig {
             Material material = null;
             if (materialName != null && !materialName.isEmpty()) {
                 try {
-                    material = Registry.MATERIAL.get(NamespacedKey.minecraft(materialName.toLowerCase()));
+                    material = Registry.MATERIAL.get(NamespacedKey.minecraft(materialName.toLowerCase(java.util.Locale.ROOT)));
                 } catch (Exception e) {
                     material = Material.GRAY_STAINED_GLASS_PANE;
                 }
@@ -504,7 +504,7 @@ public class GuiConfig {
             Object materialValue = map.get("material");
             if (materialValue != null) {
                 try {
-                    material = Registry.MATERIAL.get(NamespacedKey.minecraft(materialValue.toString().toLowerCase()));
+                    material = Registry.MATERIAL.get(NamespacedKey.minecraft(materialValue.toString().toLowerCase(java.util.Locale.ROOT)));
                 } catch (Exception ignored) {
                     material = Material.GRAY_STAINED_GLASS_PANE;
                 }

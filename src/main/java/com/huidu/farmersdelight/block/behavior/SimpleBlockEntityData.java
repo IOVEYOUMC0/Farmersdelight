@@ -3,6 +3,7 @@ package com.huidu.farmersdelight.block.behavior;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.libraries.nbt.CompoundTag;
+import net.momirealms.craftengine.libraries.nbt.NumericTag;
 import net.momirealms.craftengine.libraries.nbt.Tag;
 import org.bukkit.inventory.ItemStack;
 
@@ -76,8 +77,15 @@ final class SimpleBlockEntityData {
             if (text == null) {
                 continue;
             }
-            Integer integer = parseInteger(text);
-            data.put(key, integer != null ? integer : text);
+            // Preserve the original type: only numeric tags become Integers. Previously any value
+            // whose text happened to parse as an int was coerced to Integer, corrupting string
+            // fields like an all-digit owner name (consumers test the value with `instanceof String`).
+            if (value instanceof NumericTag) {
+                Integer integer = parseInteger(text);
+                data.put(key, integer != null ? integer : text);
+            } else {
+                data.put(key, text);
+            }
         }
         return data;
     }

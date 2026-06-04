@@ -74,9 +74,16 @@ public final class CuttingBoardDisplayConfig {
         if (storedItem == null || storedItem.getType().isAir()) {
             return null;
         }
+        return resolveDisplayItem(storedItem, getOverride(storedItem));
+    }
 
-        DisplayOverride override = getOverride(storedItem);
-        if (override.displayItemId() != null) {
+    /** Variant that reuses an already-resolved override, to avoid recomputing getOverride twice. */
+    public ItemStack resolveDisplayItem(ItemStack storedItem, DisplayOverride override) {
+        if (storedItem == null || storedItem.getType().isAir()) {
+            return null;
+        }
+
+        if (override != null && override.displayItemId() != null) {
             ItemStack displayItem = ItemUtils.createItem(override.displayItemId());
             if (displayItem != null && !displayItem.getType().isAir()) {
                 displayItem.setAmount(1);
