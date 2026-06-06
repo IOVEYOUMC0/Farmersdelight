@@ -54,6 +54,7 @@ import org.bukkit.event.world.WorldLoadEvent;
 import org.bukkit.event.world.WorldUnloadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -72,6 +73,8 @@ import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import java.util.logging.Level;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
@@ -1295,6 +1298,17 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     }
 
     private List<String> listBundledResourceFiles(String resourceRoot) throws IOException {
+        // Primary strategy: scan the plugin jar's entries directly. Directory entries are not
+        // guaranteed to exist in the jar - the ProGuard-obfuscated Folia jar (obfuscateFoliaJar)
+        // drops them - so getClassLoader().getResource(<directory>) returns null and the URL walk
+        // below finds nothing ("No bundled CraftEngine resources found"). Reading file entries by
+        // prefix is immune to missing directory entries and to per-platform classloader differences.
+        List<String> fromJar = listJarFileResourceFiles(resourceRoot);
+        if (fromJar != null) {
+            return fromJar;
+        }
+
+        // Fallback for exploded/IDE/test runs where the plugin is not packaged as a jar file.
         URL resourceUrl = getClass().getClassLoader().getResource(resourceRoot);
         if (resourceUrl == null) {
             return List.of();
@@ -1312,6 +1326,36 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         } catch (URISyntaxException e) {
             throw new IOException("Invalid bundled resource URI for " + resourceRoot, e);
         }
+    }
+
+    /**
+     * Lists bundled resource files under {@code resourceRoot} by scanning the plugin jar's entries.
+     * Returns {@code null} (not an empty list) when the plugin is not running from a readable jar
+     * file - e.g. exploded IDE/test runs - so the caller falls back to classloader-based discovery.
+     */
+    private List<String> listJarFileResourceFiles(String resourceRoot) throws IOException {
+        File pluginJar = getFile();
+        if (pluginJar == null || !pluginJar.isFile()) {
+            return null;
+        }
+
+        String prefix = resourceRoot.endsWith("/") ? resourceRoot : resourceRoot + "/";
+        List<String> resourcePaths = new ArrayList<>();
+        try (JarFile jarFile = new JarFile(pluginJar)) {
+            Enumeration<JarEntry> entries = jarFile.entries();
+            while (entries.hasMoreElements()) {
+                JarEntry entry = entries.nextElement();
+                if (entry.isDirectory()) {
+                    continue;
+                }
+                String name = entry.getName();
+                if (name.startsWith(prefix)) {
+                    resourcePaths.add(name);
+                }
+            }
+        }
+        resourcePaths.sort(Comparator.naturalOrder());
+        return resourcePaths;
     }
 
     private List<String> listFileResourceFiles(String resourceRoot, Path rootPath) throws IOException {

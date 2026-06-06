@@ -183,6 +183,14 @@ public class TrayManager {
         }
 
         if (!existingFurnitures.isEmpty()) {
+            // A tray furniture already exists at the auto-tray position but is not marked: its PDC marker
+            // was lost when CraftEngine recreated the display entity across a restart/chunk reload.
+            // Re-claim it (re-mark + track) so break-removal and break-protection recognize it again.
+            BukkitFurniture reclaimed = existingFurnitures.get(0);
+            markTrayFurniture(reclaimed);
+            removeDuplicateAutoTrays(world, trayPos, existingFurnitures, reclaimed, "reclaim unmarked tray");
+            trayFurnitureCache.put(trayPos, reclaimed);
+            worldTrays.put(potPos, trayPos);
             return;
         }
 
@@ -629,12 +637,27 @@ public class TrayManager {
     private void removeTrayAt(World world, BlockPos trayPos, String reason) {
         try {
             BukkitFurniture furniture = trayFurnitureCache.remove(trayPos);
-            if (furniture == null) {
-                Location location = new Location(world, trayPos.x(), trayPos.y(), trayPos.z());
-                furniture = findAutoTrayFurniture(world, location);
-            }
-
             if (!isAutoPlacedTray(furniture)) {
+                // Cache miss, or the auto-tray marker was lost: CraftEngine recreates furniture display
+                // entities across a restart/chunk reload, dropping our PDC marker, and the in-memory maps
+                // start empty after a restart. trayPos is the heat-source block directly under the owner
+                // (potPos.y-1). The tray id is craftable, but a player-placed "ground" tray anchors on TOP
+                // of a support block and cannot occupy that solid heat-source block - only the plugin's own
+                // canPlaceTrayAt() stands a tray inside a heat source - so any tray furniture at this exact
+                // block is our auto-tray and is safe to remove even without the marker (fixes orphaned
+                // trays after a restart).
+                Location location = new Location(world, trayPos.x(), trayPos.y(), trayPos.z());
+                int removed = 0;
+                for (BukkitFurniture stray : findTrayFurnitures(world, location)) {
+                    Entity entity = stray.bukkitEntity();
+                    if (entity != null && entity.isValid()) {
+                        CraftEngineFurniture.remove(entity, false, false);
+                        removed++;
+                    }
+                }
+                if (removed > 0 && plugin.isDebugEnabled("tray")) {
+                    plugin.getLogger().info(I18n.formatConsole("tray.removed", "pos", trayPos, "reason", reason));
+                }
                 return;
             }
 
