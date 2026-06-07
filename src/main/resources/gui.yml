@@ -36,6 +36,8 @@ cooking-pot-gui:
       name: " "
     decoration:
       material: BROWN_STAINED_GLASS_PANE
+      item_model: "air"
+      hide-tooltip: true
       name: " "
     heat-active:
       item: farmersdelight:cooking_pot_heated
@@ -112,6 +114,8 @@ cooking-pot-guis: {}
 #         name: " "
 #       decoration:
 #         material: BROWN_STAINED_GLASS_PANE
+#         item_model: "air"
+#         hide-tooltip: true
 #         name: " "
 #       heat-active:
 #         item: farmersdelight:cooking_pot_heated

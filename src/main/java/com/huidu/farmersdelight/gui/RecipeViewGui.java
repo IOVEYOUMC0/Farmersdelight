@@ -560,8 +560,7 @@ public class RecipeViewGui implements InventoryHolder {
         if (slot < 0 || slot >= inventory.getSize()) {
             return;
         }
-        GuiConfig.GuiItem background = detailConfig.getItem("background");
-        inventory.setItem(slot, background == null ? EMPTY_SLOT_BACKGROUND : background.createItem());
+        inventory.setItem(slot, createBackgroundItem(detailConfig));
     }
 
     private void drawCookingPotDetail(CookingPotRecipe recipe, RecipeViewGuiConfig.RecipeDetailConfig detailConfig, Player player) {
@@ -581,7 +580,7 @@ public class RecipeViewGui implements InventoryHolder {
             inventory.setItem(detailConfig.getResultSlot(), resultItem);
         }
 
-        fillIngredientSlots(detailConfig.getIngredientSlots(), recipe.getIngredients(), player);
+        fillIngredientSlots(detailConfig, detailConfig.getIngredientSlots(), recipe.getIngredients(), player);
 
         if (recipe.needsContainer() && recipe.getContainer() != null && detailConfig.getContainerSlot() >= 0) {
             ItemStack containerItem = recipe.getContainer().clone();
@@ -706,7 +705,7 @@ public class RecipeViewGui implements InventoryHolder {
             }
         }
 
-        fillResultSlots(detailConfig.getResultSlots(), recipe.getResults(), player);
+        fillResultSlots(detailConfig, detailConfig.getResultSlots(), recipe.getResults(), player);
     }
 
     private ItemStack createToolDisplayItem(Key toolKey, int totalTools, int currentIndex, Player player) {
@@ -814,18 +813,20 @@ public class RecipeViewGui implements InventoryHolder {
         return item != null && item.getType() != Material.BARRIER && !item.getType().isAir();
     }
 
-    private void fillIngredientSlots(List<Integer> slots, List<RecipeIngredient> ingredients, Player player) {
+    private void fillIngredientSlots(RecipeViewGuiConfig.BaseConfig guiConfig, List<Integer> slots,
+                                     List<RecipeIngredient> ingredients, Player player) {
         for (int i = 0; i < slots.size(); i++) {
             if (i < ingredients.size()) {
                 ItemStack ingredientDisplay = createIngredientDisplay(ingredients.get(i), player, slots.get(i));
                 inventory.setItem(slots.get(i), ingredientDisplay);
             } else {
-                inventory.setItem(slots.get(i), EMPTY_SLOT_BACKGROUND);
+                inventory.setItem(slots.get(i), createBackgroundItem(guiConfig));
             }
         }
     }
 
-    private void fillResultSlots(List<Integer> slots, List<CuttingBoardRecipe.ResultEntry> results, Player player) {
+    private void fillResultSlots(RecipeViewGuiConfig.BaseConfig guiConfig, List<Integer> slots,
+                                 List<CuttingBoardRecipe.ResultEntry> results, Player player) {
         for (int i = 0; i < slots.size(); i++) {
             if (i < results.size()) {
                 CuttingBoardRecipe.ResultEntry resultEntry = results.get(i);
@@ -847,7 +848,7 @@ public class RecipeViewGui implements InventoryHolder {
                 resultDisplay.setItemMeta(resultMeta);
                 inventory.setItem(slots.get(i), resultDisplay);
             } else {
-                inventory.setItem(slots.get(i), EMPTY_SLOT_BACKGROUND);
+                inventory.setItem(slots.get(i), createBackgroundItem(guiConfig));
             }
         }
     }
@@ -954,10 +955,15 @@ public class RecipeViewGui implements InventoryHolder {
                 if (slotItem != null) {
                     inventory.setItem(i, slotItem.createItem());
                 } else if (slotType != null) {
-                    inventory.setItem(i, EMPTY_SLOT_BACKGROUND);
+                    inventory.setItem(i, createBackgroundItem(guiConfig));
                 }
             }
         }
+    }
+
+    private ItemStack createBackgroundItem(RecipeViewGuiConfig.BaseConfig guiConfig) {
+        GuiConfig.GuiItem background = guiConfig == null ? null : guiConfig.getItem("background");
+        return background == null ? EMPTY_SLOT_BACKGROUND.clone() : background.createItem();
     }
 
     private ItemStack createCookingPotRecipeDisplayItem(CookingPotRecipe recipe, Player player) {
