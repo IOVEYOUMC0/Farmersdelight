@@ -239,6 +239,21 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         }
     }
 
+    public static void refreshDisplayEntities() {
+        for (Map.Entry<UUID, Map<BlockPosKey, CuttingBoardBlockEntity>> worldEntry : worldBlockEntities.entrySet()) {
+            World world = Bukkit.getWorld(worldEntry.getKey());
+            if (world == null) continue;
+
+            for (Map.Entry<BlockPosKey, CuttingBoardBlockEntity> posEntry : worldEntry.getValue().entrySet()) {
+                BlockPosKey posKey = posEntry.getKey();
+                CuttingBoardBlockEntity entity = posEntry.getValue();
+                if (entity != null) {
+                    entity.refreshDisplayEntity(world, getStoredBlockFacing(world, posKey));
+                }
+            }
+        }
+    }
+
     public static void saveBlockEntityData(World world, BlockPos pos) {
         saveBlockEntityData(world, new BlockPosKey(pos));
     }
@@ -310,7 +325,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
 
             List<String> toolTagStrings = getStringList(arguments, "tool-tags");
             if (toolTagStrings.isEmpty()) {
-                toolTagStrings = List.of(Constants.TAG_KNIVES, Constants.TAG_AXES, Constants.TAG_PICKAXES);
+                toolTagStrings = List.of(Constants.TAG_KNIVES, Constants.TAG_AXES, Constants.TAG_PICKAXES, Constants.TAG_SHOVELS);
             }
 
             List<Key> toolTags = toolTagStrings.stream()
@@ -513,7 +528,12 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
                 }
             }
 
-            bukkitPlayer.playSound(bukkitPlayer.getLocation(), Sound.BLOCK_WOOD_HIT, Constants.CUTTING_BOARD_FAIL_VOLUME, Constants.CUTTING_BOARD_FAIL_PITCH);
+            FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+            float volume = (float) Math.max(0.0D, plugin.getConfigDouble(Constants.CUTTING_BOARD_FAIL_VOLUME,
+                    "cutting-board.sounds.retrieve-volume"));
+            float pitch = (float) Math.max(0.0D, plugin.getConfigDouble(Constants.CUTTING_BOARD_FAIL_PITCH,
+                    "cutting-board.sounds.retrieve-pitch"));
+            bukkitPlayer.playSound(bukkitPlayer.getLocation(), Sound.BLOCK_WOOD_HIT, volume, pitch);
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
 
@@ -581,7 +601,13 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         blockEntity.setStoredItem(stored, world, posKey, facing);
         saveBlockEntityData(world, posKey);
         if (player.getGameMode() != GameMode.CREATIVE) {
-            mainHand.setAmount(mainHand.getAmount() - toMove);
+            int remaining = mainHand.getAmount() - toMove;
+            if (remaining <= 0) {
+                player.getInventory().setItemInMainHand(null);
+            } else {
+                mainHand.setAmount(remaining);
+                player.getInventory().setItemInMainHand(mainHand);
+            }
         }
         SoundUtils.play(player.getWorld(), player.getLocation(), null, Sound.BLOCK_WOOD_PLACE, 1.0f, 1.0f);
         return true;
@@ -712,7 +738,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
     public boolean isTool(ItemStack item) {
         if (item == null || item.getType().isAir()) return false;
 
-        if (isKnifeTool(item) || isAxeTool(item) || isPickaxeTool(item) || isConfiguredToolItem(item)) {
+        if (isKnifeTool(item) || isAxeTool(item) || isPickaxeTool(item) || isShovelTool(item) || isConfiguredToolItem(item)) {
             return true;
         }
 
@@ -749,6 +775,10 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
 
     private boolean isPickaxeTool(ItemStack item) {
         return item.getType().name().endsWith("_PICKAXE");
+    }
+
+    private boolean isShovelTool(ItemStack item) {
+        return item.getType().name().endsWith("_SHOVEL");
     }
 
     private boolean isConfiguredToolItem(ItemStack item) {

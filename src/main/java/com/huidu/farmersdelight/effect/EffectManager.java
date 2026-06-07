@@ -1,5 +1,6 @@
 package com.huidu.farmersdelight.effect;
 
+import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.i18n.I18n;
 import org.bukkit.GameRule;
 import org.bukkit.attribute.Attribute;
@@ -15,8 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class EffectManager {
 
-    private static final int EFFECT_FADE_WARNING_TICKS = 200;
-    private static final int COMFORT_HEAL_INTERVAL_TICKS = 80;
+    private static final int DEFAULT_EFFECT_FADE_WARNING_TICKS = 200;
+    private static final int DEFAULT_COMFORT_HEAL_INTERVAL_TICKS = 80;
     // Must match the period of the effect task (EffectListener). Durations are stored as real-tick
     // counts, so they must be decremented by the number of real ticks elapsed between invocations.
     private static final int TICK_INTERVAL = (int) EffectListener.TICK_INTERVAL;
@@ -122,7 +123,7 @@ public final class EffectManager {
             if (comfortDuration > 0) {
                 tickComfort(player, comfortDuration);
                 if (player.isValid()) {
-                    if (comfortDuration == EFFECT_FADE_WARNING_TICKS) {
+                    if (shouldSendFadeWarning(comfortDuration, getComfortFadeWarningTicks())) {
                         player.sendMessage(I18n.formatNamed(
                                 "effects.comfort.fade",
                                 player,
@@ -143,7 +144,7 @@ public final class EffectManager {
                 tickNourishment(player);
             }
             if (player.isValid() && nourishmentDuration > 0) {
-                if (nourishmentDuration == EFFECT_FADE_WARNING_TICKS) {
+                if (shouldSendFadeWarning(nourishmentDuration, getNourishmentFadeWarningTicks())) {
                     player.sendMessage(I18n.formatNamed(
                             "effects.nourishment.fade",
                             player,
@@ -222,7 +223,8 @@ public final class EffectManager {
         if (player.getSaturation() > 0.0F) {
             return;
         }
-        if (durationTicks % COMFORT_HEAL_INTERVAL_TICKS != 0) {
+        int healIntervalTicks = getComfortHealIntervalTicks();
+        if (healIntervalTicks <= 0 || durationTicks % healIntervalTicks != 0) {
             return;
         }
 
@@ -247,5 +249,37 @@ public final class EffectManager {
                         ? minutes + "m " + remainSeconds + "s"
                         : seconds + "s"
         );
+    }
+
+    private static boolean shouldSendFadeWarning(int durationTicks, int warningTicks) {
+        return warningTicks > 0
+                && durationTicks <= warningTicks
+                && durationTicks > warningTicks - TICK_INTERVAL;
+    }
+
+    private static int getComfortHealIntervalTicks() {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        return plugin == null
+                ? DEFAULT_COMFORT_HEAL_INTERVAL_TICKS
+                : Math.max(0, plugin.getConfigInt(DEFAULT_COMFORT_HEAL_INTERVAL_TICKS,
+                "comfort-foods.heal-interval-ticks"));
+    }
+
+    private static int getComfortFadeWarningTicks() {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        return plugin == null
+                ? DEFAULT_EFFECT_FADE_WARNING_TICKS
+                : Math.max(0, plugin.getConfigInt(DEFAULT_EFFECT_FADE_WARNING_TICKS,
+                "comfort-foods.fade-warning-ticks",
+                "food-effects.fade-warning-ticks"));
+    }
+
+    private static int getNourishmentFadeWarningTicks() {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        return plugin == null
+                ? DEFAULT_EFFECT_FADE_WARNING_TICKS
+                : Math.max(0, plugin.getConfigInt(DEFAULT_EFFECT_FADE_WARNING_TICKS,
+                "nourishment-foods.fade-warning-ticks",
+                "food-effects.fade-warning-ticks"));
     }
 }

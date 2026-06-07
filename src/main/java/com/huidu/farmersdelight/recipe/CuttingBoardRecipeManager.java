@@ -24,7 +24,7 @@ public class CuttingBoardRecipeManager {
     }
 
     public void loadRecipes() {
-        Map<String, CuttingBoardRecipe> newRecipes = new HashMap<>();
+        Map<String, CuttingBoardRecipe> newRecipes = new LinkedHashMap<>();
         RecipeFileLoader.loadRecipeSections(plugin, "recipes/cutting_board_recipes.yml", "cutting_board_recipes", "cutting board",
                 (recipeId, section) -> newRecipes.put(recipeId, parseRecipe(recipeId, section)));
 
@@ -33,7 +33,8 @@ public class CuttingBoardRecipeManager {
             newSorted = List.of();
         } else {
             List<CuttingBoardRecipe> sorted = new ArrayList<>(newRecipes.values());
-            sorted.sort(Comparator.comparing(CuttingBoardRecipe::getId));
+            sorted.sort(Comparator.comparingInt(CuttingBoardRecipe::getPriority).reversed()
+                    .thenComparing(CuttingBoardRecipe::getId));
             newSorted = Collections.unmodifiableList(sorted);
         }
 
@@ -123,7 +124,8 @@ public class CuttingBoardRecipeManager {
         }
 
         String sound = normalizeSound(section.getString("sound", Constants.SOUND_CUTTING_BOARD_KNIFE));
-        return new CuttingBoardRecipe(id, input, inputDisplay, tools, results, sound);
+        int priority = section.getInt("priority", 0);
+        return new CuttingBoardRecipe(id, input, inputDisplay, tools, results, sound, priority);
     }
 
     private String normalizeSound(String soundStr) {
@@ -171,7 +173,7 @@ public class CuttingBoardRecipeManager {
     public CuttingBoardRecipe matchRecipe(ItemStack input, ItemStack tool) {
         String toolId = ItemUtils.getCustomItemId(tool);
 
-        for (CuttingBoardRecipe recipe : recipes.values()) {
+        for (CuttingBoardRecipe recipe : sortedRecipes) {
             if (matchesInput(recipe, input) && matchesTool(recipe, toolId, tool)) {
                 return recipe;
             }
@@ -182,7 +184,7 @@ public class CuttingBoardRecipeManager {
 
     public boolean hasAnyRecipeFor(ItemStack input) {
         if (input == null || input.getType().isAir()) return false;
-        for (CuttingBoardRecipe recipe : recipes.values()) {
+        for (CuttingBoardRecipe recipe : sortedRecipes) {
             if (matchesInput(recipe, input)) return true;
         }
         return false;
@@ -242,7 +244,8 @@ public class CuttingBoardRecipeManager {
                 || Constants.ACTION_AXE_DIG.equalsIgnoreCase(toolKeyStr)
                 || Constants.ACTION_AXE_STRIP.equalsIgnoreCase(toolKeyStr)) && toolContext.axe())
                 || (Constants.ACTION_PICKAXE_DIG.equalsIgnoreCase(toolKeyStr) && toolContext.pickaxe())
-                || (Constants.ACTION_SHOVEL_DIG.equalsIgnoreCase(toolKeyStr) && toolContext.shovel())
+                || ((Constants.TAG_SHOVELS.equalsIgnoreCase(toolKeyStr)
+                || Constants.ACTION_SHOVEL_DIG.equalsIgnoreCase(toolKeyStr)) && toolContext.shovel())
                 || (Constants.ITEM_SHEARS.equalsIgnoreCase(toolKeyStr) && toolContext.shears());
     }
 
