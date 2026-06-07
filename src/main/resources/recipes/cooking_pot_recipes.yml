@@ -12,8 +12,9 @@
 #     result: <item_id>
 #     result-count: <count>  # Optional, defaults to 1
 #     experience: <number>   # Optional, defaults to 0
-#     cook-time: <ticks>     # Optional, defaults to 200
+#     cook-time: <ticks>     # Optional; default and limits are in config.yml cooking-pot.cooking
 #     category: <type>       # Optional: meals, drinks, misc
+#     priority: <number>     # Optional; higher priority wins when recipes overlap
 #
 # Custom cooking pot recipes:
 #   Use custom_cooking_pot_recipes.<id> where <id> matches behavior.custom.id

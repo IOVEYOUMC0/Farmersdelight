@@ -29,27 +29,38 @@ public class TrayManager {
 
     private static final long DEFAULT_SYNC_INTERVAL_TICKS = 100L;
     private static final int DEFAULT_SYNC_BATCH_SIZE = 32;
-    private static final Map<UUID, Map<BlockPos, BlockPos>> cookingPotTrays = new ConcurrentHashMap<>();
+    private static final long DEFAULT_MARKED_TRAY_SCAN_INTERVAL_TICKS = 1200L;
+    private static final String NAMESPACE = "farmersdelight";
+    private static final String DEFAULT_MARKER_KEY = "auto_tray_marker";
+    private static final String MARKER_SCOREBOARD_PREFIX = "farmersdelight:auto_tray:";
+    private static final String OWNER_SCOREBOARD_PREFIX = "farmersdelight:auto_tray_owner:";
 
     private final FarmersDelightPlugin plugin;
-    private final Map<BlockPos, BukkitFurniture> trayFurnitureCache = new ConcurrentHashMap<>();
     private final Map<UUID, World> knownWorlds = new ConcurrentHashMap<>();
     private final Set<TraySyncKey> scheduledTraySyncs = ConcurrentHashMap.newKeySet();
     private final Queue<Location> queuedTraySyncs = new ConcurrentLinkedQueue<>();
     private final Set<TraySyncKey> queuedTraySyncKeys = ConcurrentHashMap.newKeySet();
+    private final NamespacedKey defaultTrayMarkerKey = new NamespacedKey(NAMESPACE, DEFAULT_MARKER_KEY);
+    private final NamespacedKey trayOwnerWorldKey = new NamespacedKey(NAMESPACE, "auto_tray_owner_world");
+    private final NamespacedKey trayOwnerXKey = new NamespacedKey(NAMESPACE, "auto_tray_owner_x");
+    private final NamespacedKey trayOwnerYKey = new NamespacedKey(NAMESPACE, "auto_tray_owner_y");
+    private final NamespacedKey trayOwnerZKey = new NamespacedKey(NAMESPACE, "auto_tray_owner_z");
     private String trayFurnitureId;
     private double xOffset;
     private double yOffset;
     private double zOffset;
     private boolean requireNonFullSupport;
     private NamespacedKey trayMarkerKey;
+    private String trayScoreboardTag;
     private boolean enabled;
     private long syncIntervalTicks;
     private int syncBatchSize;
+    private long markedTrayScanIntervalMillis;
     private PluginTask syncTask;
     private int cookingPotSyncCursor;
     private int skilletSyncCursor;
     private int trayOwnerSyncCursor;
+    private long lastTrayOwnerScanMillis;
     private PluginTask queuedSyncTask;
     // Guards queuedSyncTask, which is started/stopped from region-thread queueTraySync callbacks.
     private final Object queuedSyncTaskLock = new Object();
@@ -58,14 +69,6 @@ public class TrayManager {
         this.plugin = plugin;
         loadConfig();
         start();
-    }
-
-    @Nullable
-    public static BlockPos getTrayPosForPot(World world, BlockPos potPos) {
-        if (world == null) return null;
-        Map<BlockPos, BlockPos> worldTrays = cookingPotTrays.get(world.getUID());
-        if (worldTrays == null) return null;
-        return worldTrays.get(potPos);
     }
 
     private void trackWorld(World world) {
@@ -91,8 +94,23 @@ public class TrayManager {
         requireNonFullSupport = config.getBoolean("require-non-full-support", true);
         syncIntervalTicks = Math.max(20L, config.getLong("sync-interval-ticks", DEFAULT_SYNC_INTERVAL_TICKS));
         syncBatchSize = Math.max(1, config.getInt("sync-batch-size", DEFAULT_SYNC_BATCH_SIZE));
-        String markerKey = config.getString("marker-key", "auto_tray_marker");
-        trayMarkerKey = new NamespacedKey("farmersdelight", markerKey);
+        long markedTrayScanIntervalTicks = Math.max(0L, config.getLong(
+                "marked-tray-scan-interval-ticks",
+                DEFAULT_MARKED_TRAY_SCAN_INTERVAL_TICKS));
+        markedTrayScanIntervalMillis = markedTrayScanIntervalTicks * 50L;
+        String markerKey = config.getString("marker-key", DEFAULT_MARKER_KEY);
+        trayMarkerKey = createTrayMarkerKey(markerKey);
+        trayScoreboardTag = "farmersdelight:auto_tray:" + trayMarkerKey.getKey();
+    }
+
+    private NamespacedKey createTrayMarkerKey(String markerKey) {
+        String key = markerKey == null || markerKey.isBlank() ? DEFAULT_MARKER_KEY : markerKey.trim();
+        try {
+            return new NamespacedKey(NAMESPACE, key);
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning(I18n.formatConsole("tray.invalid_marker_key", "key", key));
+            return defaultTrayMarkerKey;
+        }
     }
 
     public void reload() {
@@ -103,13 +121,8 @@ public class TrayManager {
             return;
         }
 
-        trayFurnitureCache.clear();
-        scheduledTraySyncs.clear();
-        queuedTraySyncs.clear();
-        queuedTraySyncKeys.clear();
-        cookingPotSyncCursor = 0;
-        skilletSyncCursor = 0;
-        trayOwnerSyncCursor = 0;
+        clearPendingSyncs();
+        resetSyncCursors();
         start();
         syncAllTraysNow();
     }
@@ -132,6 +145,18 @@ public class TrayManager {
         }
     }
 
+    private void clearPendingSyncs() {
+        scheduledTraySyncs.clear();
+        queuedTraySyncs.clear();
+        queuedTraySyncKeys.clear();
+    }
+
+    private void resetSyncCursors() {
+        cookingPotSyncCursor = 0;
+        skilletSyncCursor = 0;
+        trayOwnerSyncCursor = 0;
+    }
+
     public void checkAndPlaceTray(World world, BlockPos potPos) {
         if (!enabled || world == null || potPos == null) return;
         trackWorld(world);
@@ -148,37 +173,11 @@ public class TrayManager {
         }
 
         BlockPos trayPos = new BlockPos(trayLoc.getBlockX(), trayLoc.getBlockY(), trayLoc.getBlockZ());
-        Map<BlockPos, BlockPos> worldTrays = cookingPotTrays.computeIfAbsent(
-                world.getUID(), k -> new ConcurrentHashMap<>());
-        BlockPos existingTrayPos = worldTrays.get(potPos);
-        if (existingTrayPos != null) {
-            BukkitFurniture existing = trayFurnitureCache.get(existingTrayPos);
-            if (isAutoPlacedTray(existing)) {
-                return;
-            }
-
-            existing = findAutoTrayFurniture(world, new Location(world, existingTrayPos.x(), existingTrayPos.y(), existingTrayPos.z()));
-            if (isAutoPlacedTray(existing)) {
-                trayFurnitureCache.put(existingTrayPos, existing);
-                return;
-            }
-
-            worldTrays.remove(potPos);
-        }
-
-        BukkitFurniture cached = trayFurnitureCache.get(trayPos);
-        if (isAutoPlacedTray(cached)) {
-            worldTrays.put(potPos, trayPos);
-            return;
-        }
-        trayFurnitureCache.remove(trayPos);
-
         List<BukkitFurniture> existingFurnitures = findTrayFurnitures(world, trayLoc);
         BukkitFurniture existingAutoTray = firstAutoTray(existingFurnitures);
         if (existingAutoTray != null) {
+            markTrayFurniture(existingAutoTray, world, potPos);
             removeDuplicateAutoTrays(world, trayPos, existingFurnitures, existingAutoTray, "duplicate auto tray before place");
-            trayFurnitureCache.put(trayPos, existingAutoTray);
-            worldTrays.put(potPos, trayPos);
             return;
         }
 
@@ -187,10 +186,8 @@ public class TrayManager {
             // was lost when CraftEngine recreated the display entity across a restart/chunk reload.
             // Re-claim it (re-mark + track) so break-removal and break-protection recognize it again.
             BukkitFurniture reclaimed = existingFurnitures.get(0);
-            markTrayFurniture(reclaimed);
+            markTrayFurniture(reclaimed, world, potPos);
             removeDuplicateAutoTrays(world, trayPos, existingFurnitures, reclaimed, "reclaim unmarked tray");
-            trayFurnitureCache.put(trayPos, reclaimed);
-            worldTrays.put(potPos, trayPos);
             return;
         }
 
@@ -205,9 +202,7 @@ public class TrayManager {
                 return;
             }
 
-            markTrayFurniture(furniture);
-            trayFurnitureCache.put(trayPos, furniture);
-            worldTrays.put(potPos, trayPos);
+            markTrayFurniture(furniture, world, potPos);
 
             if (plugin.isDebugEnabled("tray")) {
                 plugin.getLogger().info(I18n.formatConsole("tray.placed", "location", trayLoc, "pot", potPos));
@@ -231,13 +226,8 @@ public class TrayManager {
         if (!enabled || world == null || potPos == null) return;
         trackWorld(world);
 
-        Map<BlockPos, BlockPos> worldTrays = cookingPotTrays.get(world.getUID());
-        BlockPos trayPos = worldTrays != null ? worldTrays.remove(potPos) : null;
-        if (trayPos == null) {
-            Location trayLoc = getTrayLocation(world, potPos);
-            trayPos = new BlockPos(trayLoc.getBlockX(), trayLoc.getBlockY(), trayLoc.getBlockZ());
-        }
-
+        Location trayLoc = getTrayLocation(world, potPos);
+        BlockPos trayPos = new BlockPos(trayLoc.getBlockX(), trayLoc.getBlockY(), trayLoc.getBlockZ());
         removeTrayAt(world, trayPos, "owner removed");
     }
 
@@ -360,6 +350,11 @@ public class TrayManager {
         return new Location(world, potPos.x() + xOffset, potPos.y() + yOffset, potPos.z() + zOffset);
     }
 
+    private Collection<Location> getSkilletLocations() {
+        SkilletManager skilletManager = plugin.getSkilletManager();
+        return skilletManager == null ? List.of() : skilletManager.getTrackedLocations();
+    }
+
     private void syncAllTraysBatched() {
         if (!enabled) {
             return;
@@ -373,22 +368,21 @@ public class TrayManager {
                 scheduledThisRun
         );
 
-        SkilletManager skilletManager = plugin.getSkilletManager();
-        if (skilletManager != null) {
-            skilletSyncCursor = scheduleBatchedTraySyncs(
-                    skilletManager.getTrackedLocations(),
-                    skilletSyncCursor,
+        skilletSyncCursor = scheduleBatchedTraySyncs(
+                getSkilletLocations(),
+                skilletSyncCursor,
+                true,
+                scheduledThisRun
+        );
+
+        if (!plugin.scheduler().isFolia() && shouldScanTrackedTrayOwners()) {
+            trayOwnerSyncCursor = scheduleBatchedTraySyncs(
+                    getTrackedTrayOwnerLocations(),
+                    trayOwnerSyncCursor,
                     true,
                     scheduledThisRun
             );
         }
-
-        trayOwnerSyncCursor = scheduleBatchedTraySyncs(
-                getTrackedTrayOwnerLocations(),
-                trayOwnerSyncCursor,
-                true,
-                scheduledThisRun
-        );
     }
 
     private void syncAllTraysNow() {
@@ -398,13 +392,26 @@ public class TrayManager {
 
         Set<TraySyncKey> scheduledThisRun = new HashSet<>();
         scheduleBatchedTraySyncs(CookingPotBlockBehavior.getBlockEntityLocations(), 0, false, scheduledThisRun);
+        scheduleBatchedTraySyncs(getSkilletLocations(), 0, false, scheduledThisRun);
 
-        SkilletManager skilletManager = plugin.getSkilletManager();
-        if (skilletManager != null) {
-            scheduleBatchedTraySyncs(skilletManager.getTrackedLocations(), 0, false, scheduledThisRun);
+        if (!plugin.scheduler().isFolia()) {
+            lastTrayOwnerScanMillis = System.currentTimeMillis();
+            scheduleBatchedTraySyncs(getTrackedTrayOwnerLocations(), 0, false, scheduledThisRun);
         }
+    }
 
-        scheduleBatchedTraySyncs(getTrackedTrayOwnerLocations(), 0, false, scheduledThisRun);
+    private boolean shouldScanTrackedTrayOwners() {
+        long now = System.currentTimeMillis();
+        if (markedTrayScanIntervalMillis <= 0L) {
+            lastTrayOwnerScanMillis = now;
+            return true;
+        }
+        if (lastTrayOwnerScanMillis != 0L
+                && now - lastTrayOwnerScanMillis < markedTrayScanIntervalMillis) {
+            return false;
+        }
+        lastTrayOwnerScanMillis = now;
+        return true;
     }
 
     private int scheduleBatchedTraySyncs(
@@ -433,13 +440,13 @@ public class TrayManager {
         return batched ? (start + Math.max(1, budget)) % size : 0;
     }
 
-    private void scheduleTraySync(Location location) {
-        scheduleTraySync(location, null);
+    private boolean scheduleTraySync(Location location) {
+        return scheduleTraySync(location, null);
     }
 
-    private void scheduleTraySync(Location location, @Nullable Set<TraySyncKey> scheduledThisRun) {
+    private boolean scheduleTraySync(Location location, @Nullable Set<TraySyncKey> scheduledThisRun) {
         if (location == null || location.getWorld() == null) {
-            return;
+            return false;
         }
 
         TraySyncKey key = new TraySyncKey(
@@ -449,7 +456,7 @@ public class TrayManager {
                 location.getBlockZ()
         );
         if (scheduledThisRun != null && !scheduledThisRun.add(key)) {
-            return;
+            return false;
         }
 
         Location normalized = new Location(
@@ -462,11 +469,11 @@ public class TrayManager {
 
         if (!plugin.scheduler().isFolia()) {
             syncTrayOwner(normalized);
-            return;
+            return true;
         }
 
         if (!scheduledTraySyncs.add(key)) {
-            return;
+            return false;
         }
         try {
             plugin.scheduler().runAt(normalized, () -> {
@@ -476,8 +483,10 @@ public class TrayManager {
                     scheduledTraySyncs.remove(key);
                 }
             });
+            return true;
         } catch (RuntimeException e) {
             scheduledTraySyncs.remove(key);
+            return false;
         }
     }
 
@@ -503,16 +512,87 @@ public class TrayManager {
 
     private List<Location> getTrackedTrayOwnerLocations() {
         List<Location> locations = new ArrayList<>();
-        for (Map.Entry<UUID, Map<BlockPos, BlockPos>> worldEntry : cookingPotTrays.entrySet()) {
-            World world = knownWorlds.get(worldEntry.getKey());
-            if (world == null) {
-                continue;
-            }
-            for (BlockPos ownerPos : worldEntry.getValue().keySet()) {
-                locations.add(new Location(world, ownerPos.x(), ownerPos.y(), ownerPos.z()));
+        for (World world : Bukkit.getWorlds()) {
+            trackWorld(world);
+            for (BukkitFurniture furniture : findAutoTrayFurnitures(world)) {
+                TrayOwner owner = resolveTrayOwner(world, furniture);
+                if (owner == null || !owner.worldId().equals(world.getUID())) {
+                    continue;
+                }
+                locations.add(new Location(world, owner.pos().x(), owner.pos().y(), owner.pos().z()));
             }
         }
         return locations;
+    }
+
+    private List<Location> getKnownTrayOwnerLocations(@Nullable UUID worldId) {
+        List<Location> locations = new ArrayList<>();
+        addKnownTrayOwnerLocations(locations, CookingPotBlockBehavior.getBlockEntityLocations(), worldId);
+        addKnownTrayOwnerLocations(locations, getSkilletLocations(), worldId);
+        return locations;
+    }
+
+    private void addKnownTrayOwnerLocations(
+            List<Location> target,
+            Collection<Location> source,
+            @Nullable UUID worldId
+    ) {
+        if (source == null || source.isEmpty()) {
+            return;
+        }
+        for (Location location : source) {
+            if (location == null || location.getWorld() == null) {
+                continue;
+            }
+            if (worldId != null && !location.getWorld().getUID().equals(worldId)) {
+                continue;
+            }
+            target.add(new Location(
+                    location.getWorld(),
+                    location.getBlockX(),
+                    location.getBlockY(),
+                    location.getBlockZ()
+            ));
+        }
+    }
+
+    private int scheduleKnownOwnerTraySyncs(@Nullable UUID worldId) {
+        Set<TraySyncKey> scheduledThisRun = new HashSet<>();
+        int scheduled = 0;
+        for (Location location : getKnownTrayOwnerLocations(worldId)) {
+            if (scheduleTraySync(location, scheduledThisRun)) {
+                scheduled++;
+            }
+        }
+        return scheduled;
+    }
+
+    private void removeKnownOwnerTrays(@Nullable UUID worldId, String reason) {
+        Set<TraySyncKey> seen = new HashSet<>();
+        for (Location location : getKnownTrayOwnerLocations(worldId)) {
+            if (location == null || location.getWorld() == null) {
+                continue;
+            }
+            TraySyncKey key = new TraySyncKey(
+                    location.getWorld().getUID(),
+                    location.getBlockX(),
+                    location.getBlockY(),
+                    location.getBlockZ()
+            );
+            if (!seen.add(key)) {
+                continue;
+            }
+
+            World world = location.getWorld();
+            BlockPos ownerPos = new BlockPos(key.x(), key.y(), key.z());
+            Location trayLoc = getTrayLocation(world, ownerPos);
+            BlockPos trayPos = new BlockPos(
+                    trayLoc.getBlockX(),
+                    trayLoc.getBlockY(),
+                    trayLoc.getBlockZ()
+            );
+            scheduleRemoveTrayAt(world, trayPos, reason);
+        }
     }
 
     private boolean isSkilletBlock(Location location) {
@@ -562,10 +642,18 @@ public class TrayManager {
                 || type == Material.SNOW;
     }
 
-    private void markTrayFurniture(BukkitFurniture furniture) {
+    private void markTrayFurniture(BukkitFurniture furniture, World ownerWorld, BlockPos ownerPos) {
         Entity entity = furniture.bukkitEntity();
         if (entity != null && entity.isValid()) {
             entity.getPersistentDataContainer().set(trayMarkerKey, PersistentDataType.BYTE, (byte) 1);
+            entity.getPersistentDataContainer().set(defaultTrayMarkerKey, PersistentDataType.BYTE, (byte) 1);
+            entity.getPersistentDataContainer().set(trayOwnerWorldKey, PersistentDataType.STRING, ownerWorld.getUID().toString());
+            entity.getPersistentDataContainer().set(trayOwnerXKey, PersistentDataType.INTEGER, ownerPos.x());
+            entity.getPersistentDataContainer().set(trayOwnerYKey, PersistentDataType.INTEGER, ownerPos.y());
+            entity.getPersistentDataContainer().set(trayOwnerZKey, PersistentDataType.INTEGER, ownerPos.z());
+            entity.addScoreboardTag(trayScoreboardTag);
+            removeScoreboardTagsWithPrefix(entity, OWNER_SCOREBOARD_PREFIX);
+            entity.addScoreboardTag(ownerScoreboardTag(ownerWorld, ownerPos));
         }
     }
 
@@ -574,47 +662,140 @@ public class TrayManager {
             return false;
         }
         Entity entity = furniture.bukkitEntity();
-        return entity != null
-                && entity.isValid()
-                && entity.getPersistentDataContainer().has(trayMarkerKey, PersistentDataType.BYTE);
+        return isAutoPlacedTrayEntity(entity);
+    }
+
+    private boolean isAutoPlacedTrayEntity(Entity entity) {
+        if (entity == null || !entity.isValid()) {
+            return false;
+        }
+        if (entity.getPersistentDataContainer().has(trayMarkerKey, PersistentDataType.BYTE)
+                || entity.getPersistentDataContainer().has(defaultTrayMarkerKey, PersistentDataType.BYTE)) {
+            return true;
+        }
+        for (String tag : entity.getScoreboardTags()) {
+            if (tag.equals(trayScoreboardTag) || tag.startsWith(MARKER_SCOREBOARD_PREFIX)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Nullable
+    private TrayOwner getTrayOwner(BukkitFurniture furniture) {
+        if (furniture == null) {
+            return null;
+        }
+        return getTrayOwner(furniture.bukkitEntity());
+    }
+
+    @Nullable
+    private TrayOwner getTrayOwner(Entity entity) {
+        if (entity == null || !entity.isValid()) {
+            return null;
+        }
+        String worldId = entity.getPersistentDataContainer().get(trayOwnerWorldKey, PersistentDataType.STRING);
+        Integer x = entity.getPersistentDataContainer().get(trayOwnerXKey, PersistentDataType.INTEGER);
+        Integer y = entity.getPersistentDataContainer().get(trayOwnerYKey, PersistentDataType.INTEGER);
+        Integer z = entity.getPersistentDataContainer().get(trayOwnerZKey, PersistentDataType.INTEGER);
+        if (worldId != null && x != null && y != null && z != null) {
+            try {
+                return new TrayOwner(UUID.fromString(worldId), new BlockPos(x, y, z));
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+
+        for (String tag : entity.getScoreboardTags()) {
+            if (!tag.startsWith(OWNER_SCOREBOARD_PREFIX)) {
+                continue;
+            }
+            TrayOwner owner = parseOwnerScoreboardTag(tag);
+            if (owner != null) {
+                return owner;
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    private TrayOwner parseOwnerScoreboardTag(String tag) {
+        String payload = tag.substring(OWNER_SCOREBOARD_PREFIX.length());
+        String[] parts = payload.split(":");
+        if (parts.length != 4) {
+            return null;
+        }
+        try {
+            return new TrayOwner(
+                    UUID.fromString(parts[0]),
+                    new BlockPos(Integer.parseInt(parts[1]), Integer.parseInt(parts[2]), Integer.parseInt(parts[3]))
+            );
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private String ownerScoreboardTag(World world, BlockPos ownerPos) {
+        return OWNER_SCOREBOARD_PREFIX + world.getUID() + ":" + ownerPos.x() + ":" + ownerPos.y() + ":" + ownerPos.z();
+    }
+
+    private void removeScoreboardTagsWithPrefix(Entity entity, String prefix) {
+        for (String tag : List.copyOf(entity.getScoreboardTags())) {
+            if (tag.startsWith(prefix)) {
+                entity.removeScoreboardTag(tag);
+            }
+        }
+    }
+
+    @Nullable
+    private TrayOwner resolveTrayOwner(World world, BukkitFurniture furniture) {
+        TrayOwner owner = getTrayOwner(furniture);
+        if (owner != null) {
+            return owner;
+        }
+        Entity entity = furniture == null ? null : furniture.bukkitEntity();
+        if (world == null || entity == null || !entity.isValid()) {
+            return null;
+        }
+        return new TrayOwner(world.getUID(), inferOwnerPos(entity.getLocation()));
+    }
+
+    private BlockPos inferOwnerPos(Location trayLocation) {
+        return new BlockPos(
+                (int) Math.floor(trayLocation.getX() - xOffset + 1.0E-6D),
+                (int) Math.floor(trayLocation.getY() - yOffset + 1.0E-6D),
+                (int) Math.floor(trayLocation.getZ() - zOffset + 1.0E-6D)
+        );
     }
 
     public int cleanupInvalidAutoTrays() {
         if (plugin.scheduler().isFolia()) {
-            int scheduled = 0;
-            for (Location location : getTrackedTrayOwnerLocations()) {
-                scheduleTraySync(location);
-                scheduled++;
-            }
-            return scheduled;
+            return scheduleKnownOwnerTraySyncs(null);
         }
 
         int removed = 0;
-        for (Map.Entry<UUID, Map<BlockPos, BlockPos>> worldEntry : cookingPotTrays.entrySet()) {
-            World world = knownWorlds.get(worldEntry.getKey());
-            if (world == null) {
-                continue;
-            }
-            Map<BlockPos, BlockPos> worldTrays = worldEntry.getValue();
-            if (worldTrays == null || worldTrays.isEmpty()) {
-                continue;
-            }
-            for (var entry : List.copyOf(worldTrays.entrySet())) {
-                BlockPos ownerPos = entry.getKey();
-                BlockPos trayPos = entry.getValue();
-                if (trayPos == null) {
-                    worldTrays.remove(ownerPos);
+        for (World world : Bukkit.getWorlds()) {
+            trackWorld(world);
+            for (BukkitFurniture furniture : findAutoTrayFurnitures(world)) {
+                Entity entity = furniture.bukkitEntity();
+                if (entity == null || !entity.isValid()) {
                     continue;
                 }
-                if (isValidAutoTrayOwner(world, ownerPos)) {
-                    cookingPotTrays.computeIfAbsent(world.getUID(), ignored -> new ConcurrentHashMap<>())
-                            .put(ownerPos, trayPos);
+                TrayOwner owner = resolveTrayOwner(world, furniture);
+                if (owner != null
+                        && owner.worldId().equals(world.getUID())
+                        && isValidAutoTrayOwner(world, owner.pos())) {
+                    markTrayFurniture(furniture, world, owner.pos());
                     continue;
                 }
 
+                BlockPos trayPos = new BlockPos(
+                        entity.getLocation().getBlockX(),
+                        entity.getLocation().getBlockY(),
+                        entity.getLocation().getBlockZ()
+                );
+
                 try {
                     removeTrayAt(world, trayPos, "cleanup invalid owner");
-                    worldTrays.remove(ownerPos);
                     removed++;
                 } catch (Exception e) {
                     plugin.getLogger().warning(I18n.formatConsole("tray.cleanup_invalid_failed",
@@ -636,37 +817,24 @@ public class TrayManager {
 
     private void removeTrayAt(World world, BlockPos trayPos, String reason) {
         try {
-            BukkitFurniture furniture = trayFurnitureCache.remove(trayPos);
-            if (!isAutoPlacedTray(furniture)) {
-                // Cache miss, or the auto-tray marker was lost: CraftEngine recreates furniture display
-                // entities across a restart/chunk reload, dropping our PDC marker, and the in-memory maps
-                // start empty after a restart. trayPos is the heat-source block directly under the owner
-                // (potPos.y-1). The tray id is craftable, but a player-placed "ground" tray anchors on TOP
-                // of a support block and cannot occupy that solid heat-source block - only the plugin's own
-                // canPlaceTrayAt() stands a tray inside a heat source - so any tray furniture at this exact
-                // block is our auto-tray and is safe to remove even without the marker (fixes orphaned
-                // trays after a restart).
-                Location location = new Location(world, trayPos.x(), trayPos.y(), trayPos.z());
-                int removed = 0;
-                for (BukkitFurniture stray : findTrayFurnitures(world, location)) {
-                    Entity entity = stray.bukkitEntity();
-                    if (entity != null && entity.isValid()) {
-                        CraftEngineFurniture.remove(entity, false, false);
-                        removed++;
+            Location location = new Location(world, trayPos.x(), trayPos.y(), trayPos.z());
+            int removed = 0;
+            for (BukkitFurniture furniture : findTrayFurnitures(world, location)) {
+                if (!isAutoPlacedTray(furniture)) {
+                    // Owner-specific cleanup still reclaims old unmarked tray furniture at the exact
+                    // auto-tray position. Global cleanup paths only scan marked trays.
+                    if (!"owner removed".equals(reason) && !"cleanup invalid owner".equals(reason)) {
+                        continue;
                     }
                 }
-                if (removed > 0 && plugin.isDebugEnabled("tray")) {
-                    plugin.getLogger().info(I18n.formatConsole("tray.removed", "pos", trayPos, "reason", reason));
+                Entity entity = furniture.bukkitEntity();
+                if (entity != null && entity.isValid()) {
+                    CraftEngineFurniture.remove(entity, false, false);
+                    removed++;
                 }
-                return;
             }
 
-            Entity entity = furniture.bukkitEntity();
-            if (entity != null && entity.isValid()) {
-                CraftEngineFurniture.remove(entity, false, false);
-            }
-
-            if (plugin.isDebugEnabled("tray")) {
+            if (removed > 0 && plugin.isDebugEnabled("tray")) {
                 plugin.getLogger().info(I18n.formatConsole("tray.removed", "pos", trayPos, "reason", reason));
             }
         } catch (Exception e) {
@@ -689,13 +857,6 @@ public class TrayManager {
         if (world == null || location == null) {
             return List.of();
         }
-        BlockPos trayPos = new BlockPos(location.getBlockX(), location.getBlockY(), location.getBlockZ());
-        BukkitFurniture cached = trayFurnitureCache.get(trayPos);
-        if (isAutoPlacedTray(cached)) {
-            return List.of(cached);
-        }
-        trayFurnitureCache.remove(trayPos);
-
         List<BukkitFurniture> furnitures = new ArrayList<>();
         double bx = location.getBlockX();
         double by = location.getBlockY();
@@ -706,6 +867,25 @@ public class TrayManager {
 
             BukkitFurniture furniture = CraftEngineFurniture.getLoadedFurnitureByMetaEntity(entity);
             if (furniture != null && furniture.id().toString().equals(trayFurnitureId)) {
+                furnitures.add(furniture);
+            }
+        }
+        return furnitures;
+    }
+
+    private List<BukkitFurniture> findAutoTrayFurnitures(World world) {
+        if (world == null) {
+            return List.of();
+        }
+        List<BukkitFurniture> furnitures = new ArrayList<>();
+        Set<UUID> seenEntities = new HashSet<>();
+        for (Entity entity : world.getEntitiesByClass(org.bukkit.entity.ItemDisplay.class)) {
+            BukkitFurniture furniture = CraftEngineFurniture.getLoadedFurnitureByMetaEntity(entity);
+            if (furniture == null || !furniture.id().toString().equals(trayFurnitureId) || !isAutoPlacedTray(furniture)) {
+                continue;
+            }
+            Entity rootEntity = furniture.bukkitEntity();
+            if (rootEntity != null && seenEntities.add(rootEntity.getUniqueId())) {
                 furnitures.add(furniture);
             }
         }
@@ -739,11 +919,6 @@ public class TrayManager {
                 CraftEngineFurniture.remove(entity, false, false);
             }
         }
-        if (isAutoPlacedTray(keep)) {
-            trayFurnitureCache.put(trayPos, keep);
-        } else {
-            trayFurnitureCache.remove(trayPos);
-        }
         if (plugin.isDebugEnabled("tray")) {
             plugin.getLogger().info(I18n.formatConsole("tray.duplicates_cleaned", "pos", trayPos, "reason", reason));
         }
@@ -751,42 +926,51 @@ public class TrayManager {
 
     public void cleanupWorld(UUID worldId) {
         World world = knownWorlds.remove(worldId);
+        if (world == null) {
+            world = Bukkit.getWorld(worldId);
+        }
         scheduledTraySyncs.removeIf(key -> key.worldId().equals(worldId));
         queuedTraySyncKeys.removeIf(key -> key.worldId().equals(worldId));
         queuedTraySyncs.removeIf(location -> location != null
                 && location.getWorld() != null
                 && location.getWorld().getUID().equals(worldId));
         stopQueuedSyncTaskIfIdle();
-        Map<BlockPos, BlockPos> worldTrays = cookingPotTrays.remove(worldId);
-        if (worldTrays != null) {
-            if (world != null) {
-                for (BlockPos trayPos : worldTrays.values()) {
-                    scheduleRemoveTrayAt(world, trayPos, "world cleanup");
-                }
+        if (world != null) {
+            if (plugin.scheduler().isFolia()) {
+                removeKnownOwnerTrays(worldId, "world cleanup");
+            } else {
+                removeAllTrays(world, "world cleanup");
             }
-            worldTrays.clear();
         }
     }
 
     private void removeAllTrays() {
-        for (Map.Entry<UUID, Map<BlockPos, BlockPos>> worldEntry : cookingPotTrays.entrySet()) {
-            World world = knownWorlds.get(worldEntry.getKey());
-            if (world == null) {
-                continue;
-            }
-            Map<BlockPos, BlockPos> worldTrays = worldEntry.getValue();
-            if (worldTrays == null || worldTrays.isEmpty()) {
-                continue;
-            }
-            for (BlockPos trayPos : worldTrays.values()) {
-                scheduleRemoveTrayAt(world, trayPos, "remove all trays");
-            }
-            worldTrays.clear();
+        if (plugin.scheduler().isFolia()) {
+            removeKnownOwnerTrays(null, "remove all trays");
+            clearPendingSyncs();
+            return;
         }
-        cookingPotTrays.clear();
-        scheduledTraySyncs.clear();
-        queuedTraySyncs.clear();
-        queuedTraySyncKeys.clear();
+
+        for (World world : Bukkit.getWorlds()) {
+            removeAllTrays(world, "remove all trays");
+        }
+        clearPendingSyncs();
+    }
+
+    private void removeAllTrays(World world, String reason) {
+        trackWorld(world);
+        for (BukkitFurniture furniture : findAutoTrayFurnitures(world)) {
+            Entity entity = furniture.bukkitEntity();
+            if (entity == null || !entity.isValid()) {
+                continue;
+            }
+            BlockPos trayPos = new BlockPos(
+                    entity.getLocation().getBlockX(),
+                    entity.getLocation().getBlockY(),
+                    entity.getLocation().getBlockZ()
+            );
+            scheduleRemoveTrayAt(world, trayPos, reason);
+        }
     }
 
     private void scheduleRemoveTrayAt(World world, BlockPos trayPos, String reason) {
@@ -810,5 +994,7 @@ public class TrayManager {
 
     private record TraySyncKey(UUID worldId, int x, int y, int z) {
     }
-}
 
+    private record TrayOwner(UUID worldId, BlockPos pos) {
+    }
+}

@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.listener;
 
 import com.huidu.farmersdelight.block.behavior.CuttingBoardBlockBehavior;
 import com.huidu.farmersdelight.block.behavior.CuttingBoardBlockEntity;
+import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.WorldGuardCompat;
@@ -35,7 +36,14 @@ public class CuttingBoardInteractListener implements Listener {
         }
 
         Block block = event.getClickedBlock();
+        if (block == null) {
+            return;
+        }
         if (!CuttingBoardBlockBehavior.isCuttingBoardBlock(block.getWorld(), new BlockPosKey(block.getLocation()))) {
+            return;
+        }
+        if (!player.hasPermission("farmersdelight.use.cutting_board")) {
+            player.sendActionBar(I18n.getComponent("general.no_permission", player));
             return;
         }
         if (!WorldGuardCompat.canUse(player, block) || !WorldGuardCompat.canBuild(player, block)) {

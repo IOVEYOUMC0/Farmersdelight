@@ -53,6 +53,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.world.WorldLoadEvent;
 import org.bukkit.event.world.WorldUnloadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.joml.Vector3f;
 
 import java.io.File;
 import java.io.IOException;
@@ -61,6 +62,9 @@ import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystemAlreadyExistsException;
@@ -84,6 +88,12 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     private static final String CRAFTENGINE_RESOURCE_ROOT = "craftengine/farmersdelight";
     private static final Path CRAFTENGINE_RESOURCE_TARGET = Path.of("CraftEngine", "resources", "farmersdelight");
+    private static final String[][] CONFIG_KEY_MIGRATIONS = {
+            {"knife-drops", "mob-extra-drops"},
+            {"entity-extra-drops", "mob-extra-drops"},
+            {"knife-drop-tools", "mob-extra-drop-tools"},
+            {"entity-extra-drop-tools", "mob-extra-drop-tools"}
+    };
 
     private static final List<String> ADVANCEMENT_RESOURCES = List.of(
             "advancements/pack.mcmeta",
@@ -146,6 +156,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private PetFoodConfig petFoodConfig;
     private ContainerReturnConfig containerReturnConfig;
     private CuttingBoardDisplayConfig cuttingBoardDisplayConfig;
+    private CuttingBoardDisplayConfig skilletDisplayConfig;
+    private CuttingBoardDisplayConfig stoveDisplayConfig;
     private CookingPotExperienceRewardConfig cookingPotExperienceRewardConfig;
     private AdvancementManager advancementManager;
     private boolean advancementsEnabled;
@@ -256,6 +268,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         }
 
         ensureConfigDefaults();
+        migrateConfigKeys();
         I18n.init(this);
 
         scheduler = new SchedulerAdapter(this);
@@ -730,6 +743,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         if (itemDisplayManager instanceof ProxyItemDisplayManager proxyItemDisplayManager) {
             proxyItemDisplayManager.reload();
         }
+        CuttingBoardBlockBehavior.refreshDisplayEntities();
         if (skilletManager != null) {
             skilletManager.reloadConfig();
             skilletManager.reloadRecipeCache();
@@ -743,6 +757,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     public void reloadAll() {
         ensureConfigDefaults();
         reloadConfig();
+        migrateConfigKeys();
         boolean previousAdvancementsEnabled = advancementsEnabled;
         loadConfigs();
         I18n.reload();
@@ -751,7 +766,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         clearLegacySkilletRecipeCache();
 
         if (knifeDropHandler != null) {
-            knifeDropHandler.loadConfig();
+            knifeDropHandler.loadConfig(false);
         }
         if (trayManager != null) {
             trayManager.reload();
@@ -766,6 +781,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         if (itemDisplayManager instanceof ProxyItemDisplayManager proxyItemDisplayManager) {
             proxyItemDisplayManager.reload();
         }
+        CuttingBoardBlockBehavior.refreshDisplayEntities();
         if (skilletManager != null) {
             skilletManager.reloadConfig();
             skilletManager.reloadRecipeCache();
@@ -781,13 +797,13 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         }
         reloadRecipesWhenReady("plugin.reloading_recipes");
 
-        logReloadSummary("plugin.configuration_reloaded");
         I18n.logInfo("plugin.configuration_reloaded");
     }
 
     public void reloadMainConfigOnly() {
         ensureConfigDefaults();
         reloadConfig();
+        migrateConfigKeys();
         boolean previousAdvancementsEnabled = advancementsEnabled;
         loadConfigs();
         RecipeViewGui.clearConfigCache();
@@ -795,7 +811,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         clearLegacySkilletRecipeCache();
 
         if (knifeDropHandler != null) {
-            knifeDropHandler.loadConfig();
+            knifeDropHandler.loadConfig(false);
         }
         if (trayManager != null) {
             trayManager.reload();
@@ -810,6 +826,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         if (itemDisplayManager instanceof ProxyItemDisplayManager proxyItemDisplayManager) {
             proxyItemDisplayManager.reload();
         }
+        CuttingBoardBlockBehavior.refreshDisplayEntities();
         if (skilletManager != null) {
             skilletManager.reloadConfig();
             skilletManager.reloadRecipeCache();
@@ -823,7 +840,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         if (previousAdvancementsEnabled != advancementsEnabled) {
             refreshAdvancementSystem(true);
         }
-        logReloadSummary("plugin.main_configuration_reloaded");
         I18n.logInfo("plugin.main_configuration_reloaded");
     }
 
@@ -923,6 +939,10 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
         cuttingBoardDisplayConfig = new CuttingBoardDisplayConfig();
         cuttingBoardDisplayConfig.loadFromConfig(getConfig().getConfigurationSection("cutting-board"));
+        skilletDisplayConfig = createSkilletDisplayConfig();
+        skilletDisplayConfig.loadFromConfig(getFirstConfigSection("skillet.display", "display-visuals.skillet"));
+        stoveDisplayConfig = createStoveDisplayConfig();
+        stoveDisplayConfig.loadFromConfig(getFirstConfigSection("stove.display", "display-visuals.stove"));
 
         cookingPotProgressDisplayEnabled = getConfigBoolean(true,
                 "cooking-pot.progress-display.enabled",
@@ -955,7 +975,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         cuttingBoardInteractionMode = normalizeCuttingBoardInteractionMode(
                 getConfig().getString("cutting-board.interaction-mode", "stacking")
         );
-        hopperInteractionsEnabled = getConfig().getBoolean("hopper-interactions.enabled", false);
+        hopperInteractionsEnabled = getConfig().getBoolean("hopper-interactions.enabled", true);
         cookingPotHopperInteractionsEnabled = getConfigBoolean(true,
                 "cooking-pot.hopper-interactions",
                 "hopper-interactions.cooking-pot");
@@ -965,18 +985,10 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         skilletConductorsAllowed = getConfigBoolean(false,
                 "skillet.heat.allow-conductors",
                 "heat-sources.skillet.allow-conductors");
-        skilletDisplayScale = (float) getConfigDouble(0.5D,
-                "skillet.display.scale",
-                "display-visuals.skillet.scale");
-        skilletDisplayYOffset = getConfigDouble(0.1D,
-                "skillet.display.y-offset",
-                "display-visuals.skillet.y-offset");
-        skilletDisplaySpread = Math.max(0.0D, getConfigDouble(0.15D,
-                "skillet.display.item-spread",
-                "display-visuals.skillet.item-spread"));
-        stoveDisplayScale = (float) getConfigDouble(0.375D,
-                "stove.display.scale",
-                "display-visuals.stove.scale");
+        skilletDisplayScale = skilletDisplayConfig.getDefaultUniformScale(0.5F);
+        skilletDisplayYOffset = skilletDisplayConfig.getDefaultOffset().y();
+        skilletDisplaySpread = skilletDisplayConfig.getItemSpread();
+        stoveDisplayScale = stoveDisplayConfig.getDefaultUniformScale(0.375F);
     }
 
     public ConfigurationSection getFirstConfigSection(String... paths) {
@@ -1154,18 +1166,67 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             }
             writeBundledResourceIfMissing("gui.yml", guiPath);
 
-            if (!isYamlReadable(configPath)) {
+            if (shouldRestoreConfig(configPath)) {
                 backupBrokenConfig(configPath);
                 writeBundledConfig(configPath);
-                I18n.logWarning("plugin.config_unreadable_restored", "file", "config.yml");
+                getLogger().warning("Restored unreadable config file from bundled defaults: config.yml");
             }
-            if (!isYamlReadable(guiPath)) {
+            if (shouldRestoreConfig(guiPath)) {
                 backupBrokenConfig(guiPath);
                 writeBundledResource("gui.yml", guiPath, true);
-                I18n.logWarning("plugin.config_unreadable_restored", "file", "gui.yml");
+                getLogger().warning("Restored unreadable config file from bundled defaults: gui.yml");
             }
         } catch (IOException e) {
-            I18n.logWarning("plugin.config_prepare_failed", "error", e.getMessage());
+            getLogger().warning("Failed to prepare bundled config files: " + e.getMessage());
+        }
+    }
+
+    private void migrateConfigKeys() {
+        boolean changed = false;
+        for (String[] migration : CONFIG_KEY_MIGRATIONS) {
+            changed |= migrateConfigSection(migration[0], migration[1]);
+        }
+        if (changed) {
+            saveConfig();
+            reloadConfig();
+        }
+    }
+
+    private boolean migrateConfigSection(String oldPath, String newPath) {
+        if (getConfig().isSet(newPath) || !getConfig().isSet(oldPath)) {
+            return false;
+        }
+        ConfigurationSection oldSection = getConfig().getConfigurationSection(oldPath);
+        if (oldSection != null) {
+            ConfigurationSection newSection = getConfig().createSection(newPath);
+            copyConfigSection(oldSection, newSection);
+        } else {
+            getConfig().set(newPath, getConfig().get(oldPath));
+        }
+        getConfig().set(oldPath, null);
+        getLogger().info("Migrated config key '" + oldPath + "' to '" + newPath + "'.");
+        return true;
+    }
+
+    private void copyConfigSection(ConfigurationSection source, ConfigurationSection target) {
+        for (String key : source.getKeys(false)) {
+            ConfigurationSection child = source.getConfigurationSection(key);
+            if (child != null) {
+                copyConfigSection(child, target.createSection(key));
+            } else {
+                target.set(key, source.get(key));
+            }
+        }
+    }
+
+    private boolean shouldRestoreConfig(Path configPath) {
+        if (!isYamlReadable(configPath)) {
+            return true;
+        }
+        try {
+            return Files.readString(configPath, StandardCharsets.UTF_8).indexOf('\uFFFD') >= 0;
+        } catch (IOException e) {
+            return true;
         }
     }
 
@@ -1203,24 +1264,75 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             if (inputStream == null) {
                 throw new IOException("Bundled " + resourcePath + " was not found in the plugin jar.");
             }
-            String content = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
-            if (replace) {
-                Files.writeString(
-                        targetPath,
-                        content,
-                        StandardCharsets.UTF_8,
-                        StandardOpenOption.CREATE,
-                        StandardOpenOption.TRUNCATE_EXISTING,
-                        StandardOpenOption.WRITE
-                );
-            } else {
-                Files.writeString(
-                        targetPath,
-                        content,
-                        StandardCharsets.UTF_8,
-                        StandardOpenOption.CREATE_NEW,
-                        StandardOpenOption.WRITE
-                );
+            String content = decodeUtf8Resource(inputStream.readAllBytes(), resourcePath);
+            if (isYamlResource(resourcePath) && !isYamlContentReadable(content)) {
+                throw new IOException("Bundled " + resourcePath + " is not valid YAML.");
+            }
+            writeStringAtomically(targetPath, content, replace);
+        }
+    }
+
+    private String decodeUtf8Resource(byte[] bytes, String resourcePath) throws IOException {
+        try {
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes))
+                    .toString();
+        } catch (CharacterCodingException e) {
+            throw new IOException("Bundled " + resourcePath + " is not valid UTF-8.", e);
+        }
+    }
+
+    private boolean isYamlResource(String resourcePath) {
+        return resourcePath != null
+                && (resourcePath.equals("config.yml") || resourcePath.equals("gui.yml"));
+    }
+
+    private boolean isYamlContentReadable(String content) {
+        try {
+            YamlConfiguration yaml = new YamlConfiguration();
+            yaml.loadFromString(content);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private void writeStringAtomically(Path targetPath, String content, boolean replace) throws IOException {
+        Path parent = targetPath.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        if (!replace && Files.exists(targetPath)) {
+            throw new IOException("Target already exists: " + targetPath);
+        }
+
+        Path tempFile = parent == null
+                ? Files.createTempFile(targetPath.getFileName().toString(), ".tmp")
+                : Files.createTempFile(parent, targetPath.getFileName().toString(), ".tmp");
+        boolean moved = false;
+        try {
+            Files.writeString(tempFile, content, StandardCharsets.UTF_8,
+                    StandardOpenOption.WRITE,
+                    StandardOpenOption.TRUNCATE_EXISTING);
+            try {
+                if (replace) {
+                    Files.move(tempFile, targetPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                } else {
+                    Files.move(tempFile, targetPath, StandardCopyOption.ATOMIC_MOVE);
+                }
+            } catch (AtomicMoveNotSupportedException ignored) {
+                if (replace) {
+                    Files.move(tempFile, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                } else {
+                    Files.move(tempFile, targetPath);
+                }
+            }
+            moved = true;
+        } finally {
+            if (!moved) {
+                Files.deleteIfExists(tempFile);
             }
         }
     }
@@ -1600,6 +1712,20 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         return cuttingBoardDisplayConfig;
     }
 
+    public CuttingBoardDisplayConfig getSkilletDisplayConfig() {
+        if (skilletDisplayConfig == null) {
+            skilletDisplayConfig = createSkilletDisplayConfig();
+        }
+        return skilletDisplayConfig;
+    }
+
+    public CuttingBoardDisplayConfig getStoveDisplayConfig() {
+        if (stoveDisplayConfig == null) {
+            stoveDisplayConfig = createStoveDisplayConfig();
+        }
+        return stoveDisplayConfig;
+    }
+
     public TrayManager getTrayManager() {
         return trayManager;
     }
@@ -1640,6 +1766,28 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         return stoveDisplayScale;
     }
 
+    private CuttingBoardDisplayConfig createSkilletDisplayConfig() {
+        return new CuttingBoardDisplayConfig(new CuttingBoardDisplayConfig.DisplayOverride(
+                null,
+                CuttingBoardDisplayConfig.DisplayStyle.AUTO,
+                new Vector3f(0.0F, 0.1F, 0.0F),
+                null,
+                null,
+                new Vector3f(0.5F, 0.5F, 0.5F)
+        ), 0.15F);
+    }
+
+    private CuttingBoardDisplayConfig createStoveDisplayConfig() {
+        return new CuttingBoardDisplayConfig(new CuttingBoardDisplayConfig.DisplayOverride(
+                null,
+                CuttingBoardDisplayConfig.DisplayStyle.AUTO,
+                new Vector3f(0.0F, 0.0F, 0.0F),
+                null,
+                null,
+                new Vector3f(0.375F, 0.375F, 0.375F)
+        ), 0.0F);
+    }
+
     private String normalizeCuttingBoardInteractionMode(String value) {
         String mode = value == null ? "stacking" : value.trim().toLowerCase(Locale.ROOT);
         if (!mode.equals("stacking") && !mode.equals("offhand")) {
@@ -1651,10 +1799,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     private void logStartupSummary() {
         logConfigSummary(I18n.formatConsole("plugin.startup_config"));
-    }
-
-    private void logReloadSummary(String labelKey) {
-        logConfigSummary(I18n.formatConsole(labelKey));
     }
 
     private void logConfigSummary(String label) {

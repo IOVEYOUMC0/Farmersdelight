@@ -26,6 +26,7 @@ public class CookingPotRecipeManager {
     private volatile Map<String, Map<String, Set<String>>> customIngredientToRecipes = Map.of();
     private volatile List<CookingPotRecipe> sortedRecipes = List.of();
     private volatile Map<String, List<CookingPotRecipe>> sortedCustomRecipes = Map.of();
+    private volatile Map<String, List<CookingPotRecipe>> sortedCustomOnlyRecipes = Map.of();
     private final Map<Key, Set<String>> vanillaItemIdsByTagCache = new ConcurrentHashMap<>();
     private final Map<String, CookingPotRecipe> recipeCache = new LinkedHashMap<>(MAX_CACHE_SIZE + 1, 0.75f, true) {
         @Override
@@ -43,7 +44,7 @@ public class CookingPotRecipeManager {
     public void loadRecipes() {
         // Build everything into fresh local collections, then publish atomically (below) so readers
         // never see a partially-cleared map. Do NOT clear()/repopulate the live fields in place.
-        Map<String, CookingPotRecipe> newRecipes = new HashMap<>();
+        Map<String, CookingPotRecipe> newRecipes = new LinkedHashMap<>();
         Map<String, Map<String, CookingPotRecipe>> newCustomRecipes = new HashMap<>();
         Map<String, Set<String>> newIngredientToRecipes = new HashMap<>();
         Map<String, Map<String, Set<String>>> newCustomIngredientToRecipes = new HashMap<>();
@@ -62,7 +63,9 @@ public class CookingPotRecipeManager {
 
         List<CookingPotRecipe> newSortedRecipes = sortedRecipeList(newRecipes);
         Map<String, List<CookingPotRecipe>> newSortedCustomRecipes = new HashMap<>();
+        Map<String, List<CookingPotRecipe>> newSortedCustomOnlyRecipes = new HashMap<>();
         for (Map.Entry<String, Map<String, CookingPotRecipe>> entry : newCustomRecipes.entrySet()) {
+            newSortedCustomOnlyRecipes.put(entry.getKey(), sortedRecipeList(entry.getValue()));
             Map<String, CookingPotRecipe> merged = new LinkedHashMap<>(newRecipes);
             merged.putAll(entry.getValue());
             newSortedCustomRecipes.put(entry.getKey(), sortedRecipeList(merged));
@@ -75,6 +78,7 @@ public class CookingPotRecipeManager {
         this.customIngredientToRecipes = newCustomIngredientToRecipes;
         this.sortedRecipes = newSortedRecipes;
         this.sortedCustomRecipes = newSortedCustomRecipes;
+        this.sortedCustomOnlyRecipes = newSortedCustomOnlyRecipes;
         this.validContainerKeys = Collections.unmodifiableSet(newValidContainerKeys);
 
         vanillaItemIdsByTagCache.clear();
@@ -127,7 +131,8 @@ public class CookingPotRecipeManager {
             return List.of();
         }
         List<CookingPotRecipe> sorted = new ArrayList<>(source.values());
-        sorted.sort(Comparator.comparing(CookingPotRecipe::getId));
+        sorted.sort(Comparator.comparingInt(CookingPotRecipe::getPriority).reversed()
+                .thenComparing(CookingPotRecipe::getId));
         return Collections.unmodifiableList(sorted);
     }
 
@@ -188,10 +193,33 @@ public class CookingPotRecipeManager {
         result.setAmount(Math.max(1, section.getInt("result-count", 1)));
 
         float experience = Math.max(0, (float) section.getDouble("experience", 0.0));
-        int cookTime = Math.max(20, Math.min(6000, section.getInt("cook-time", Constants.DEFAULT_COOKING_TIME_COOKING_POT)));
+        int defaultCookTime = Math.max(1, plugin.getConfigInt(Constants.DEFAULT_COOKING_TIME_COOKING_POT,
+                "cooking-pot.cooking.default-cook-time",
+                "cooking-pot.default-cook-time"));
+        int minCookTime = Math.max(1, plugin.getConfigInt(20,
+                "cooking-pot.cooking.min-cook-time",
+                "cooking-pot.min-cook-time"));
+        int maxCookTime = Math.max(minCookTime, plugin.getConfigInt(6000,
+                "cooking-pot.cooking.max-cook-time",
+                "cooking-pot.max-cook-time"));
+        int cookTime = Math.max(minCookTime, Math.min(maxCookTime, getInt(section,
+                defaultCookTime,
+                "cooking_time",
+                "cooking-time",
+                "cook-time")));
         String category = section.getString("category", "misc");
+        int priority = section.getInt("priority", 0);
 
-        return new CookingPotRecipe(id, ingredients, container, needsContainer, result, experience, cookTime, category);
+        return new CookingPotRecipe(id, ingredients, container, needsContainer, result, experience, cookTime, category, priority);
+    }
+
+    private int getInt(ConfigurationSection section, int defaultValue, String... keys) {
+        for (String key : keys) {
+            if (section.contains(key)) {
+                return section.getInt(key, defaultValue);
+            }
+        }
+        return defaultValue;
     }
 
     private RecipeIngredient parseIngredient(String str) {
@@ -298,18 +326,13 @@ public class CookingPotRecipeManager {
             return null;
         }
         Set<String> candidateRecipes = findCandidateRecipes(nonEmptyInputs, customIngredientToRecipes.get(customRecipeGroupId));
-        if (candidateRecipes != null && !candidateRecipes.isEmpty()) {
-            for (String recipeId : candidateRecipes) {
-                CookingPotRecipe recipe = groupRecipes.get(recipeId);
-                if (recipe != null && matchesContainer(recipe, container) && matchRecipe(recipe, nonEmptyInputs)) {
-                    return recipe;
-                }
-            }
+        List<CookingPotRecipe> orderedRecipes = sortedCustomOnlyRecipes.getOrDefault(customRecipeGroupId, List.of());
+        CookingPotRecipe matched = matchFirstRecipe(orderedRecipes, candidateRecipes, container, nonEmptyInputs);
+        if (matched != null) {
+            return matched;
         }
-        for (CookingPotRecipe recipe : groupRecipes.values()) {
-            if (matchesContainer(recipe, container) && matchRecipe(recipe, nonEmptyInputs)) {
-                return recipe;
-            }
+        if (candidateRecipes != null) {
+            return matchFirstRecipe(orderedRecipes, null, container, nonEmptyInputs);
         }
         return null;
     }
@@ -317,15 +340,25 @@ public class CookingPotRecipeManager {
     private CookingPotRecipe matchDefaultRecipe(List<ItemStack> nonEmptyInputs, ItemStack container) {
         Set<String> candidateRecipes = findCandidateRecipes(nonEmptyInputs, ingredientToRecipes);
 
-        if (candidateRecipes != null && !candidateRecipes.isEmpty()) {
-            for (String recipeId : candidateRecipes) {
-                CookingPotRecipe recipe = recipes.get(recipeId);
-                if (recipe != null && matchesContainer(recipe, container) && matchRecipe(recipe, nonEmptyInputs)) {
-                    return recipe;
-                }
-            }
+        CookingPotRecipe matched = matchFirstRecipe(sortedRecipes, candidateRecipes, container, nonEmptyInputs);
+        if (matched != null) {
+            return matched;
         }
-        for (CookingPotRecipe recipe : recipes.values()) {
+        if (candidateRecipes != null) {
+            return matchFirstRecipe(sortedRecipes, null, container, nonEmptyInputs);
+        }
+        return null;
+    }
+
+    private CookingPotRecipe matchFirstRecipe(List<CookingPotRecipe> orderedRecipes, Set<String> candidateRecipeIds,
+                                              ItemStack container, List<ItemStack> nonEmptyInputs) {
+        if (orderedRecipes == null || orderedRecipes.isEmpty()) {
+            return null;
+        }
+        for (CookingPotRecipe recipe : orderedRecipes) {
+            if (candidateRecipeIds != null && !candidateRecipeIds.contains(recipe.getId())) {
+                continue;
+            }
             if (matchesContainer(recipe, container) && matchRecipe(recipe, nonEmptyInputs)) {
                 return recipe;
             }

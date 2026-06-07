@@ -161,8 +161,8 @@ console:
     invalid_vanilla_block: "热源配置中的原版方块 ID 无效：{id}"
     invalid_vanilla_conductor: "原版导热方块材质无效：{id}"
   knife:
-    loaded_rules: "已加载 {count} 条小刀掉落规则"
-    loaded_matchers: "已加载 {tags} 个小刀标签和 {items} 个小刀物品"
+    loaded_rules: "已加载 {count} 条生物额外掉落规则"
+    loaded_matchers: "已加载 {tags} 个额外掉落工具标签和 {items} 个额外掉落工具物品"
     dropped: "已在 {location} 从 {entity} 掉落 {item}"
     invalid_item_id: "物品 ID 格式无效：{id}"
   recipe:
@@ -203,6 +203,7 @@ console:
     removed: "已移除 {pos} 的自动托盘，原因={reason}"
     remove_failed: "移除托盘家具失败：{error}"
     duplicates_cleaned: "已清理 {pos} 的重复自动托盘，原因={reason}"
+    invalid_marker_key: "托盘 marker-key '{key}' 无效，已改用 auto_tray_marker"
   gui_runtime:
     create_item_failed: "根据 key 创建物品失败：{key}"
     unregister_tick_failed: "注销 GUI tick 回调失败：{error}"

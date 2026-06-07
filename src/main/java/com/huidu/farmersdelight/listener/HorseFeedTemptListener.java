@@ -27,7 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class HorseFeedTemptListener implements Listener {
 
     private static final long DEFAULT_TICK_INTERVAL = 10L;
-    private static final int DEFAULT_TICK_BUDGET = 64;
+    private static final int DEFAULT_TICK_BUDGET = 128;
 
     private final FarmersDelightPlugin plugin;
     private final Set<UUID> activeTempters = ConcurrentHashMap.newKeySet();
@@ -46,11 +46,15 @@ public class HorseFeedTemptListener implements Listener {
     }
 
     public void start() {
-        reload();
+        reload(true);
     }
 
     public void reload() {
-        loadConfig();
+        reload(false);
+    }
+
+    public void reload(boolean logSummary) {
+        loadConfig(logSummary);
         restartTask();
     }
 
@@ -81,7 +85,7 @@ public class HorseFeedTemptListener implements Listener {
         scheduledTempterTicks.clear();
     }
 
-    private void loadConfig() {
+    private void loadConfig(boolean logSummary) {
         PetFoodConfig config = plugin.getPetFoodConfig();
         long shortestInterval = Long.MAX_VALUE;
         temptFoods.clear();
@@ -98,10 +102,12 @@ public class HorseFeedTemptListener implements Listener {
         enabled = !temptFoods.isEmpty();
         tickInterval = shortestInterval == Long.MAX_VALUE ? DEFAULT_TICK_INTERVAL : shortestInterval;
         tickBudget = Math.max(1, plugin.getConfig().getInt("performance.pet-tempt-tick-budget", DEFAULT_TICK_BUDGET));
-        I18n.logInfo("pet_food.tempt_loaded",
-                "enabled", enabled,
-                "foods", temptFoods.size(),
-                "interval", tickInterval);
+        if (logSummary) {
+            I18n.logInfo("pet_food.tempt_loaded",
+                    "enabled", enabled,
+                    "foods", temptFoods.size(),
+                    "interval", tickInterval);
+        }
     }
 
     private void refreshTemptStatus(Player player) {
@@ -267,4 +273,3 @@ public class HorseFeedTemptListener implements Listener {
     }
 
 }
-

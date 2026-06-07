@@ -29,18 +29,25 @@ final class RecipeFileLoader {
     static YamlConfiguration loadRecipeFile(FarmersDelightPlugin plugin, String relativePath) {
         File recipesFile = new File(plugin.getDataFolder(), relativePath);
         if (!recipesFile.exists()) {
-            plugin.saveResource(relativePath, false);
+            try {
+                plugin.saveResource(relativePath, false);
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Failed to save bundled recipe file " + relativePath + ": " + e.getMessage());
+                return new YamlConfiguration();
+            }
         }
 
         // Read explicitly as UTF-8 (like config.yml / lang files) rather than via the deprecated
         // platform-default-charset loadConfiguration(File), so non-ASCII recipe content is not
         // corrupted on servers whose default charset is not UTF-8 (common on Windows).
         try (Reader reader = new InputStreamReader(Files.newInputStream(recipesFile.toPath()), StandardCharsets.UTF_8)) {
-            return YamlConfiguration.loadConfiguration(reader);
-        } catch (IOException e) {
-            plugin.getLogger().warning("Failed to read recipe file " + relativePath
-                    + " as UTF-8; falling back to platform charset. " + e.getMessage());
-            return YamlConfiguration.loadConfiguration(recipesFile);
+            YamlConfiguration yaml = new YamlConfiguration();
+            yaml.load(reader);
+            return yaml;
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to load recipe file " + relativePath
+                    + " as UTF-8 YAML; skipping it. " + e.getMessage());
+            return new YamlConfiguration();
         }
     }
 
