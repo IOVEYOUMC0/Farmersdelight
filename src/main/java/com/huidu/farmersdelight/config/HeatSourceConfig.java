@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
 public class HeatSourceConfig {
 
     private static final Pattern BLOCK_STATE_PATTERN = Pattern.compile(
-            "^([a-z0-9_]+:[a-z0-9_]+)(?:\\[([^\\]]+)\\])?$"
+            "^([a-z0-9_.-]+:[a-z0-9_./-]+)(?:\\[([^\\]]+)\\])?$"
     );
 
     private static Logger LOGGER;
@@ -279,4 +279,3 @@ public class HeatSourceConfig {
         }
     }
 }
-

@@ -4,6 +4,7 @@ import com.huidu.farmersdelight.util.*;
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.advancement.AdvancementManager;
 import com.huidu.farmersdelight.block.behavior.SkilletBlockBehavior;
+import com.huidu.farmersdelight.config.CuttingBoardDisplayConfig;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.storage.LegacyBlockStorageManager;
 import com.huidu.farmersdelight.util.scheduler.PluginTask;
@@ -12,6 +13,7 @@ import fr.ateastudio.farmersdelight.api.event.ProfessionCookingExperienceEvent;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.CookingRecipe;
@@ -30,9 +32,15 @@ public class SkilletManager {
 
     private static final String BLOCK_TYPE = "skillet";
     
-    private static final int MIN_COOK_TIME = 60;
     private static final int HEARTBEAT_LOG_INTERVAL = 20;
     private static final int DEFAULT_TICK_BUDGET = 512;
+    private static final int DEFAULT_COOK_TIME = Constants.DEFAULT_COOKING_TIME_SKILLET;
+    private static final int DEFAULT_MIN_COOK_TIME = 60;
+    private static final int DEFAULT_COOLING_DECREMENT = 2;
+    private static final double DEFAULT_COOK_TIME_MULTIPLIER = Constants.SKILLET_COOKING_TIME_REDUCTION;
+    private static final double DEFAULT_FIRE_ASPECT_BONUS = Constants.SKILLET_FIRE_ASPECT_BONUS;
+    private static final double DEFAULT_SMOKE_CHANCE = Constants.SKILLET_PARTICLE_CHANCE;
+    private static final double DEFAULT_SIZZLE_CHANCE = Constants.SKILLET_SIZZLE_CHANCE;
 
     private final FarmersDelightPlugin plugin;
     private final Map<Location, SkilletData> skillets = new ConcurrentHashMap<>();
@@ -47,6 +55,24 @@ public class SkilletManager {
     private int heartbeatTicks;
     private int tickCursor;
     private int tickBudget;
+    private int defaultCookingTime = DEFAULT_COOK_TIME;
+    private int minCookingTime = DEFAULT_MIN_COOK_TIME;
+    private int coolingDecrement = DEFAULT_COOLING_DECREMENT;
+    private double cookTimeMultiplier = DEFAULT_COOK_TIME_MULTIPLIER;
+    private double fireAspectBonus = DEFAULT_FIRE_ASPECT_BONUS;
+    private boolean smokeEnabled = true;
+    private Particle smokeParticle = Particle.SMOKE;
+    private double smokeChance = DEFAULT_SMOKE_CHANCE;
+    private int smokeCount = 2;
+    private double smokeYOffset = 0.2D;
+    private double smokeOffsetX = 0.1D;
+    private double smokeOffsetY = 0.1D;
+    private double smokeOffsetZ = 0.1D;
+    private double smokeSpeed = 0.02D;
+    private boolean sizzleEnabled = true;
+    private double sizzleChance = DEFAULT_SIZZLE_CHANCE;
+    private float sizzleVolume = 0.5F;
+    private float sizzlePitch = 1.0F;
 
     public static class SkilletData {
         final Location location;
@@ -54,8 +80,9 @@ public class SkilletManager {
         ItemStack skilletStack;
         ItemStack displayedItem;
         BlockFace displayedFacing;
+        CuttingBoardDisplayConfig.DisplayOverride displayedOverride;
         int cookingProgress = 0;
-        int cookingDuration = Constants.DEFAULT_COOKING_TIME_SKILLET;
+        int cookingDuration;
         CookingRecipe<?> currentRecipe;
         int fireAspectLevel = 0;
         UUID ownerId;
@@ -63,8 +90,9 @@ public class SkilletManager {
         final List<Integer> displayEntityIds = new ArrayList<>();
         Boolean lastHeatState;
 
-        SkilletData(Location location) {
+        SkilletData(Location location, int defaultCookingTime) {
             this.location = location;
+            this.cookingDuration = defaultCookingTime;
         }
 
         boolean hasItem() {
@@ -90,6 +118,47 @@ public class SkilletManager {
         this.tickBudget = Math.max(1, plugin.getConfigInt(DEFAULT_TICK_BUDGET,
                 "skillet.tick-budget",
                 "performance.skillet-tick-budget"));
+        this.defaultCookingTime = Math.max(1, plugin.getConfigInt(DEFAULT_COOK_TIME,
+                "skillet.cooking.default-cook-time",
+                "skillet.default-cook-time"));
+        this.minCookingTime = Math.max(1, plugin.getConfigInt(DEFAULT_MIN_COOK_TIME,
+                "skillet.cooking.min-cook-time",
+                "skillet.min-cook-time"));
+        this.coolingDecrement = Math.max(0, plugin.getConfigInt(DEFAULT_COOLING_DECREMENT,
+                "skillet.cooking.cooling-decrement",
+                "skillet.cooling-decrement"));
+        this.cookTimeMultiplier = ManagerSupport.clampChance(plugin.getConfigDouble(DEFAULT_COOK_TIME_MULTIPLIER,
+                "skillet.cooking.cook-time-multiplier",
+                "skillet.cooking-time-reduction"));
+        this.fireAspectBonus = ManagerSupport.clampChance(plugin.getConfigDouble(DEFAULT_FIRE_ASPECT_BONUS,
+                "skillet.cooking.fire-aspect-bonus",
+                "skillet.fire-aspect-bonus"));
+        loadEffectsConfig();
+        refreshVisualsAfterConfigReload();
+    }
+
+    private void loadEffectsConfig() {
+        ConfigurationSection effectsSection = plugin.getFirstConfigSection("skillet.effects");
+        ConfigurationSection smokeSection = effectsSection != null ? effectsSection.getConfigurationSection("smoke") : null;
+        smokeEnabled = smokeSection == null || smokeSection.getBoolean("enabled", true);
+        smokeParticle = ManagerSupport.resolveParticle(smokeSection == null ? null : smokeSection.getString("type"), Particle.SMOKE);
+        smokeChance = ManagerSupport.clampChance(smokeSection == null
+                ? DEFAULT_SMOKE_CHANCE
+                : smokeSection.getDouble("chance", DEFAULT_SMOKE_CHANCE));
+        smokeCount = Math.max(1, smokeSection == null ? 2 : smokeSection.getInt("count", 2));
+        smokeYOffset = smokeSection == null ? 0.2D : smokeSection.getDouble("y-offset", 0.2D);
+        smokeOffsetX = Math.max(0.0D, smokeSection == null ? 0.1D : smokeSection.getDouble("offset-x", 0.1D));
+        smokeOffsetY = Math.max(0.0D, smokeSection == null ? 0.1D : smokeSection.getDouble("offset-y", 0.1D));
+        smokeOffsetZ = Math.max(0.0D, smokeSection == null ? 0.1D : smokeSection.getDouble("offset-z", 0.1D));
+        smokeSpeed = Math.max(0.0D, smokeSection == null ? 0.02D : smokeSection.getDouble("speed", 0.02D));
+
+        ConfigurationSection sizzleSection = effectsSection != null ? effectsSection.getConfigurationSection("sizzle") : null;
+        sizzleEnabled = sizzleSection == null || sizzleSection.getBoolean("enabled", true);
+        sizzleChance = ManagerSupport.clampChance(sizzleSection == null
+                ? DEFAULT_SIZZLE_CHANCE
+                : sizzleSection.getDouble("chance", DEFAULT_SIZZLE_CHANCE));
+        sizzleVolume = (float) Math.max(0.0D, sizzleSection == null ? 0.5D : sizzleSection.getDouble("volume", 0.5D));
+        sizzlePitch = (float) Math.max(0.0D, sizzleSection == null ? 1.0D : sizzleSection.getDouble("pitch", 1.0D));
     }
 
     private void ensureTaskRunning() {
@@ -117,7 +186,7 @@ public class SkilletManager {
             return existing;
         }
 
-        SkilletData created = new SkilletData(normalized);
+        SkilletData created = new SkilletData(normalized, defaultCookingTime);
         SkilletData previous = skillets.putIfAbsent(normalized, created);
         if (previous != null) {
             return previous;
@@ -425,7 +494,7 @@ public class SkilletManager {
             return;
         }
 
-        SkilletData skillet = new SkilletData(location);
+        SkilletData skillet = new SkilletData(location, defaultCookingTime);
 
         if (data.get("storedItem") instanceof ItemStack storedItem) {
             skillet.storedItem = storedItem.clone();
@@ -635,16 +704,17 @@ public class SkilletManager {
     }
 
     private int getAdjustedCookingTime(int baseTime, int fireAspectLevel) {
-        int cookingTime = baseTime > 0 ? baseTime : Constants.DEFAULT_COOKING_TIME_SKILLET;
+        int cookingTime = baseTime > 0 ? baseTime : defaultCookingTime;
         int cookingSeconds = cookingTime / 20;
-        float cookingTimeReduction = Constants.SKILLET_COOKING_TIME_REDUCTION;
+        double cookingTimeReduction = cookTimeMultiplier;
 
         if (fireAspectLevel > 0) {
-            cookingTimeReduction -= fireAspectLevel * Constants.SKILLET_FIRE_ASPECT_BONUS;
+            cookingTimeReduction -= fireAspectLevel * fireAspectBonus;
         }
+        cookingTimeReduction = Math.max(0.0D, cookingTimeReduction);
 
         int result = (int) (cookingSeconds * cookingTimeReduction) * 20;
-        return Math.max(MIN_COOK_TIME, Math.min(result, cookingTime));
+        return Math.min(cookingTime, Math.max(minCookingTime, result));
     }
 
     private void tick() {
@@ -740,17 +810,17 @@ public class SkilletManager {
         skillet.lastHeatState = hasHeat;
 
         if (!hasHeat || skillet.currentRecipe == null) {
-            skillet.cookingProgress = Math.max(0, skillet.cookingProgress - 2);
+            skillet.cookingProgress = Math.max(0, skillet.cookingProgress - coolingDecrement);
             return;
         }
 
         skillet.cookingProgress++;
 
-        if (Math.random() < Constants.SKILLET_PARTICLE_CHANCE) {
+        if (smokeEnabled && Math.random() < smokeChance) {
             spawnCookingParticles(location);
         }
-        if (Math.random() < Constants.SKILLET_SIZZLE_CHANCE) {
-            SoundUtils.play(world, location, getSizzleSound(location), Sound.BLOCK_CAMPFIRE_CRACKLE, 0.5f, 1.0f);
+        if (sizzleEnabled && Math.random() < sizzleChance) {
+            SoundUtils.play(world, location, getSizzleSound(location), Sound.BLOCK_CAMPFIRE_CRACKLE, sizzleVolume, sizzlePitch);
         }
         if (skillet.cookingProgress >= skillet.cookingDuration) {
             debug(() -> "tick finish: progress reached duration for " + formatItem(skillet.storedItem)
@@ -874,8 +944,16 @@ public class SkilletManager {
     }
 
     private void spawnCookingParticles(Location location) {
-        Location particleLocation = location.clone().add(0.5, 0.2, 0.5);
-        location.getWorld().spawnParticle(Particle.SMOKE, particleLocation, 2, 0.1, 0.1, 0.1, 0.02);
+        Location particleLocation = location.clone().add(0.5, smokeYOffset, 0.5);
+        location.getWorld().spawnParticle(
+                smokeParticle,
+                particleLocation,
+                smokeCount,
+                smokeOffsetX,
+                smokeOffsetY,
+                smokeOffsetZ,
+                smokeSpeed
+        );
     }
 
     private void createVisual(Location location, SkilletData skillet) {
@@ -885,20 +963,28 @@ public class SkilletManager {
             return;
         }
 
-        ItemStack visualItem = skillet.storedItem.clone();
-        visualItem.setAmount(1);
+        CuttingBoardDisplayConfig displayConfig = plugin.getSkilletDisplayConfig();
+        CuttingBoardDisplayConfig.DisplayOverride displayOverride = displayConfig.getOverride(skillet.storedItem);
+        ItemStack visualItem = displayConfig.resolveDisplayItem(skillet.storedItem, displayOverride);
+        if (visualItem == null || visualItem.getType().isAir()) {
+            debug("spawn display: skipped unresolved display item for " + formatItem(skillet.storedItem)
+                    + " at " + formatLocation(location));
+            cleanupVisual(skillet);
+            return;
+        }
         BlockFace facing = CustomBlockUtils.getFacing(location.getBlock());
         boolean itemChanged = skillet.displayedItem == null || !skillet.displayedItem.isSimilar(visualItem);
         boolean facingChanged = skillet.displayedFacing != facing;
-        if (itemChanged || facingChanged) {
+        boolean overrideChanged = !displayOverride.equals(skillet.displayedOverride);
+        int displayCount = getModelCount(skillet.storedItem);
+        if (itemChanged || facingChanged || overrideChanged || skillet.displayEntityIds.size() != displayCount) {
             cleanupVisual(skillet);
             skillet.displayedItem = visualItem;
             skillet.displayedFacing = facing;
+            skillet.displayedOverride = displayOverride;
         }
 
-        int displayCount = getModelCount(skillet.storedItem);
         Random random = new Random(getVisualSeed(skillet.storedItem));
-        float yRotation = DisplayTransformUtils.skilletYaw(facing);
         debug("spawn display: target " + displayCount + " displays for " + formatItem(skillet.storedItem)
                 + " at " + formatLocation(location));
 
@@ -911,24 +997,50 @@ public class SkilletManager {
         }
 
         for (int i = skillet.displayEntityIds.size(); i < displayCount; i++) {
-            double spread = plugin.getSkilletDisplaySpread();
+            double spread = displayConfig.getItemSpread();
             double offsetX = displayCount == 1 ? 0 : (random.nextDouble() - 0.5D) * spread;
             double offsetZ = displayCount == 1 ? 0 : (random.nextDouble() - 0.5D) * spread;
-            double offsetY = plugin.getSkilletDisplayYOffset() + ((i + 1) * 0.03D);
+            double offsetY = (i + 1) * 0.03D;
+            Vector3f configuredOffset = displayOverride.offset();
+            if (configuredOffset != null) {
+                offsetX += configuredOffset.x();
+                offsetY += configuredOffset.y();
+                offsetZ += configuredOffset.z();
+            }
 
             ItemStack stackForDisplay = visualItem.clone();
+
+            boolean isBlockItem = switch (displayOverride.style()) {
+                case BLOCK -> true;
+                case ITEM -> false;
+                default -> ItemUtils.shouldUseBlockStyleDisplay(stackForDisplay);
+            };
+            float xRotation = isBlockItem ? 0.0F : 90.0F;
+            float yRotation = DisplayTransformUtils.skilletYaw(facing);
+            float zRotation = 0.0F;
+            if (displayOverride.rotationDegrees() != null) {
+                xRotation = displayOverride.rotationDegrees().x();
+                yRotation = displayOverride.rotationDegrees().y();
+                zRotation = displayOverride.rotationDegrees().z();
+            }
 
             Quaternionf leftRotation = new Quaternionf();
             leftRotation.rotationYXZ(
                     (float) Math.toRadians(yRotation),
-                    (float) Math.toRadians(90.0f),
-                    0.0f
+                    (float) Math.toRadians(xRotation),
+                    (float) Math.toRadians(zRotation)
             );
 
+            Vector3f translation = displayOverride.translation() == null
+                    ? new Vector3f(0.0F, 0.0F, 0.0F)
+                    : new Vector3f(displayOverride.translation());
+            Vector3f scale = displayOverride.scale() == null
+                    ? new Vector3f(plugin.getSkilletDisplayScale(), plugin.getSkilletDisplayScale(), plugin.getSkilletDisplayScale())
+                    : new Vector3f(displayOverride.scale());
             Transformation transformation = new Transformation(
-                    new Vector3f(0.0f, 0.0f, 0.0f),
+                    translation,
                     leftRotation,
-                    new Vector3f(plugin.getSkilletDisplayScale(), plugin.getSkilletDisplayScale(), plugin.getSkilletDisplayScale()),
+                    scale,
                     new Quaternionf()
             );
 
@@ -1002,6 +1114,7 @@ public class SkilletManager {
         if (skillet.displayEntityIds.isEmpty()) {
             skillet.displayedItem = null;
             skillet.displayedFacing = null;
+            skillet.displayedOverride = null;
             return;
         }
 
@@ -1010,6 +1123,7 @@ public class SkilletManager {
             skillet.displayEntityIds.clear();
             skillet.displayedItem = null;
             skillet.displayedFacing = null;
+            skillet.displayedOverride = null;
             return;
         }
 
@@ -1019,6 +1133,7 @@ public class SkilletManager {
         skillet.displayEntityIds.clear();
         skillet.displayedItem = null;
         skillet.displayedFacing = null;
+        skillet.displayedOverride = null;
     }
 
     private void ensureVisualsExist(Location location, SkilletData skillet) {
@@ -1028,8 +1143,26 @@ public class SkilletManager {
 
         int expectedCount = getModelCount(skillet.storedItem);
         BlockFace facing = CustomBlockUtils.getFacing(location.getBlock());
-        if (skillet.displayEntityIds.size() != expectedCount || skillet.displayedFacing != facing) {
+        CuttingBoardDisplayConfig.DisplayOverride displayOverride = plugin.getSkilletDisplayConfig().getOverride(skillet.storedItem);
+        ItemStack visualItem = plugin.getSkilletDisplayConfig().resolveDisplayItem(skillet.storedItem, displayOverride);
+        boolean itemChanged = visualItem != null && (skillet.displayedItem == null || !skillet.displayedItem.isSimilar(visualItem));
+        if (skillet.displayEntityIds.size() != expectedCount
+                || skillet.displayedFacing != facing
+                || !displayOverride.equals(skillet.displayedOverride)
+                || itemChanged) {
             createVisual(location, skillet);
+        }
+    }
+
+    private void refreshVisualsAfterConfigReload() {
+        if (skillets.isEmpty()) {
+            return;
+        }
+        for (SkilletData skillet : skillets.values()) {
+            if (skillet != null && skillet.hasItem()) {
+                cleanupVisual(skillet);
+                createVisual(skillet.location, skillet);
+            }
         }
     }
 

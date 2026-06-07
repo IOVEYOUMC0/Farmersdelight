@@ -13,6 +13,7 @@
 #         count: <amount>        # Optional, defaults to 1
 #         chance: <0.0-1.0>      # Optional, defaults to 1.0
 #     sound: <sound_id>          # Optional, defaults to entity.sheep.shear
+#     priority: <number>         # Optional; higher priority wins when recipes overlap
 
 cutting_board_recipes:
   # ========================================

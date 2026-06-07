@@ -30,7 +30,7 @@ import java.util.*;
 
 public class ChunkLoadListener implements Listener {
 
-    private static final int STARTUP_CHUNK_LOADS_PER_TICK = 16;
+    private static final int DEFAULT_STARTUP_CHUNK_LOADS_PER_TICK = 16;
 
     private final FarmersDelightPlugin plugin;
     private PluginTask startupLoadTask;
@@ -71,7 +71,9 @@ public class ChunkLoadListener implements Listener {
         }
 
         startupLoadTask = plugin.scheduler().runRepeating(() -> {
-            for (int i = 0; i < STARTUP_CHUNK_LOADS_PER_TICK; i++) {
+            int chunksPerTick = Math.max(1, plugin.getConfigInt(DEFAULT_STARTUP_CHUNK_LOADS_PER_TICK,
+                    "performance.startup-chunk-loads-per-tick"));
+            for (int i = 0; i < chunksPerTick; i++) {
                 StartupChunk chunk = chunksToLoad.pollFirst();
                 if (chunk == null) {
                     PluginTask task = startupLoadTask;
@@ -267,4 +269,3 @@ public class ChunkLoadListener implements Listener {
     private record StartupChunk(World world, int chunkX, int chunkZ) {
     }
 }
-

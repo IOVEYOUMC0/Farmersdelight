@@ -161,8 +161,8 @@ console:
     invalid_vanilla_block: "Invalid vanilla block ID in heat source config: {id}"
     invalid_vanilla_conductor: "Invalid vanilla conductor material: {id}"
   knife:
-    loaded_rules: "Loaded {count} knife drop rules"
-    loaded_matchers: "Loaded {tags} knife tags and {items} knife items"
+    loaded_rules: "Loaded {count} entity extra drop rules"
+    loaded_matchers: "Loaded {tags} extra-drop tool tags and {items} extra-drop tool items"
     dropped: "Dropped {item} from {entity} at {location}"
     invalid_item_id: "Invalid item ID format: {id}"
   recipe:
@@ -203,6 +203,7 @@ console:
     removed: "Removed auto-placed tray at {pos} reason={reason}"
     remove_failed: "Failed to remove tray furniture: {error}"
     duplicates_cleaned: "Cleaned duplicate auto trays at {pos} reason={reason}"
+    invalid_marker_key: "Invalid tray marker-key '{key}', using auto_tray_marker"
   gui_runtime:
     create_item_failed: "Failed to create item from key: {key}"
     unregister_tick_failed: "Error unregistering GUI tick callback: {error}"

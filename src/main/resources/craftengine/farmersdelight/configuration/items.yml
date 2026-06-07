@@ -41,7 +41,7 @@ templates:
             particles: false
 items:
   farmersdelight:straw:
-    material: wheat
+    material: paper
     model: ${__NAMESPACE__}:item/${__ID__}
     data:
       item-name: <!i><l10n:item.farmersdelight.straw>
@@ -55,6 +55,9 @@ items:
     model: ${__NAMESPACE__}:item/${__ID__}
     data:
       item-name: <!i><l10n:item.farmersdelight.tree_bark>
+    settings:
+      compost_probability: 0.3
+      fuel_time: 80
   farmersdelight:apple_cider:
     template: farmersdelight:drink_template
     data:
@@ -1460,6 +1463,16 @@ recipes:
     result:
       id: farmersdelight:smoked_ham
       count: 1
+  farmersdelight:tree_bark:
+    type: shapeless
+    category: misc
+    ingredients:
+      - "farmersdelight:tree_bark"
+      - "farmersdelight:tree_bark"
+      - "farmersdelight:tree_bark"
+    result:
+      id: minecraft:paper
+      count: 1
   farmersdelight:pie_crust_milk_bucket:
     type: shaped
     category: misc
@@ -2113,6 +2126,22 @@ recipes:
       - "farmersdelight:onion"
     result:
       id: farmersdelight:shepherds_pie_block
+      count: 1
+  farmersdelight:gleaming_salad_block:
+    type: shapeless
+    category: misc
+    ingredients:
+      - "minecraft:glow_berries"
+      - "minecraft:honey_bottle"
+      - "minecraft:glow_berries"
+      - "farmersdelight:tomato"
+      - "minecraft:golden_carrot"
+      - "farmersdelight:tomato"
+      - "farmersdelight:cabbage"
+      - "minecraft:bowl"
+      - "farmersdelight:cabbage"
+    result:
+      id: farmersdelight:gleaming_salad_block
       count: 1
   farmersdelight:rice_roll_medley_block:
     type: shapeless

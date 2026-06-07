@@ -571,9 +571,11 @@ public class RecipeViewGui implements InventoryHolder {
             resultMeta.displayName(itemNameComponent(recipe.getResult(), player).colorIfAbsent(NamedTextColor.GREEN));
             List<Component> resultLore = new ArrayList<>();
             resultLore.add(colored("&7" + I18n.get("gui.recipe.result", player)));
-            resultLore.add(colored("&7" + I18n.get("gui.recipe.experience", player) + ": &e" + recipe.getExperience()));
-            resultLore.add(colored("&7" + I18n.get("gui.recipe.cook_time", player) + ": &b"
-                    + (recipe.getCookTime() / 20) + i18nOrDefault("gui.recipe.seconds_suffix", player, "s")));
+            if (resultMeta.hasLore() && resultMeta.lore() != null && !resultMeta.lore().isEmpty()) {
+                resultLore.addAll(resultMeta.lore());
+                resultLore.add(Component.text(""));
+            }
+            resultLore.add(colored("&7cooking_time: &b" + formatCookTime(recipe, player)));
             resultMeta.lore(resultLore);
             resultItem.setItemMeta(resultMeta);
             inventory.setItem(detailConfig.getResultSlot(), resultItem);
@@ -767,7 +769,7 @@ public class RecipeViewGui implements InventoryHolder {
             case "farmersdelight:knives" -> createKnifePreviewItem();
             case "farmersdelight:axe_dig", "farmersdelight:axe_strip", "minecraft:axes" -> new ItemStack(Material.IRON_AXE);
             case "farmersdelight:pickaxe_dig" -> new ItemStack(Material.IRON_PICKAXE);
-            case "farmersdelight:shovel_dig" -> new ItemStack(Material.IRON_SHOVEL);
+            case "farmersdelight:shovel_dig", "minecraft:shovels" -> new ItemStack(Material.IRON_SHOVEL);
             case "minecraft:shears" -> new ItemStack(Material.SHEARS);
             default -> createItemFromKey(toolKey);
         };

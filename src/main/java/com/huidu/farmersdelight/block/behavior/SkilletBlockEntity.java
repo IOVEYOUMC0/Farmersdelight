@@ -43,7 +43,7 @@ public class SkilletBlockEntity {
     private ItemStack storedItem;
     private ItemStack cookedItem;
     private final AtomicInteger cookingProgress = new AtomicInteger(0);
-    private final AtomicInteger cookingDuration = new AtomicInteger(SkilletBlockBehavior.DEFAULT_COOKING_TIME);
+    private final AtomicInteger cookingDuration = new AtomicInteger(getConfiguredDefaultCookingTime());
     private volatile CookingRecipe<?> currentRecipe;
     private volatile int fireAspectLevel = 0;
     private final Object cookingLock = new Object();
@@ -109,22 +109,60 @@ public class SkilletBlockEntity {
             int baseTime = this.currentRecipe.getCookingTime();
             this.cookingDuration.set(getSkilletCookingTime(baseTime, fireAspectLevel));
         } else {
-            this.cookingDuration.set(SkilletBlockBehavior.DEFAULT_COOKING_TIME);
+            this.cookingDuration.set(getConfiguredDefaultCookingTime());
         }
         this.cookingProgress.set(0);
     }
 
     public static int getSkilletCookingTime(int originalCookingTime, int fireAspectLevel) {
-        int cookingTime = originalCookingTime > 0 ? originalCookingTime : Constants.DEFAULT_COOKING_TIME_SKILLET;
+        int cookingTime = originalCookingTime > 0 ? originalCookingTime : getConfiguredDefaultCookingTime();
         int cookingSeconds = cookingTime / 20;
-        float cookingTimeReduction = Constants.SKILLET_COOKING_TIME_REDUCTION;
+        double cookingTimeReduction = getConfiguredCookingTimeMultiplier();
         if (fireAspectLevel > 0) {
-            cookingTimeReduction -= fireAspectLevel * Constants.SKILLET_FIRE_ASPECT_BONUS;
+            cookingTimeReduction -= fireAspectLevel * getConfiguredFireAspectBonus();
         }
+        cookingTimeReduction = Math.max(0.0D, cookingTimeReduction);
         
         int result = (int) (cookingSeconds * cookingTimeReduction) * 20;
-        
-        return Math.max(SkilletBlockBehavior.MINIMUM_COOKING_TIME, Math.min(result, originalCookingTime));
+        return Math.min(cookingTime, Math.max(getConfiguredMinimumCookingTime(), result));
+    }
+
+    private static int getConfiguredDefaultCookingTime() {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        return plugin == null
+                ? Constants.DEFAULT_COOKING_TIME_SKILLET
+                : Math.max(1, plugin.getConfigInt(Constants.DEFAULT_COOKING_TIME_SKILLET,
+                "skillet.cooking.default-cook-time",
+                "skillet.default-cook-time"));
+    }
+
+    private static int getConfiguredMinimumCookingTime() {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        return plugin == null
+                ? SkilletBlockBehavior.MINIMUM_COOKING_TIME
+                : Math.max(1, plugin.getConfigInt(SkilletBlockBehavior.MINIMUM_COOKING_TIME,
+                "skillet.cooking.min-cook-time",
+                "skillet.min-cook-time"));
+    }
+
+    private static double getConfiguredCookingTimeMultiplier() {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        double value = plugin == null
+                ? Constants.SKILLET_COOKING_TIME_REDUCTION
+                : plugin.getConfigDouble(Constants.SKILLET_COOKING_TIME_REDUCTION,
+                "skillet.cooking.cook-time-multiplier",
+                "skillet.cooking-time-reduction");
+        return Math.max(0.0D, Math.min(1.0D, value));
+    }
+
+    private static double getConfiguredFireAspectBonus() {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        double value = plugin == null
+                ? Constants.SKILLET_FIRE_ASPECT_BONUS
+                : plugin.getConfigDouble(Constants.SKILLET_FIRE_ASPECT_BONUS,
+                "skillet.cooking.fire-aspect-bonus",
+                "skillet.fire-aspect-bonus");
+        return Math.max(0.0D, Math.min(1.0D, value));
     }
 
     public ItemStack getCookedItem() {
