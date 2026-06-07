@@ -339,7 +339,6 @@ public class RecipeViewGuiConfig {
             legend.put('D', "cutting_board");
             legend.put('B', "back");
             legend.put('X', "background");
-            legend.put('#', "background");
 
             Map<String, GuiConfig.GuiItem> items = new HashMap<>();
             items.put("background", new GuiConfig.GuiItem(Material.GRAY_STAINED_GLASS_PANE, null, " ", List.of()));
@@ -347,7 +346,7 @@ public class RecipeViewGuiConfig {
             items.put("cutting_board", new GuiConfig.GuiItem(Material.BAMBOO_MOSAIC, null, "Cutting Board Recipes", List.of("Click to view cutting board recipes")));
             items.put("back", new GuiConfig.GuiItem(Material.BARRIER, null, "Close", List.of()));
 
-            List<String> layout = List.of("####B####", "##C###D##", "####X####");
+            List<String> layout = List.of("XXXXBXXXX", "XXCXXXDXX", "XXXXXXXXX");
             return new MainMenuConfig("Recipe Viewer", 3, layout, legend, items, 11, 15, 4);
         }
     }
@@ -424,9 +423,8 @@ public class RecipeViewGuiConfig {
             legend.put('P', "prev_page");
             legend.put('N', "next_page");
             legend.put('B', "back");
-            legend.put('X', "info");
             legend.put('F', "filter");
-            legend.put('#', "background");
+            legend.put('X', "background");
 
             Map<String, GuiConfig.GuiItem> items = new HashMap<>();
             items.put("background", new GuiConfig.GuiItem(Material.GRAY_STAINED_GLASS_PANE, null, " ", List.of()));
@@ -437,7 +435,7 @@ public class RecipeViewGuiConfig {
             items.put("filter", new GuiConfig.GuiItem(Material.COMPASS, null, "Filter Craftable", List.of()));
 
             List<String> layout = List.of(
-                    "P#F#B###N",
+                    "PXFXBXXXN",
                     "RRRRRRRRR",
                     "RRRRRRRRR",
                     "RRRRRRRRR",
@@ -579,7 +577,7 @@ public class RecipeViewGuiConfig {
             legend.put('C', "container");
             legend.put('B', "back");
             legend.put('P', "fill");
-            legend.put('#', "background");
+            legend.put('X', "background");
 
             Map<String, GuiConfig.GuiItem> items = new HashMap<>();
             items.put("background", new GuiConfig.GuiItem(Material.GRAY_STAINED_GLASS_PANE, null, " ", List.of()));
@@ -588,12 +586,12 @@ public class RecipeViewGuiConfig {
             items.put("fill", new GuiConfig.GuiItem(Material.HOPPER, null, "Fill Ingredients", List.of()));
 
             List<String> layout = List.of(
-                    "B######P#",
-                    "#####A###",
-                    "#III#####",
-                    "#III#####",
-                    "#####C#R#",
-                    "#########"
+                    "BXXXXXXPX",
+                    "XXXXXAXXX",
+                    "XIIIXXXXX",
+                    "XIIIXXXXX",
+                    "XXXXXCXRX",
+                    "XXXXXXXXX"
             );
 
             List<Integer> ingredientSlots = List.of(19, 20, 21, 28, 29, 30);
@@ -607,19 +605,19 @@ public class RecipeViewGuiConfig {
             legend.put('R', "result");
             legend.put('T', "tool");
             legend.put('B', "back");
-            legend.put('#', "background");
+            legend.put('X', "background");
 
             Map<String, GuiConfig.GuiItem> items = new HashMap<>();
             items.put("background", new GuiConfig.GuiItem(Material.GRAY_STAINED_GLASS_PANE, null, " ", List.of()));
             items.put("back", new GuiConfig.GuiItem(Material.ARROW, null, "Back", List.of()));
 
             List<String> layout = List.of(
-                    "B########",
-                    "#########",
-                    "#########",
-                    "#I#T#RR##",
-                    "#####RR##",
-                    "#########"
+                    "BXXXXXXXX",
+                    "XXXXXXXXX",
+                    "XXXXXXXXX",
+                    "XIXTXRRXX",
+                    "XXXXXRRXX",
+                    "XXXXXXXXX"
             );
 
             List<Integer> resultSlots = List.of(32, 33, 41, 42);

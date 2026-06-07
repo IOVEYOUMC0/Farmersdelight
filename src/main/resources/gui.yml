@@ -26,16 +26,11 @@ cooking-pot-gui:
     B: buffer
     O: output
     R: recipe
-    X: decoration
+    X: background
 
   items:
     background:
       material: GRAY_STAINED_GLASS_PANE
-      item_model: "air"
-      hide-tooltip: true
-      name: " "
-    decoration:
-      material: BROWN_STAINED_GLASS_PANE
       item_model: "air"
       hide-tooltip: true
       name: " "
@@ -105,15 +100,10 @@ cooking-pot-guis: {}
 #       B: buffer
 #       O: output
 #       R: recipe
-#       X: decoration
+#       X: background
 #     items:
 #       background:
 #         material: GRAY_STAINED_GLASS_PANE
-#         item_model: "air"
-#         hide-tooltip: true
-#         name: " "
-#       decoration:
-#         material: BROWN_STAINED_GLASS_PANE
 #         item_model: "air"
 #         hide-tooltip: true
 #         name: " "
@@ -145,14 +135,14 @@ recipe-view-gui:
     title: "<white>农夫乐事"
     rows: 3
     layout:
-      - "#########"
-      - "##C###D##"
-      - "####B####"
+      - "XXXXXXXXX"
+      - "XXCXXXDXX"
+      - "XXXXBXXXX"
     legend:
       C: cooking_pot
       D: cutting_board
       B: back
-      "#": background
+      X: background
     items:
       background:
         material: GRAY_STAINED_GLASS_PANE
@@ -181,7 +171,7 @@ recipe-view-gui:
         offset: "<shift:-7>"
         icon: "<image:farmersdelight:recipelist>"
     layout:
-      - "P#F#B###N"
+      - "PXFXBXXXN"
       - "RRRRRRRRR"
       - "RRRRRRRRR"
       - "RRRRRRRRR"
@@ -192,9 +182,8 @@ recipe-view-gui:
       P: prev_page
       N: next_page
       B: back
-      X: info
       F: filter
-      "#": background
+      X: background
     items:
       background:
         material: GRAY_STAINED_GLASS_PANE
@@ -233,12 +222,12 @@ recipe-view-gui:
         offset: "<shift:-8>"
         icon: "<image:farmersdelight:cooking_pot_menu>"
     layout:
-      - "B######P#"
-      - "#####A###"
-      - "#III#####"
-      - "#III#####"
-      - "#####C#R#"
-      - "#########"
+      - "BXXXXXXPX"
+      - "XXXXXAXXX"
+      - "XIIIXXXXX"
+      - "XIIIXXXXX"
+      - "XXXXXCXRX"
+      - "XXXXXXXXX"
     legend:
       R: result
       I: ingredient
@@ -246,7 +235,7 @@ recipe-view-gui:
       C: container
       B: back
       P: fill
-      "#": background
+      X: background
     items:
       background:
         material: GRAY_STAINED_GLASS_PANE
@@ -302,19 +291,19 @@ recipe-view-gui:
   #         offset: "<shift:-8>"
   #         icon: "<image:farmersdelight:cooking_pot_menu>"
   #     layout:
-  #       - "B######P#"
-  #       - "###III###"
-  #       - "###III###"
-  #       - "###III###"
-  #       - "#####C#R#"
-  #       - "#########"
+  #       - "BXXXXXXPX"
+  #       - "XXXIIIXXX"
+  #       - "XXXIIIXXX"
+  #       - "XXXIIIXXX"
+  #       - "XXXXXCXRX"
+  #       - "XXXXXXXXX"
   #     legend:
   #       R: result
   #       I: ingredient
   #       C: container
   #       B: back
   #       P: fill
-  #       "#": background
+  #       X: background
   #     items:
   #       background:
   #         material: GRAY_STAINED_GLASS_PANE
@@ -336,18 +325,18 @@ recipe-view-gui:
         offset: "<shift:-8>"
         icon: "<image:farmersdelight:cutting_board_menu>"
     layout:
-      - "B########"
-      - "#########"
-      - "#########"
-      - "#I#T#RR##"
-      - "#####RR##"
-      - "#########"
+      - "BXXXXXXXX"
+      - "XXXXXXXXX"
+      - "XXXXXXXXX"
+      - "XIXTXRRXX"
+      - "XXXXXRRXX"
+      - "XXXXXXXXX"
     legend:
       I: input
       R: result
       T: tool
       B: back
-      "#": background
+      X: background
     items:
       background:
         material: GRAY_STAINED_GLASS_PANE
