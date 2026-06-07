@@ -237,6 +237,7 @@ public class RecipeViewGuiConfig {
                     }
                 }
             }
+            GuiConfig.inheritBackgroundVisualOptions(items);
 
             warnUnknownLayoutCharacters(section.getCurrentPath(), rows, layout, legend);
             return new BaseConfig(title, rows, layout, legend, items);
@@ -627,4 +628,3 @@ public class RecipeViewGuiConfig {
         }
     }
 }
-
