@@ -98,6 +98,11 @@ public class CuttingBoardBlockEntity {
         removeDisplayEntity();
     }
 
+    public void refreshDisplayEntity(World world, BlockFace facing) {
+        this.world = world;
+        updateDisplayEntity(world, posKey, facing);
+    }
+
     private void updateDisplayEntity(World world, BlockPosKey posKey, BlockFace facing) {
         if (storedItem == null || world == null) {
             removeDisplayEntity();
@@ -135,17 +140,17 @@ public class CuttingBoardBlockEntity {
     }
 
     public void removeDisplayEntity() {
-        if (displayEntityIds.isEmpty()) return;
-
-        ItemDisplayManager visualManager = FarmersDelightPlugin.getInstance().getItemDisplayManager();
-        if (visualManager != null) {
-            for (Integer entityId : displayEntityIds) {
-                if (entityId != null && entityId != NO_DISPLAY) {
-                    visualManager.destroyDisplay(entityId);
+        if (!displayEntityIds.isEmpty()) {
+            ItemDisplayManager visualManager = FarmersDelightPlugin.getInstance().getItemDisplayManager();
+            if (visualManager != null) {
+                for (Integer entityId : displayEntityIds) {
+                    if (entityId != null && entityId != NO_DISPLAY) {
+                        visualManager.destroyDisplay(entityId);
+                    }
                 }
             }
+            displayEntityIds.clear();
         }
-        displayEntityIds.clear();
         displayedBaseItem = null;
         displayedCarved = false;
         displayedFacing = null;
@@ -171,7 +176,12 @@ public class CuttingBoardBlockEntity {
             ItemDisplayManager.DisplaySpec spec = createDisplaySpec(world, posKey, facing, visualItem, index, desiredCount, displayOverride);
             if (!visualManager.updateDisplay(entityId, spec)) {
                 int replacementId = visualManager.createDisplay(spec);
-                displayEntityIds.set(index, replacementId);
+                if (replacementId != NO_DISPLAY) {
+                    displayEntityIds.set(index, replacementId);
+                } else {
+                    displayEntityIds.remove(index);
+                    index--;
+                }
             }
         }
 
@@ -236,13 +246,10 @@ public class CuttingBoardBlockEntity {
                 new Quaternionf(0.0f, 0.0f, 0.0f, 1.0f)
         );
 
-        CuttingBoardDisplayConfig displayConfig = FarmersDelightPlugin.getInstance().getCuttingBoardDisplayConfig();
         Random random = new Random(getDisplaySeed(visualItem) + (index * 341873128712L));
-        Vector3f defaultOffset = displayConfig.getDefaultOffset();
-        float spread = displayConfig.getItemSpread();
-        float xOffset = defaultOffset.x() + (totalCount == 1 ? 0.0f : (random.nextFloat() * 2.0f - 1.0f) * spread * 0.5f);
-        yOffset += defaultOffset.y();
-        float zOffset = defaultOffset.z() + (totalCount == 1 ? 0.0f : (random.nextFloat() * 2.0f - 1.0f) * spread * 0.5f);
+        float spread = FarmersDelightPlugin.getInstance().getCuttingBoardDisplayConfig().getItemSpread();
+        float xOffset = totalCount == 1 ? 0.0f : (random.nextFloat() * 2.0f - 1.0f) * spread * 0.5f;
+        float zOffset = totalCount == 1 ? 0.0f : (random.nextFloat() * 2.0f - 1.0f) * spread * 0.5f;
         if (displayOverride.offset() != null) {
             xOffset += displayOverride.offset().x();
             yOffset += displayOverride.offset().y();
