@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public class GuiConfig {
 
@@ -143,6 +144,7 @@ public class GuiConfig {
                 }
             }
         }
+        inheritBackgroundVisualOptions(items);
 
         List<GuiItem> progressItems = new ArrayList<>();
         List<Map<?, ?>> progressItemsList = section.getMapList("progress-items");
@@ -159,6 +161,17 @@ public class GuiConfig {
         warnUnknownLayoutCharacters(section.getCurrentPath(), rows, layout, legend);
         return new GuiConfig(title, titleLayoutOffset, titleLayoutIcon, fillersEnabled, rows, layout, legend, items,
                 progressItems);
+    }
+
+    static void inheritBackgroundVisualOptions(Map<String, GuiItem> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        GuiItem background = items.get("background");
+        GuiItem decoration = items.get("decoration");
+        if (background != null && decoration != null) {
+            items.put("decoration", decoration.withMissingVisualOptionsFrom(background));
+        }
     }
 
     private static void warnUnknownLayoutCharacters(
@@ -575,6 +588,26 @@ public class GuiConfig {
                     name, lore, nameKey, loreKeys);
         }
 
+        private GuiItem withMissingVisualOptionsFrom(GuiItem fallback) {
+            if (fallback == null) {
+                return this;
+            }
+            Integer resolvedCustomModelData = this.customModelData != null ? this.customModelData : fallback.customModelData;
+            String resolvedItemModel = hasText(this.itemModel) ? this.itemModel : fallback.itemModel;
+            boolean resolvedHideTooltip = this.hideTooltip || fallback.hideTooltip;
+            if (Objects.equals(resolvedCustomModelData, this.customModelData)
+                    && Objects.equals(resolvedItemModel, this.itemModel)
+                    && resolvedHideTooltip == this.hideTooltip) {
+                return this;
+            }
+            return new GuiItem(material, customItemId, resolvedCustomModelData, resolvedItemModel, resolvedHideTooltip,
+                    name, lore, nameKey, loreKeys);
+        }
+
+        private static boolean hasText(String value) {
+            return value != null && !value.isBlank();
+        }
+
         public Material getMaterial() {
             return material;
         }
@@ -766,4 +799,3 @@ public class GuiConfig {
         }
     }
 }
-
