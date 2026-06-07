@@ -104,7 +104,7 @@ console:
     config_prepare_failed: "Failed to prepare configuration files: {error}"
     gui_missing_defaults: "gui.yml is missing, using bundled defaults in memory until reload writes it back."
     gui_load_failed: "Failed to load gui.yml: {error}"
-    craftengine_resources_released: "Released bundled CraftEngine farmersdelight resources to {path} for the first startup ({count} files)."
+    craftengine_resources_released: "Synchronized bundled CraftEngine farmersdelight resources to {path} ({count} files)."
     craftengine_resources_release_failed: "Failed to release CraftEngine farmersdelight resources: {error}"
     auraskills_hook_failed: "Failed to initialize AuraSkills API compatibility: {error}"
     auraskills_skill_missing: "AuraSkills skill was not found: {skill}"
