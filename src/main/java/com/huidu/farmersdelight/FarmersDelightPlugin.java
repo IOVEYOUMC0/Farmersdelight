@@ -1346,18 +1346,57 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         }
 
         Path targetRoot = pluginsFolder.resolve(CRAFTENGINE_RESOURCE_TARGET);
-        if (Files.exists(targetRoot)) {
-            return;
-        }
-
         try {
-            int copiedFiles = copyBundledResourceDirectory(CRAFTENGINE_RESOURCE_ROOT, targetRoot);
-            I18n.logInfo("plugin.craftengine_resources_released",
-                    "path", targetRoot,
-                    "count", copiedFiles);
+            int copiedFiles = Files.exists(targetRoot)
+                    ? copyMissingBundledResourceFiles(CRAFTENGINE_RESOURCE_ROOT, targetRoot)
+                    : copyBundledResourceDirectory(CRAFTENGINE_RESOURCE_ROOT, targetRoot);
+            if (copiedFiles > 0) {
+                I18n.logInfo("plugin.craftengine_resources_released",
+                        "path", targetRoot,
+                        "count", copiedFiles);
+            }
         } catch (IOException e) {
             I18n.logWarning("plugin.craftengine_resources_release_failed", "error", e.getMessage());
         }
+    }
+
+    private int copyMissingBundledResourceFiles(String resourceRoot, Path targetRoot) throws IOException {
+        List<String> resourcePaths = listBundledResourceFiles(resourceRoot);
+        if (resourcePaths.isEmpty()) {
+            throw new IOException("No bundled CraftEngine resources found at " + resourceRoot);
+        }
+
+        int copiedFiles = 0;
+        Files.createDirectories(targetRoot);
+        for (String resourcePath : resourcePaths) {
+            String relativePath = resourcePath.substring(resourceRoot.length() + 1);
+            Path targetPath = resolveSafeChild(targetRoot, relativePath);
+            if (Files.exists(targetPath)) {
+                continue;
+            }
+
+            Files.createDirectories(Objects.requireNonNull(targetPath.getParent(), "targetPath parent"));
+            Path tempFile = Files.createTempFile(targetPath.getParent(), "fd-ce-resource-", ".tmp");
+            boolean moved = false;
+            try (InputStream inputStream = getResource(resourcePath)) {
+                if (inputStream == null) {
+                    throw new IOException("Bundled " + resourcePath + " was not found in the plugin jar.");
+                }
+                Files.copy(inputStream, tempFile, StandardCopyOption.REPLACE_EXISTING);
+                try {
+                    Files.move(tempFile, targetPath, StandardCopyOption.ATOMIC_MOVE);
+                } catch (AtomicMoveNotSupportedException ignored) {
+                    Files.move(tempFile, targetPath);
+                }
+                moved = true;
+                copiedFiles++;
+            } finally {
+                if (!moved) {
+                    Files.deleteIfExists(tempFile);
+                }
+            }
+        }
+        return copiedFiles;
     }
 
     private int copyBundledResourceDirectory(String resourceRoot, Path targetRoot) throws IOException {

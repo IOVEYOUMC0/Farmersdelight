@@ -577,18 +577,20 @@ public class RecipeViewGuiConfig {
             legend.put('C', "container");
             legend.put('B', "back");
             legend.put('P', "fill");
+            legend.put('G', "progress");
             legend.put('X', "background");
 
             Map<String, GuiConfig.GuiItem> items = new HashMap<>();
             items.put("background", new GuiConfig.GuiItem(Material.GRAY_STAINED_GLASS_PANE, null, " ", List.of()));
-            items.put("arrow", new GuiConfig.GuiItem(Material.CLOCK, null, "Cooking Process", List.of()));
+            items.put("arrow", new GuiConfig.GuiItem(Material.CLOCK, null, "Cooking Process",
+                    List.of("&7Cook Time: &b{cook_time}", "&7Experience: &a{experience}")));
             items.put("back", new GuiConfig.GuiItem(Material.ARROW, null, "Back", List.of()));
             items.put("fill", new GuiConfig.GuiItem(Material.HOPPER, null, "Fill Ingredients", List.of()));
 
             List<String> layout = List.of(
                     "BXXXXXXPX",
                     "XXXXXAXXX",
-                    "XIIIXXXXX",
+                    "XIIIXGXXX",
                     "XIIIXXXXX",
                     "XXXXXCXRX",
                     "XXXXXXXXX"

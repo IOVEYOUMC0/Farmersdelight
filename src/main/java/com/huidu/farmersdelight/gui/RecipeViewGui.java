@@ -565,19 +565,7 @@ public class RecipeViewGui implements InventoryHolder {
 
     private void drawCookingPotDetail(CookingPotRecipe recipe, RecipeViewGuiConfig.RecipeDetailConfig detailConfig, Player player) {
         if (detailConfig.getResultSlot() >= 0) {
-            ItemStack resultItem = recipe.getResult().clone();
-            ItemMeta resultMeta = resultItem.getItemMeta();
-            resultMeta.displayName(itemNameComponent(recipe.getResult(), player).colorIfAbsent(NamedTextColor.GREEN));
-            List<Component> resultLore = new ArrayList<>();
-            resultLore.add(colored("&7" + I18n.get("gui.recipe.result", player)));
-            if (resultMeta.hasLore() && resultMeta.lore() != null && !resultMeta.lore().isEmpty()) {
-                resultLore.addAll(resultMeta.lore());
-                resultLore.add(Component.text(""));
-            }
-            resultLore.add(colored("&7cooking_time: &b" + formatCookTime(recipe, player)));
-            resultMeta.lore(resultLore);
-            resultItem.setItemMeta(resultMeta);
-            inventory.setItem(detailConfig.getResultSlot(), resultItem);
+            inventory.setItem(detailConfig.getResultSlot(), recipe.getResult().clone());
         }
 
         fillIngredientSlots(detailConfig, detailConfig.getIngredientSlots(), recipe.getIngredients(), player);
@@ -603,11 +591,19 @@ public class RecipeViewGui implements InventoryHolder {
         }
 
         GuiConfig.GuiItem configured = detailConfig.getItem("arrow");
-        ItemStack processItem = configured == null ? new ItemStack(Material.CLOCK) : configured.createItem();
+        Map<String, String> placeholders = cookingInfoPlaceholders(recipe, player);
+        ItemStack processItem = configured == null ? new ItemStack(Material.CLOCK) : configured.createItem(placeholders);
         ItemMeta meta = processItem.getItemMeta();
         if (meta != null) {
-            meta.displayName(colored("&e" + I18n.get("gui.recipe.cook_time", player) + ": &b"
-                    + formatCookTime(recipe, player)));
+            if (configured == null) {
+                meta.displayName(colored("&e" + I18n.get("gui.recipe.cook_time", player)));
+            }
+            if (meta.lore() == null || meta.lore().isEmpty()) {
+                meta.lore(List.of(
+                        colored("&7" + I18n.get("gui.recipe.cook_time", player) + ": &b" + placeholders.get("cook_time")),
+                        colored("&7" + I18n.get("gui.recipe.experience", player) + ": &a" + placeholders.get("experience"))
+                ));
+            }
             processItem.setItemMeta(meta);
         }
         inventory.setItem(arrowSlot, processItem);
@@ -630,17 +626,7 @@ public class RecipeViewGui implements InventoryHolder {
             return configuredProgressSlot;
         }
 
-        int arrowSlot = detailConfig.getArrowSlot();
-        int progressSlot = arrowSlot + 9;
-        if (arrowSlot < 0 || progressSlot < 0 || progressSlot >= inventory.getSize()) {
-            return -1;
-        }
-
-        String slotType = detailConfig.getSlotType(progressSlot);
-        if (slotType != null && !"background".equals(slotType) && !"decoration".equals(slotType)) {
-            return -1;
-        }
-        return progressSlot;
+        return -1;
     }
 
     private ItemStack createCookingPotProcessBarItem(int frame) {
@@ -676,6 +662,28 @@ public class RecipeViewGui implements InventoryHolder {
 
     private String formatCookTime(CookingPotRecipe recipe, Player player) {
         return cookTimeSeconds(recipe) + i18nOrDefault("gui.recipe.seconds_suffix", player, "s");
+    }
+
+    private Map<String, String> cookingInfoPlaceholders(CookingPotRecipe recipe, Player player) {
+        String cookTime = formatCookTime(recipe, player);
+        String experience = formatExperience(recipe == null ? 0.0D : recipe.getExperience());
+        return Map.of(
+                "cook_time", cookTime,
+                "cooking_time", cookTime,
+                "time", cookTime,
+                "experience", experience,
+                "exp", experience
+        );
+    }
+
+    private String formatExperience(double experience) {
+        if (experience <= 0.0D) {
+            return "0";
+        }
+        if (Math.rint(experience) == experience) {
+            return String.valueOf((int) experience);
+        }
+        return String.format(java.util.Locale.ROOT, "%.1f", experience);
     }
 
     private int cookTimeSeconds(CookingPotRecipe recipe) {
