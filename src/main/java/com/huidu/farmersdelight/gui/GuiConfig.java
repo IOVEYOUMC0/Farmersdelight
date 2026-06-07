@@ -732,22 +732,14 @@ public class GuiConfig {
             if (key == null) {
                 return;
             }
-            try {
-                Method setter = meta.getClass().getMethod("setItemModel", NamespacedKey.class);
-                setter.invoke(meta, key);
-            } catch (ReflectiveOperationException ignored) {
-            }
+            meta.setItemModel(key);
         }
 
         private void applyHideTooltip(ItemMeta meta, boolean hideTooltip) {
             if (!hideTooltip) {
                 return;
             }
-            try {
-                Method setter = meta.getClass().getMethod("setHideTooltip", boolean.class);
-                setter.invoke(meta, true);
-            } catch (ReflectiveOperationException ignored) {
-            }
+            meta.setHideTooltip(true);
         }
 
         private static NamespacedKey parseNamespacedKey(String value) {
