@@ -234,12 +234,11 @@ public class GuiConfig {
         legend.put('B', "buffer");
         legend.put('O', "output");
         legend.put('R', "recipe");
-        legend.put('X', "decoration");
+        legend.put('X', "background");
         legend.put(' ', "background");
 
         Map<String, GuiItem> items = new HashMap<>();
         items.put("background", new GuiItem(Material.GRAY_STAINED_GLASS_PANE, null, " ", List.of()));
-        items.put("decoration", new GuiItem(Material.BROWN_STAINED_GLASS_PANE, null, " ", List.of()));
         items.put("recipe", new GuiItem(Material.KNOWLEDGE_BOOK, null, "View Recipes", List.of("Click to view all cooking pot recipes")));
 
         return new GuiConfig(
