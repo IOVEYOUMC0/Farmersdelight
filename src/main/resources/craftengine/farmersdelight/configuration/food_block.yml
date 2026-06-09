@@ -238,6 +238,7 @@ blocks:
           - type: swing_hand
           - type: play_sound
             sound: farmersdelight:block.food.slice
+          - type: cancel_event
       - on: right_click
         conditions:
           - type: match_item
@@ -265,6 +266,7 @@ blocks:
           - type: swing_hand
           - type: play_sound
             sound: farmersdelight:block.food.slice
+          - type: cancel_event
       - on: right_click
         conditions:
           - type: match_item
@@ -292,6 +294,7 @@ blocks:
           - type: swing_hand
           - type: play_sound
             sound: farmersdelight:block.food.slice
+          - type: cancel_event
       - on: right_click
         conditions:
           - type: match_item
@@ -320,6 +323,7 @@ blocks:
           - type: swing_hand
           - type: play_sound
             sound: farmersdelight:block.food.slice
+          - type: cancel_event
       - on: right_click
         conditions:
           - type: expression  
@@ -696,6 +700,7 @@ blocks:
           - type: swing_hand
           - type: play_sound
             sound: farmersdelight:block.food.slice
+          - type: cancel_event
       - on: right_click
         conditions:
           - type: match_item
@@ -723,6 +728,7 @@ blocks:
           - type: swing_hand
           - type: play_sound
             sound: farmersdelight:block.food.slice
+          - type: cancel_event
       - on: right_click
         conditions:
           - type: match_item
@@ -750,6 +756,7 @@ blocks:
           - type: swing_hand
           - type: play_sound
             sound: farmersdelight:block.food.slice
+          - type: cancel_event
       - on: right_click
         conditions:
           - type: match_item
@@ -778,6 +785,7 @@ blocks:
           - type: swing_hand
           - type: play_sound
             sound: farmersdelight:block.food.slice
+          - type: cancel_event
       - on: right_click
         conditions:
           - type: expression  
@@ -1154,6 +1162,7 @@ blocks:
           - type: swing_hand
           - type: play_sound
             sound: farmersdelight:block.food.slice
+          - type: cancel_event
       - on: right_click
         conditions:
           - type: match_item
@@ -1181,6 +1190,7 @@ blocks:
           - type: swing_hand
           - type: play_sound
             sound: farmersdelight:block.food.slice
+          - type: cancel_event
       - on: right_click
         conditions:
           - type: match_item
@@ -1208,6 +1218,7 @@ blocks:
           - type: swing_hand
           - type: play_sound
             sound: farmersdelight:block.food.slice
+          - type: cancel_event
       - on: right_click
         conditions:
           - type: match_item
@@ -1236,6 +1247,7 @@ blocks:
           - type: swing_hand
           - type: play_sound
             sound: farmersdelight:block.food.slice
+          - type: cancel_event
       - on: right_click
         conditions:
           - type: expression  
