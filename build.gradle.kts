@@ -28,6 +28,8 @@ dependencies {
     compileOnly("net.momirealms:craft-engine-core:26.5.3")
     compileOnly("net.momirealms:craft-engine-bukkit:26.5.3")
     compileOnly("net.momirealms:craft-engine-bukkit-proxy:26.5.3")
+    // UltimateAdvancementAPI: separate server plugin; vendored only for offline compile against its API.
+    compileOnly(files("libs/UltimateAdvancementAPI-Plugin-2.8.0-folia.jar"))
     testImplementation("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
     testImplementation("net.momirealms:craft-engine-core:26.5.3")
     testImplementation("net.momirealms:craft-engine-bukkit:26.5.3")
