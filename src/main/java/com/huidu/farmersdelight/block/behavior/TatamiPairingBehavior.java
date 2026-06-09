@@ -247,7 +247,7 @@ public class TatamiPairingBehavior extends BlockBehavior {
             return BlockFace.NORTH;
         }
 
-        String facingStr = facingValue.toString().toUpperCase();
+        String facingStr = facingValue.toString().toUpperCase(java.util.Locale.ROOT);
         try {
             return BlockFace.valueOf(facingStr);
         } catch (IllegalArgumentException e) {

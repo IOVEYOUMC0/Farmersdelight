@@ -54,7 +54,7 @@ performance:
 # 漏斗与插件方块的原版容器桥接总开关。
 # enabled=false 时完全关闭插件方块的漏斗容器桥接，避免漏斗吞物品、重复创建容器或写入异常。
 # 默认开启；如遇漏斗兼容问题可先关闭总开关排查。
-# 具体方块是否允许漏斗交互，请在 cooking-pot / cutting-board 对应配置中设置。
+# 具体方块是否允许漏斗交互，请在 cooking-pot / cutting-board / skillet 对应配置中设置。
 hopper-interactions:
   enabled: true
 
@@ -399,6 +399,9 @@ mushroom-colonies:
 
 # 煎锅配置。
 skillet:
+  # true = 当 hopper-interactions.enabled 开启时，煎锅允许漏斗输入食材；成品仍按原模组行为直接弹出，不提供漏斗输出槽。
+  hopper-interactions: true
+
   # 每 4 tick 最多处理多少个活跃煎锅。
   tick-budget: 512
 
@@ -553,7 +556,17 @@ pet-foods:
     # true = 右键喂食时要求目标已经被驯服；false = 未驯服实体也能触发右键食物效果。
     require-tamed: false
     restore-health: true
-    effects: []
+    effects:
+      - type: SPEED
+        duration: 6000
+        amplifier: 1
+        ambient: false
+        particles: true
+      - type: JUMP_BOOST
+        duration: 6000
+        amplifier: 0
+        ambient: false
+        particles: true
     sound: ENTITY_GENERIC_EAT
     sound-volume: 0.8
     sound-pitch: 0.8
@@ -585,7 +598,7 @@ comfort-foods:
       duration: 300
     farmersdelight:glow_berry_custard:
       duration: 300
-    farmersdelight:pumpkin_pie:
+    minecraft:pumpkin_pie:
       duration: 300
     farmersdelight:hot_cocoa:
       duration: 300

@@ -415,6 +415,9 @@
     farmersdelight.gui.progress.85: "烹饪进度：85%"
     farmersdelight.gui.progress.90: "烹饪进度：90%"
     farmersdelight.gui.progress.95: "烹饪进度：95%"
+    farmersdelight.gui.cancooked.enabled: "当前可烹饪"
+    farmersdelight.gui.cancooked.disenabled: "显示所有配方"
+    farmersdelight.gui.recipe_book: "配方书"
 
     # Tooltips
     farmersdelight.tooltip.dog_food.when_feeding: "喂给已驯服的狗时："

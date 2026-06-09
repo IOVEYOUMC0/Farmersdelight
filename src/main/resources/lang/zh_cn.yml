@@ -57,6 +57,27 @@ gui:
   cooking_pot:
     pending_container_hint: "&7容器: &f{container}"
     pending_container_hint_prefix: "&7容器: &f"
+  editor:
+    usage: "&e/fd recipe edit <pot|board> <id> [自定义组]"
+    feedback:
+      invalid_id: "&c配方 id 只能使用小写字母、数字和下划线。"
+      not_configured: "&cgui.yml 中未配置配方编辑器界面。"
+      board_coming: "&e砧板编辑器将在后续阶段提供。"
+      advanced_coming: "&e高级原料编辑(标签/或选/排除)将在后续阶段提供。"
+      no_ingredients: "&c配方至少需要一个原料。"
+      no_input: "&c配方需要一个输入物。"
+      no_result: "&c配方需要一个成品。"
+      too_many_ingredients: "&e该配方有 {total} 个原料,但只显示 {shown} 个槽位;多余原料无法在此编辑。"
+      too_many_results: "&e该配方有 {total} 个产物,但只显示 {shown} 个槽位;多余产物无法在此编辑。"
+      saved: "&a已保存配方 &f{recipe_id}&a 并重载。"
+      deleted: "&a已删除配方 &f{recipe_id}&a 并重载。"
+      save_failed: "&c保存配方失败(详见控制台)。"
+      delete_failed: "&c删除配方失败(详见控制台)。"
+      no_tags: "&c该物品不属于任何标签。"
+    tag:
+      select_hint: "&7左键: 使用此标签 &8| &7右键: 编辑排除项"
+      member_included: "&7点击: 从该标签中排除此物品"
+      member_excluded: "&c已排除 &7(点击恢复)"
 console:
   prefix: "[FarmersDelight]"
   i18n:
@@ -114,7 +135,7 @@ console:
     custom_cooking_pot_gui_load_failed: "加载自定义厨锅 GUI '{id}' 失败：{error}"
     invalid_cutting_board_mode: "cutting-board.interaction-mode '{value}' 无效，已回退到 stacking。"
     startup_config: "启动配置"
-    config_summary: "{label}：cutting-board mode={mode}, hopper={hopper}, cooking-pot-hopper={cooking_pot_hopper}, cutting-board-hopper={cutting_board_hopper}, advancements={advancements}"
+    config_summary: "{label}：cutting-board mode={mode}, hopper={hopper}, cooking-pot-hopper={cooking_pot_hopper}, cutting-board-hopper={cutting_board_hopper}, skillet-hopper={skillet_hopper}, advancements={advancements}"
     advancement_resource_sync_failed: "同步进度资源 {resource} 到世界 {world} 失败：{error}"
     advancement_file_delete_failed: "删除进度数据包文件 {path} 失败：{error}"
     advancement_directory_delete_failed: "删除进度数据包目录 {path} 失败：{error}"
@@ -171,6 +192,7 @@ console:
     loaded_total: "已加载 {count} 个 {type} 配方"
     custom_cooking_pot_load_failed: "加载自定义厨锅配方 '{id}' 失败：{error}"
     custom_cooking_pot_loaded: "已加载 {count} 个自定义厨锅配方"
+    editor_missing_custom_pot_gui: "自定义厨锅 '{id}' 没有对应的 recipe-editor-cooking-pot-guis 配置,改用默认编辑器布局。"
     invalid_count: "配方中的 count 无效：{error}"
     invalid_chance: "配方中的 chance 无效：{error}"
   legacy_storage:
