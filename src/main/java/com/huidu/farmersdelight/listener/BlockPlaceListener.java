@@ -91,7 +91,14 @@ public class BlockPlaceListener implements Listener {
 
         String customBlockId = getCustomBlockId(event);
         if (customBlockId == null) {
-            awardPlantAllCropsCriterion(player, VANILLA_CROP_CRITERIA.get(event.getBlock().getType()));
+            Material placedType = event.getBlock().getType();
+            if (placedType == Material.CAMPFIRE || placedType == Material.SOUL_CAMPFIRE) {
+                AdvancementManager am = FarmersDelightPlugin.getInstance().getAdvancementManager();
+                if (am != null) {
+                    am.award(player, "place_campfire");
+                }
+            }
+            awardPlantAllCropsCriterion(player, VANILLA_CROP_CRITERIA.get(placedType));
             return;
         }
 

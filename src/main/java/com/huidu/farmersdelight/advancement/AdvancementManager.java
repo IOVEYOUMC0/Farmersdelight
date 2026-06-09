@@ -1,90 +1,197 @@
 package com.huidu.farmersdelight.advancement;
 
+import com.fren_gor.ultimateAdvancementAPI.AdvancementTab;
+import com.fren_gor.ultimateAdvancementAPI.UltimateAdvancementAPI;
+import com.fren_gor.ultimateAdvancementAPI.advancement.Advancement;
+import com.fren_gor.ultimateAdvancementAPI.advancement.BaseAdvancement;
+import com.fren_gor.ultimateAdvancementAPI.advancement.RootAdvancement;
+import com.fren_gor.ultimateAdvancementAPI.advancement.display.AdvancementFrameType;
+import com.fren_gor.ultimateAdvancementAPI.advancement.tasks.MultiTasksAdvancement;
+import com.fren_gor.ultimateAdvancementAPI.advancement.tasks.TaskAdvancement;
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.i18n.I18n;
-import org.bukkit.Bukkit;
-import org.bukkit.NamespacedKey;
-import org.bukkit.advancement.Advancement;
-import org.bukkit.advancement.AdvancementProgress;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Advancement backend on UltimateAdvancementAPI: a single {@code farmersdelight} tab of programmatic
+ * advancements. {@link #award}/{@link #awardCriteria}/{@link #revoke}/{@link #hasAdvancement} are the
+ * surface the event listeners call. Titles/descriptions localize per-client via
+ * {@link LocalizedAdvancementDisplay}.
+ */
 public class AdvancementManager {
 
+    private static final String TAB = "farmersdelight";
+    private static final String ROOT_BACKGROUND = "minecraft:textures/block/bricks.png";
+    private static final String KEY_PREFIX = "farmersdelight.advancement.";
+
+    /** plant_all_crops sub-tasks (criterion names emitted by the planting listeners). */
+    private static final List<String> CROPS = List.of(
+            "wheat", "beetroot", "carrot", "potato", "cabbage", "tomato", "onion", "rice", "melon",
+            "pumpkin", "sweet_berries", "sugar_cane", "kelp", "cocoa", "nether_wart", "chorus_flower",
+            "brown_mushroom", "red_mushroom", "glow_berries");
+    /** master_chef sub-tasks (FD dish ids eaten, without the {@code farmersdelight:} prefix). */
+    private static final List<String> DISHES = List.of(
+            "mixed_salad", "cooked_rice", "bone_broth", "beef_stew", "vegetable_soup", "fish_stew",
+            "chicken_soup", "fried_rice", "pumpkin_soup", "baked_cod_stew", "noodle_soup", "onion_soup",
+            "bacon_and_eggs", "ratatouille", "steak_and_potatoes", "pasta_with_meatballs",
+            "pasta_with_mutton_chop", "mushroom_rice", "roasted_mutton_chops", "vegetable_noodles",
+            "squid_ink_pasta", "grilled_salmon", "roast_chicken", "stuffed_pumpkin", "honey_glazed_ham",
+            "shepherds_pie", "gleaming_salad");
+
     private final FarmersDelightPlugin plugin;
-    private final Map<String, NamespacedKey> advancementKeys = new HashMap<>();
-    // Players already granted the "root" advancement this session, so award()/awardCriteria() don't
-    // re-resolve and re-award root (two extra advancement lookups) on every single award call.
+    private final Map<String, Advancement> byId = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, TaskAdvancement>> multiTasks = new ConcurrentHashMap<>();
     private final Set<UUID> rootAwarded = ConcurrentHashMap.newKeySet();
+    private AdvancementTab tab;
 
     public AdvancementManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
     }
 
     public void load() {
-        registerAdvancement("root", "main/root");
-        registerAdvancement("craft_knife", "main/craft_knife");
-        registerAdvancement("place_campfire", "main/place_campfire");
-        registerAdvancement("use_skillet", "main/use_skillet");
-        registerAdvancement("get_fd_seed", "main/get_fd_seed");
-        registerAdvancement("hit_raider_with_rotten_tomato", "main/hit_raider_with_rotten_tomato");
-        registerAdvancement("harvest_straw", "main/harvest_straw");
-        registerAdvancement("place_cooking_pot", "main/place_cooking_pot");
-        registerAdvancement("place_skillet", "main/place_skillet");
-        registerAdvancement("place_feast", "main/place_feast");
-        registerAdvancement("use_cutting_board", "main/use_cutting_board");
-        registerAdvancement("plant_rice", "main/plant_rice");
-        registerAdvancement("plant_all_crops", "main/plant_all_crops");
-        registerAdvancement("get_mushroom_colony", "main/get_mushroom_colony");
-        registerAdvancement("get_ham", "main/get_ham");
-        registerAdvancement("netherite_knife", "main/obtain_netherite_knife");
-        registerAdvancement("rotten_tomato_throw", "main/hit_raider_with_rotten_tomato");
-        // WIP feature set aside (comfort/nourishment foods) — advancements not registered until completed.
-        registerAdvancement("master_chef", "main/master_chef");
-
-        I18n.logInfo("advancement.loaded_keys", "count", advancementKeys.size());
+        try {
+            UltimateAdvancementAPI api = UltimateAdvancementAPI.getInstance(plugin);
+            if (api.isAdvancementTabRegistered(TAB)) {
+                api.unregisterAdvancementTab(TAB);
+            }
+            tab = api.createAdvancementTab(TAB);
+            buildTree();
+            I18n.logInfo("advancement.loaded_keys", "count", byId.size());
+        } catch (Exception e) {
+            // Drop a half-built (uninitialised) tab so it isn't left registered.
+            try {
+                UltimateAdvancementAPI api = UltimateAdvancementAPI.getInstance(plugin);
+                if (api.isAdvancementTabRegistered(TAB)) {
+                    api.unregisterAdvancementTab(TAB);
+                }
+            } catch (Exception ignored) {
+                // best effort
+            }
+            tab = null;
+            byId.clear();
+            multiTasks.clear();
+            I18n.logWarning("advancement.award_failed", "id", TAB, "error", e.getMessage());
+        }
     }
 
-    private void registerAdvancement(String id, String path) {
-        NamespacedKey key = new NamespacedKey("farmersdelight", path);
-        advancementKeys.put(id, key);
+    private void buildTree() {
+        RootAdvancement root = new RootAdvancement(tab, "root",
+                display("root", Material.BRICKS, AdvancementFrameType.TASK, 0, 0), ROOT_BACKGROUND);
+
+        BaseAdvancement craftKnife = base("craft_knife", Material.WOODEN_SWORD, AdvancementFrameType.TASK, root, 1, 0);
+        BaseAdvancement placeCampfire = base("place_campfire", Material.CAMPFIRE, AdvancementFrameType.TASK, root, 1, 3);
+        BaseAdvancement getFdSeed = base("get_fd_seed", Material.WHEAT_SEEDS, AdvancementFrameType.TASK, root, 1, 6);
+
+        BaseAdvancement getHam = base("get_ham", Material.COOKED_BEEF, AdvancementFrameType.TASK, craftKnife, 2, 0);
+        BaseAdvancement harvestStraw = base("harvest_straw", Material.WHEAT, AdvancementFrameType.TASK, craftKnife, 2, 1);
+        BaseAdvancement useCuttingBoard = base("use_cutting_board", Material.OAK_SLAB, AdvancementFrameType.TASK, craftKnife, 2, 2);
+        BaseAdvancement netheriteKnife = base("obtain_netherite_knife", Material.NETHERITE_SWORD, AdvancementFrameType.CHALLENGE, useCuttingBoard, 3, 2);
+
+        BaseAdvancement useSkillet = base("use_skillet", Material.IRON_SWORD, AdvancementFrameType.TASK, placeCampfire, 2, 3);
+        BaseAdvancement placeSkillet = base("place_skillet", Material.IRON_SWORD, AdvancementFrameType.TASK, useSkillet, 3, 3);
+        BaseAdvancement placeCookingPot = base("place_cooking_pot", Material.BRICKS, AdvancementFrameType.GOAL, placeCampfire, 2, 4);
+        BaseAdvancement placeFeast = base("place_feast", Material.COOKED_CHICKEN, AdvancementFrameType.TASK, placeCookingPot, 3, 4);
+        MultiTasksAdvancement masterChef = multi("master_chef", Material.COOKED_PORKCHOP, AdvancementFrameType.CHALLENGE, placeFeast, 4, 4, DISHES);
+
+        BaseAdvancement hitRaider = base("hit_raider_with_rotten_tomato", Material.RED_DYE, AdvancementFrameType.TASK, getFdSeed, 2, 5);
+        BaseAdvancement getMushroom = base("get_mushroom_colony", Material.RED_MUSHROOM, AdvancementFrameType.TASK, getFdSeed, 2, 6);
+        BaseAdvancement plantRice = base("plant_rice", Material.WHEAT_SEEDS, AdvancementFrameType.TASK, getFdSeed, 2, 7);
+        MultiTasksAdvancement plantAllCrops = multi("plant_all_crops", Material.WHEAT_SEEDS, AdvancementFrameType.CHALLENGE, plantRice, 3, 7, CROPS);
+
+        Set<BaseAdvancement> all = new HashSet<>(Arrays.asList(
+                craftKnife, placeCampfire, getFdSeed, getHam, harvestStraw, useCuttingBoard, netheriteKnife,
+                useSkillet, placeSkillet, placeCookingPot, placeFeast, masterChef,
+                hitRaider, getMushroom, plantRice, plantAllCrops));
+        tab.registerAdvancements(root, all);
+
+        byId.clear();
+        byId.put("root", root);
+        byId.put("craft_knife", craftKnife);
+        byId.put("place_campfire", placeCampfire);
+        byId.put("get_fd_seed", getFdSeed);
+        byId.put("get_ham", getHam);
+        byId.put("harvest_straw", harvestStraw);
+        byId.put("use_cutting_board", useCuttingBoard);
+        byId.put("netherite_knife", netheriteKnife);
+        byId.put("use_skillet", useSkillet);
+        byId.put("place_skillet", placeSkillet);
+        byId.put("place_cooking_pot", placeCookingPot);
+        byId.put("place_feast", placeFeast);
+        byId.put("master_chef", masterChef);
+        byId.put("hit_raider_with_rotten_tomato", hitRaider);
+        byId.put("rotten_tomato_throw", hitRaider);
+        byId.put("get_mushroom_colony", getMushroom);
+        byId.put("plant_rice", plantRice);
+        byId.put("plant_all_crops", plantAllCrops);
+    }
+
+    private LocalizedAdvancementDisplay display(String key, Material icon, AdvancementFrameType frame, float x, float y) {
+        return new LocalizedAdvancementDisplay(new ItemStack(icon), KEY_PREFIX + key, KEY_PREFIX + key + ".desc",
+                frame, true, true, x, y);
+    }
+
+    private BaseAdvancement base(String key, Material icon, AdvancementFrameType frame, Advancement parent, float x, float y) {
+        return new BaseAdvancement(key, display(key, icon, frame, x, y), parent);
+    }
+
+    private MultiTasksAdvancement multi(String key, Material icon, AdvancementFrameType frame, Advancement parent,
+                                        float x, float y, List<String> criteria) {
+        MultiTasksAdvancement multi = new MultiTasksAdvancement(key, display(key, icon, frame, x, y), parent, criteria.size());
+        Map<String, TaskAdvancement> taskMap = new HashMap<>();
+        List<TaskAdvancement> tasks = new ArrayList<>();
+        for (String criterion : criteria) {
+            TaskAdvancement task = new TaskAdvancement(key + "_" + criterion, multi);
+            taskMap.put(criterion, task);
+            tasks.add(task);
+        }
+        multi.registerTasks(tasks.toArray(new TaskAdvancement[0]));
+        multiTasks.put(key, taskMap);
+        return multi;
+    }
+
+    public void showTo(Player player) {
+        if (tab != null && tab.isInitialised() && player != null) {
+            tab.showTab(player);
+        }
     }
 
     public void award(Player player, String advancementId) {
-        if (!plugin.isAdvancementsEnabled()) return;
+        if (!plugin.isAdvancementsEnabled() || tab == null) return;
         if (player == null || advancementId == null) return;
-
         if (!"root".equals(advancementId)) {
             ensureRoot(player);
         }
-
-        NamespacedKey key = advancementKeys.get(advancementId);
-        if (key == null) {
+        Advancement advancement = byId.get(advancementId);
+        if (advancement == null) {
             if (plugin.isDebugEnabled()) {
                 I18n.logInfo("advancement.unknown", "id", advancementId);
             }
             return;
         }
-
         try {
-            Advancement advancement = Bukkit.getAdvancement(key);
-            if (advancement == null) {
-                if (plugin.isDebugEnabled()) {
-                    I18n.logInfo("advancement.not_found", "key", key);
+            if (advancement instanceof MultiTasksAdvancement) {
+                Map<String, TaskAdvancement> taskMap = multiTasks.get(advancementId);
+                if (taskMap != null) {
+                    for (TaskAdvancement task : taskMap.values()) {
+                        if (!task.isGranted(player)) {
+                            task.grant(player);
+                        }
+                    }
                 }
-                return;
-            }
-
-            AdvancementProgress progress = player.getAdvancementProgress(advancement);
-            if (!progress.isDone()) {
-                for (String criteria : progress.getRemainingCriteria()) {
-                    progress.awardCriteria(criteria);
-                }
+            } else if (!advancement.isGranted(player)) {
+                advancement.grant(player);
             }
         } catch (Exception e) {
             if (plugin.isDebugEnabled()) {
@@ -109,58 +216,44 @@ public class AdvancementManager {
     }
 
     public void awardCriteria(Player player, String advancementId, String criterion) {
-        if (!plugin.isAdvancementsEnabled()) return;
+        if (!plugin.isAdvancementsEnabled() || tab == null) return;
         if (player == null || advancementId == null || criterion == null) return;
-
         if (!"root".equals(advancementId)) {
             ensureRoot(player);
         }
-
-        NamespacedKey key = advancementKeys.get(advancementId);
-        if (key == null) {
-            if (plugin.isDebugEnabled()) {
-                I18n.logInfo("advancement.unknown", "id", advancementId);
-            }
+        Map<String, TaskAdvancement> taskMap = multiTasks.get(advancementId);
+        if (taskMap == null) {
             return;
         }
-
+        TaskAdvancement task = taskMap.get(criterion);
+        if (task == null) {
+            return;
+        }
         try {
-            Advancement advancement = Bukkit.getAdvancement(key);
-            if (advancement == null) {
-                if (plugin.isDebugEnabled()) {
-                    I18n.logInfo("advancement.not_found", "key", key);
-                }
-                return;
-            }
-
-            AdvancementProgress progress = player.getAdvancementProgress(advancement);
-            if (progress.getRemainingCriteria().contains(criterion)) {
-                progress.awardCriteria(criterion);
+            if (!task.isGranted(player)) {
+                task.grant(player);
             }
         } catch (Exception e) {
             if (plugin.isDebugEnabled()) {
                 I18n.logWarning("advancement.award_criterion_failed",
-                        "id", advancementId,
-                        "criterion", criterion,
-                        "error", e.getMessage());
+                        "id", advancementId, "criterion", criterion, "error", e.getMessage());
             }
         }
     }
 
     public void revoke(Player player, String advancementId) {
-        if (!plugin.isAdvancementsEnabled()) return;
+        if (!plugin.isAdvancementsEnabled() || tab == null) return;
         if (player == null || advancementId == null) return;
-
-        NamespacedKey key = advancementKeys.get(advancementId);
-        if (key == null) return;
-
+        Advancement advancement = byId.get(advancementId);
+        if (advancement == null) return;
         try {
-            Advancement advancement = Bukkit.getAdvancement(key);
-            if (advancement == null) return;
-
-            AdvancementProgress progress = player.getAdvancementProgress(advancement);
-            for (String criteria : progress.getAwardedCriteria()) {
-                progress.revokeCriteria(criteria);
+            Map<String, TaskAdvancement> taskMap = multiTasks.get(advancementId);
+            if (taskMap != null) {
+                for (TaskAdvancement task : taskMap.values()) {
+                    task.revoke(player);
+                }
+            } else {
+                advancement.revoke(player);
             }
         } catch (Exception e) {
             if (plugin.isDebugEnabled()) {
@@ -170,25 +263,33 @@ public class AdvancementManager {
     }
 
     public boolean hasAdvancement(Player player, String advancementId) {
-        if (!plugin.isAdvancementsEnabled()) return false;
+        if (!plugin.isAdvancementsEnabled() || tab == null) return false;
         if (player == null || advancementId == null) return false;
-
-        NamespacedKey key = advancementKeys.get(advancementId);
-        if (key == null) return false;
-
+        Advancement advancement = byId.get(advancementId);
+        if (advancement == null) return false;
         try {
-            Advancement advancement = Bukkit.getAdvancement(key);
-            if (advancement == null) return false;
-
-            return player.getAdvancementProgress(advancement).isDone();
+            return advancement.isGranted(player);
         } catch (Exception e) {
             return false;
         }
     }
 
+    public void dispose() {
+        try {
+            UltimateAdvancementAPI api = UltimateAdvancementAPI.getInstance(plugin);
+            if (api.isAdvancementTabRegistered(TAB)) {
+                api.unregisterAdvancementTab(TAB);
+            }
+        } catch (Exception ignored) {
+            // UAA already gone / not enabled — nothing to dispose.
+        }
+        tab = null;
+        byId.clear();
+        multiTasks.clear();
+    }
+
     public void reload() {
-        advancementKeys.clear();
+        dispose();
         load();
     }
 }
-

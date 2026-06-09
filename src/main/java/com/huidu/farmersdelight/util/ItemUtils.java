@@ -599,8 +599,10 @@ public final class ItemUtils {
         }
         String normalized = itemId.trim();
         String customId = getCustomItemId(item);
-        if (customId != null && customId.equalsIgnoreCase(normalized)) {
-            return true;
+        if (customId != null) {
+            // A CraftEngine custom item is identified only by its custom id, never by its
+            // base vanilla material, so it cannot satisfy the base material's vanilla id.
+            return customId.equalsIgnoreCase(normalized);
         }
         String vanillaId = getVanillaMaterialItemId(item);
         return vanillaId != null && vanillaId.equalsIgnoreCase(normalized);

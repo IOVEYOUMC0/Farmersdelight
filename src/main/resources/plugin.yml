@@ -3,7 +3,7 @@ version: ${version}
 main: com.huidu.farmersdelight.FarmersDelightPlugin
 api-version: '1.21'
 folia-supported: true
-depend: [CraftEngine]
+depend: [CraftEngine, UltimateAdvancementAPI]
 softdepend: [AuraSkills]
 authors:
   - HuiDu_OwO

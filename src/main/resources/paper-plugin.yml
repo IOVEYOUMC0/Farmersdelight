@@ -11,6 +11,9 @@ dependencies:
     CraftEngine:
       load: BEFORE
       required: true
+    UltimateAdvancementAPI:
+      load: BEFORE
+      required: true
     AuraSkills:
       load: BEFORE
       required: false
