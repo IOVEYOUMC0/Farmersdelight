@@ -639,6 +639,21 @@ public final class ItemUtils {
         return Set.copyOf(tags);
     }
 
+    public static List<String> getAllItemTagIds(ItemStack item) {
+        if (item == null || item.getType().isAir()) {
+            return List.of();
+        }
+        java.util.LinkedHashSet<String> tags = new java.util.LinkedHashSet<>(getItemTagIds(item));
+        for (Tag<Material> tag : Bukkit.getTags("items", Material.class)) {
+            if (tag.isTagged(item.getType())) {
+                tags.add(tag.getKey().toString());
+            }
+        }
+        List<String> sorted = new ArrayList<>(tags);
+        sorted.sort(String::compareTo);
+        return sorted;
+    }
+
     public static boolean matchesCustomOrVanillaTag(ItemStack item, String tagId) {
         if (item == null || item.getType().isAir() || tagId == null || tagId.isBlank()) {
             return false;

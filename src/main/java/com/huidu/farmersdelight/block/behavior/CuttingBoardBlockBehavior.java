@@ -5,7 +5,7 @@ import com.huidu.farmersdelight.advancement.AdvancementManager;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.recipe.CuttingBoardRecipe;
 import com.huidu.farmersdelight.util.*;
-import fr.ateastudio.farmersdelight.api.event.ProfessionCookingExperienceEvent;
+import com.huidu.farmersdelight.api.event.ProfessionCookingExperienceEvent;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
