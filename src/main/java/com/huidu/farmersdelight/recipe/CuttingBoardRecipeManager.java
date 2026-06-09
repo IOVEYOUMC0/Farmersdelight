@@ -133,7 +133,7 @@ public class CuttingBoardRecipeManager {
             return Constants.SOUND_CUTTING_BOARD_KNIFE;
         }
 
-        String normalized = soundStr.trim().toLowerCase();
+        String normalized = soundStr.trim().toLowerCase(java.util.Locale.ROOT);
         if (normalized.contains(":")) {
             return normalized;
         }

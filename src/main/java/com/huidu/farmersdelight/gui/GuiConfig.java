@@ -428,6 +428,7 @@ public class GuiConfig {
         private final List<String> lore;
         private final String nameKey;
         private final List<String> loreKeys;
+        private final List<String> commands;
         private volatile ItemStack cachedNoPlaceholders;
         private volatile ItemStack cachedCustomBase;
         private volatile Boolean cachedCustomBaseIsReal;
@@ -447,6 +448,12 @@ public class GuiConfig {
 
         public GuiItem(Material material, Key customItemId, Integer customModelData, String itemModel,
                        boolean hideTooltip, String name, List<String> lore, String nameKey, List<String> loreKeys) {
+            this(material, customItemId, customModelData, itemModel, hideTooltip, name, lore, nameKey, loreKeys, List.of());
+        }
+
+        public GuiItem(Material material, Key customItemId, Integer customModelData, String itemModel,
+                       boolean hideTooltip, String name, List<String> lore, String nameKey, List<String> loreKeys,
+                       List<String> commands) {
             this.material = material;
             this.customItemId = customItemId;
             this.customModelData = customModelData;
@@ -459,6 +466,17 @@ public class GuiConfig {
                 this.loreKeys = loreKeys;
             } else {
                 this.loreKeys = List.of();
+            }
+            if (commands != null && !commands.isEmpty()) {
+                List<String> normalizedCommands = new ArrayList<>();
+                for (String command : commands) {
+                    if (command != null && !command.isBlank()) {
+                        normalizedCommands.add(command.trim());
+                    }
+                }
+                this.commands = List.copyOf(normalizedCommands);
+            } else {
+                this.commands = List.of();
             }
         }
 
@@ -502,9 +520,10 @@ public class GuiConfig {
             }
             boolean hideTooltip = section.getBoolean("hide-tooltip",
                     section.getBoolean("hide_tooltip", section.getBoolean("hideTooltip", false)));
+            List<String> commands = readCommands(section);
 
             return new GuiItem(material, customItemId, customModelData, itemModel, hideTooltip,
-                    name, lore, nameKey, loreKeys);
+                    name, lore, nameKey, loreKeys, commands);
         }
 
         public static GuiItem fromMap(Map<?, ?> map) {
@@ -564,6 +583,7 @@ public class GuiConfig {
             boolean hideTooltip = parseBoolean(map.containsKey("hide-tooltip")
                     ? map.get("hide-tooltip")
                     : (map.containsKey("hide_tooltip") ? map.get("hide_tooltip") : map.get("hideTooltip")));
+            List<String> commands = readCommands(map);
             List<String> lore = new ArrayList<>();
             Object loreValue = map.get("lore");
             if (loreValue instanceof List<?> loreList) {
@@ -584,7 +604,7 @@ public class GuiConfig {
             }
 
             return new GuiItem(material, customItemId, customModelData, itemModel, hideTooltip,
-                    name, lore, nameKey, loreKeys);
+                    name, lore, nameKey, loreKeys, commands);
         }
 
         private GuiItem withMissingVisualOptionsFrom(GuiItem fallback) {
@@ -600,7 +620,7 @@ public class GuiConfig {
                 return this;
             }
             return new GuiItem(material, customItemId, resolvedCustomModelData, resolvedItemModel, resolvedHideTooltip,
-                    name, lore, nameKey, loreKeys);
+                    name, lore, nameKey, loreKeys, commands);
         }
 
         private static boolean hasText(String value) {
@@ -629,6 +649,14 @@ public class GuiConfig {
 
         public List<String> getLore() {
             return lore;
+        }
+
+        public List<String> getCommands() {
+            return commands;
+        }
+
+        public boolean hasCommands() {
+            return commands != null && !commands.isEmpty();
         }
 
         public ItemStack createItem() {
@@ -759,6 +787,38 @@ public class GuiConfig {
 
         private static boolean parseBoolean(Object value) {
             return value != null && Boolean.parseBoolean(value.toString());
+        }
+
+        private static List<String> readCommands(ConfigurationSection section) {
+            List<String> commands = new ArrayList<>();
+            appendCommandValue(commands, section.get("command"));
+            appendCommandValue(commands, section.get("commands"));
+            appendCommandValue(commands, section.get("cmd"));
+            return commands;
+        }
+
+        private static List<String> readCommands(Map<?, ?> map) {
+            List<String> commands = new ArrayList<>();
+            appendCommandValue(commands, map.get("command"));
+            appendCommandValue(commands, map.get("commands"));
+            appendCommandValue(commands, map.get("cmd"));
+            return commands;
+        }
+
+        private static void appendCommandValue(List<String> commands, Object value) {
+            if (value == null) {
+                return;
+            }
+            if (value instanceof Iterable<?> iterable) {
+                for (Object entry : iterable) {
+                    appendCommandValue(commands, entry);
+                }
+                return;
+            }
+            String command = value.toString().trim();
+            if (!command.isEmpty()) {
+                commands.add(command);
+            }
         }
 
         private String resolveText(String fallback, String key) {

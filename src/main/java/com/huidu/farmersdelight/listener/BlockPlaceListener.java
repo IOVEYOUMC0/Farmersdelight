@@ -234,7 +234,7 @@ public class BlockPlaceListener implements Listener {
             }
         }
 
-        if (am != null && FEAST_BLOCKS.contains(customBlockId.toLowerCase())) {
+        if (am != null && FEAST_BLOCKS.contains(customBlockId.toLowerCase(java.util.Locale.ROOT))) {
             am.award(player, "place_feast");
         }
 
@@ -285,7 +285,7 @@ public class BlockPlaceListener implements Listener {
     }
 
     private String getCustomCropCriterion(String customBlockId) {
-        return switch (customBlockId.toLowerCase()) {
+        return switch (customBlockId.toLowerCase(java.util.Locale.ROOT)) {
             case Constants.BLOCK_CABBAGES -> "cabbage";
             case Constants.BLOCK_BUDDING_TOMATOES, Constants.BLOCK_TOMATOES -> "tomato";
             case Constants.BLOCK_ONIONS -> "onion";

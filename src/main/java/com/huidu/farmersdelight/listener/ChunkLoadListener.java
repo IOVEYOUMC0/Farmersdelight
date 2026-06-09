@@ -10,6 +10,7 @@ import com.huidu.farmersdelight.block.behavior.CuttingBoardBlockEntityController
 import com.huidu.farmersdelight.block.behavior.SkilletBlockEntityController;
 import com.huidu.farmersdelight.block.behavior.StoveBlockEntityController;
 import com.huidu.farmersdelight.i18n.I18n;
+import com.huidu.farmersdelight.manager.TrayManager;
 import com.huidu.farmersdelight.storage.LegacyBlockStorageManager;
 import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
@@ -100,62 +101,68 @@ public class ChunkLoadListener implements Listener {
         loadCraftEngineBlockEntitiesInChunk(world, chunkX, chunkZ);
 
         LegacyBlockStorageManager storage = plugin.getLegacyBlockStorageManager();
-        if (storage == null) return;
+        if (storage != null) {
+            Map<String, Map<String, Object>> blockData = storage.loadBlockDataInChunk(world, chunkX, chunkZ);
+            for (Map<String, Object> data : blockData.values()) {
+                String blockType = null;
+                if (data.get("_blockType") instanceof String s) {
+                    blockType = s;
+                }
+                int x = 0;
+                if (data.get("_x") instanceof Number n) {
+                    x = n.intValue();
+                }
+                int y = 0;
+                if (data.get("_y") instanceof Number n) {
+                    y = n.intValue();
+                }
+                int z = 0;
+                if (data.get("_z") instanceof Number n) {
+                    z = n.intValue();
+                }
+                if (blockType == null) {
+                    continue;
+                }
 
-        Map<String, Map<String, Object>> blockData = storage.loadBlockDataInChunk(world, chunkX, chunkZ);
-        for (Map<String, Object> data : blockData.values()) {
-            String blockType = null;
-            if (data.get("_blockType") instanceof String s) {
-                blockType = s;
+                BlockPos pos = new BlockPos(x, y, z);
+                switch (blockType) {
+                    case "cooking_pot" -> {
+                        BlockPosKey posKey = new BlockPosKey(pos);
+                        // Only drop the legacy entry after the CE block is confirmed and migrated.
+                        if (CookingPotBlockBehavior.isCookingPotBlock(world, posKey)) {
+                            CookingPotBlockBehavior.migrateLegacyBlockData(world, posKey, data);
+                            storage.removeBlockData(posKey.toLocation(world));
+                        }
+                    }
+                    case "cutting_board" -> {
+                        BlockPosKey posKey = new BlockPosKey(pos);
+                        if (CuttingBoardBlockBehavior.isCuttingBoardBlock(world, posKey)) {
+                            CuttingBoardBlockBehavior.migrateLegacyBlockData(world, posKey, data);
+                            storage.removeBlockData(posKey.toLocation(world));
+                        }
+                    }
+                    case "skillet" -> {
+                        BlockPosKey posKey = new BlockPosKey(pos);
+                        plugin.getSkilletManager().loadSkillet(world, posKey, data);
+                        storage.removeBlockData(posKey.toLocation(world));
+                    }
+                    case "stove" -> {
+                        BlockPosKey posKey = new BlockPosKey(pos);
+                        plugin.getStoveManager().loadStove(world, posKey, data);
+                        storage.removeBlockData(posKey.toLocation(world));
+                    }
+                    default -> plugin.getLogger().warning(I18n.formatConsole("chunk_load.unknown_block_type",
+                            "type", blockType,
+                            "x", x,
+                            "y", y,
+                            "z", z));
+                }
             }
-            int x = 0;
-            if (data.get("_x") instanceof Number n) {
-                x = n.intValue();
-            }
-            int y = 0;
-            if (data.get("_y") instanceof Number n) {
-                y = n.intValue();
-            }
-            int z = 0;
-            if (data.get("_z") instanceof Number n) {
-                z = n.intValue();
-            }
-            if (blockType == null) {
-                continue;
-            }
+        }
 
-            BlockPos pos = new BlockPos(x, y, z);
-            switch (blockType) {
-                case "cooking_pot" -> {
-                    BlockPosKey posKey = new BlockPosKey(pos);
-                    if (CookingPotBlockBehavior.isCookingPotBlock(world, posKey)) {
-                        CookingPotBlockBehavior.migrateLegacyBlockData(world, posKey, data);
-                    }
-                    storage.removeBlockData(posKey.toLocation(world));
-                }
-                case "cutting_board" -> {
-                    BlockPosKey posKey = new BlockPosKey(pos);
-                    if (CuttingBoardBlockBehavior.isCuttingBoardBlock(world, posKey)) {
-                        CuttingBoardBlockBehavior.migrateLegacyBlockData(world, posKey, data);
-                    }
-                    storage.removeBlockData(posKey.toLocation(world));
-                }
-                case "skillet" -> {
-                    BlockPosKey posKey = new BlockPosKey(pos);
-                    plugin.getSkilletManager().loadSkillet(world, posKey, data);
-                    storage.removeBlockData(posKey.toLocation(world));
-                }
-                case "stove" -> {
-                    BlockPosKey posKey = new BlockPosKey(pos);
-                    plugin.getStoveManager().loadStove(world, posKey, data);
-                    storage.removeBlockData(posKey.toLocation(world));
-                }
-                default -> plugin.getLogger().warning(I18n.formatConsole("chunk_load.unknown_block_type",
-                        "type", blockType,
-                        "x", x,
-                        "y", y,
-                        "z", z));
-            }
+        TrayManager trayManager = plugin.getTrayManager();
+        if (trayManager != null) {
+            trayManager.cleanupInvalidAutoTraysInChunk(world, chunkX, chunkZ);
         }
     }
 
