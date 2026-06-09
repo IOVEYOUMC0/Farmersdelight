@@ -57,6 +57,27 @@ gui:
   cooking_pot:
     pending_container_hint: "&7Container: &f{container}"
     pending_container_hint_prefix: "&7Container: &f"
+  editor:
+    usage: "&e/fd recipe edit <pot|board> <id> [customGroup]"
+    feedback:
+      invalid_id: "&cRecipe id must use only lowercase letters, digits and underscores."
+      not_configured: "&cThe recipe editor GUI is not configured in gui.yml."
+      board_coming: "&eThe cutting-board editor is coming in a follow-up phase."
+      advanced_coming: "&eAdvanced ingredient editing (tag / choice / exclusions) is coming in a follow-up phase."
+      no_ingredients: "&cThe recipe needs at least one ingredient."
+      no_input: "&cThe recipe needs an input item."
+      no_result: "&cThe recipe needs a result item."
+      too_many_ingredients: "&eThis recipe has {total} ingredients but only {shown} slots are shown; extra ingredients are not editable here."
+      too_many_results: "&eThis recipe has {total} results but only {shown} slots are shown; extra results are not editable here."
+      saved: "&aSaved recipe &f{recipe_id}&a and reloaded."
+      deleted: "&aDeleted recipe &f{recipe_id}&a and reloaded."
+      save_failed: "&cFailed to save the recipe (see console)."
+      delete_failed: "&cFailed to delete the recipe (see console)."
+      no_tags: "&cThis item does not belong to any tag."
+    tag:
+      select_hint: "&7Left: use this tag &8| &7Right: edit exclusions"
+      member_included: "&7Click: exclude this item from the tag"
+      member_excluded: "&cExcluded &7(click to restore)"
 console:
   prefix: "[FarmersDelight]"
   i18n:
@@ -114,7 +135,7 @@ console:
     custom_cooking_pot_gui_load_failed: "Failed to load custom cooking pot GUI '{id}': {error}"
     invalid_cutting_board_mode: "Invalid cutting-board.interaction-mode '{value}', falling back to stacking."
     startup_config: "Startup config"
-    config_summary: "{label}: cutting-board mode={mode}, hopper={hopper}, cooking-pot-hopper={cooking_pot_hopper}, cutting-board-hopper={cutting_board_hopper}, advancements={advancements}"
+    config_summary: "{label}: cutting-board mode={mode}, hopper={hopper}, cooking-pot-hopper={cooking_pot_hopper}, cutting-board-hopper={cutting_board_hopper}, skillet-hopper={skillet_hopper}, advancements={advancements}"
     advancement_resource_sync_failed: "Failed to sync advancement resource {resource} for world {world}: {error}"
     advancement_file_delete_failed: "Failed to delete advancement datapack file {path}: {error}"
     advancement_directory_delete_failed: "Failed to delete advancement datapack directory {path}: {error}"
@@ -171,6 +192,7 @@ console:
     loaded_total: "Loaded {count} {type} recipes"
     custom_cooking_pot_load_failed: "Failed to load custom cooking pot recipe '{id}': {error}"
     custom_cooking_pot_loaded: "Loaded {count} custom cooking pot recipes"
+    editor_missing_custom_pot_gui: "No recipe-editor-cooking-pot-guis entry for custom pot '{id}'; using the default editor layout."
     invalid_count: "Invalid count for recipe: {error}"
     invalid_chance: "Invalid chance for recipe: {error}"
   legacy_storage:

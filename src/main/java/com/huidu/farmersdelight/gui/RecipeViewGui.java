@@ -104,6 +104,8 @@ public class RecipeViewGui implements InventoryHolder {
     
     private final boolean fromCookingPot;
     private final Location cookingPotLocation;
+    private boolean backButtonCommandsEnabled = false;
+    private boolean editMode = false;
     // Resolved once (lazily, during the initial open while the viewer is at the pot = same Folia
     // region) and memoized, so the per-tick/redraw paths never repeat a cross-region block read.
     private boolean recipeGroupResolved;
@@ -208,6 +210,7 @@ public class RecipeViewGui implements InventoryHolder {
     }
 
     public void openCookingPotRecipes(Player player) {
+        backButtonCommandsEnabled = true;
         state = GuiState.COOKING_POT_LIST;
         cookingPotMode = true;
         recipeBackState = GuiState.COOKING_POT_LIST;
@@ -216,11 +219,22 @@ public class RecipeViewGui implements InventoryHolder {
     }
 
     public void openCuttingBoardRecipes(Player player) {
+        backButtonCommandsEnabled = true;
         state = GuiState.CUTTING_BOARD_LIST;
         cookingPotMode = false;
         recipeBackState = GuiState.CUTTING_BOARD_LIST;
         currentPage = 0;
         open(player);
+    }
+
+    public void openCookingPotRecipesForEdit(Player player) {
+        editMode = true;
+        openCookingPotRecipes(player);
+    }
+
+    public void openCuttingBoardRecipesForEdit(Player player) {
+        editMode = true;
+        openCuttingBoardRecipes(player);
     }
 
     private void tickToolSwitch() {
@@ -364,6 +378,7 @@ public class RecipeViewGui implements InventoryHolder {
     }
 
     private void drawCookingPotList(Player player) {
+        cookingPotMode = true;
         RecipeViewGuiConfig.RecipeListConfig listConfig = config.getRecipeList();
         List<CookingPotRecipe> recipes = plugin.getCookingPotRecipes().getSortedRecipes(getActiveCookingPotRecipeGroup());
         if (craftableOnly) {
@@ -373,6 +388,7 @@ public class RecipeViewGui implements InventoryHolder {
     }
 
     private void drawCuttingBoardList(Player player) {
+        cookingPotMode = false;
         RecipeViewGuiConfig.RecipeListConfig listConfig = config.getRecipeList();
         List<CuttingBoardRecipe> recipes = plugin.getCuttingBoardRecipes().getSortedRecipes();
         drawRecipeList(player, listConfig, recipes, false);
@@ -453,6 +469,10 @@ public class RecipeViewGui implements InventoryHolder {
         setGuiItem(listConfig, "back", listConfig.getBackSlot());
         if (cookingPotMode) {
             setFilterToggleItem(listConfig, player);
+        } else if (listConfig.getFilterSlot() >= 0) {
+            GuiConfig.GuiItem background = listConfig.getItem("background");
+            inventory.setItem(listConfig.getFilterSlot(),
+                    background != null ? background.createItem() : null);
         }
 
         if (listConfig.getInfoSlot() >= 0) {
@@ -1725,10 +1745,15 @@ public class RecipeViewGui implements InventoryHolder {
         RecipeViewGuiConfig.MainMenuConfig menuConfig = config.getMainMenu();
 
         if (slot == menuConfig.getCookingPotSlot()) {
+            backButtonCommandsEnabled = false;
             navigateToState(player, GuiState.COOKING_POT_LIST);
         } else if (slot == menuConfig.getCuttingBoardSlot()) {
+            backButtonCommandsEnabled = false;
             navigateToState(player, GuiState.CUTTING_BOARD_LIST);
         } else if (slot == menuConfig.getBackSlot()) {
+            if (runBackButtonCommands(player, menuConfig.getItem("back"))) {
+                return;
+            }
             closeGui(player);
         }
     }
@@ -1746,6 +1771,9 @@ public class RecipeViewGui implements InventoryHolder {
     private void handleMaterialListClick(Player player, int slot) {
         RecipeViewGuiConfig.RecipeDetailConfig detailConfig = getActiveCookingPotDetailConfig();
         if (slot == detailConfig.getBackSlot()) {
+            if (runBackButtonCommands(player, detailConfig.getItem("back"))) {
+                return;
+            }
             navigateToState(player, GuiState.RECIPE_DETAIL);
         }
     }
@@ -1772,6 +1800,9 @@ public class RecipeViewGui implements InventoryHolder {
             currentPage = 0;
             refreshContentsInPlace(player);
         } else if (slot == listConfig.getBackSlot()) {
+            if (runBackButtonCommands(player, listConfig.getItem("back"))) {
+                return;
+            }
             if (fromCookingPot && isCookingPot) {
                 closeGui(player);
                 returnToCookingPot(player);
@@ -1788,6 +1819,11 @@ public class RecipeViewGui implements InventoryHolder {
                 } else {
                     recipeId = ((CuttingBoardRecipe) recipes.get(recipeIndex)).getId();
                 }
+                if (editMode) {
+                    closeGui(player);
+                    openEditorForRecipe(player, recipeId, isCookingPot);
+                    return;
+                }
                 selectedRecipeId = recipeId;
                 cookingPotMode = isCookingPot;
                 fillButtonState = FillButtonState.READY;
@@ -1801,6 +1837,9 @@ public class RecipeViewGui implements InventoryHolder {
         RecipeViewGuiConfig.RecipeDetailConfig detailConfig = getActiveDetailConfig();
         
         if (slot == detailConfig.getBackSlot()) {
+            if (runBackButtonCommands(player, detailConfig.getItem("back"))) {
+                return;
+            }
             navigateToState(player, recipeBackState);
             return;
         }
@@ -2446,6 +2485,33 @@ public class RecipeViewGui implements InventoryHolder {
         }
     }
 
+    private void openEditorForRecipe(Player player, String recipeId, boolean isCookingPot) {
+        plugin.scheduler().runLaterForEntity(player, () -> {
+            if (!player.isOnline()) {
+                return;
+            }
+            if (isCookingPot) {
+                RecipeViewGuiConfig.BaseConfig editorConfig =
+                        plugin.getRecipeEditorGuiConfig().getCookingPotConfig(null);
+                if (editorConfig == null) {
+                    return;
+                }
+                CookingPotRecipe existing = plugin.getCookingPotRecipes().getRecipe(recipeId);
+                new com.huidu.farmersdelight.gui.editor.CookingPotEditorGui(
+                        plugin, player, recipeId, null, existing, editorConfig).open();
+            } else {
+                RecipeViewGuiConfig.BaseConfig boardConfig =
+                        plugin.getRecipeEditorGuiConfig().getCuttingBoardConfig();
+                if (boardConfig == null) {
+                    return;
+                }
+                CuttingBoardRecipe existing = plugin.getCuttingBoardRecipes().getRecipe(recipeId);
+                new com.huidu.farmersdelight.gui.editor.CuttingBoardEditorGui(
+                        plugin, player, recipeId, existing, boardConfig).open();
+            }
+        }, 1L);
+    }
+
     private String getActiveCookingPotRecipeGroup() {
         if (!fromCookingPot || cookingPotLocation == null) {
             return null;
@@ -2511,6 +2577,70 @@ public class RecipeViewGui implements InventoryHolder {
         player.closeInventory();
     }
 
+    private boolean runBackButtonCommands(Player player, GuiConfig.GuiItem backItem) {
+        if (!backButtonCommandsEnabled || player == null || backItem == null || !backItem.hasCommands()) {
+            return false;
+        }
+
+        List<String> commands = backItem.getCommands();
+        closeGui(player);
+        plugin.scheduler().runLaterForEntity(player, () -> {
+            if (!player.isOnline()) {
+                return;
+            }
+            for (String command : commands) {
+                dispatchConfiguredCommand(player, command);
+            }
+        }, 1L);
+        return true;
+    }
+
+    private void dispatchConfiguredCommand(Player player, String configuredCommand) {
+        ConfiguredCommand command = parseConfiguredCommand(configuredCommand, player);
+        if (command.command().isEmpty()) {
+            return;
+        }
+        if (command.console()) {
+            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command.command());
+        } else {
+            Bukkit.dispatchCommand(player, command.command());
+        }
+    }
+
+    private ConfiguredCommand parseConfiguredCommand(String configuredCommand, Player player) {
+        String command = applyCommandPlaceholders(configuredCommand, player).trim();
+        boolean console = false;
+        String lower = command.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("[console]")) {
+            console = true;
+            command = command.substring("[console]".length()).trim();
+        } else if (lower.startsWith("[player]")) {
+            command = command.substring("[player]".length()).trim();
+        } else if (lower.startsWith("console:")) {
+            console = true;
+            command = command.substring("console:".length()).trim();
+        } else if (lower.startsWith("player:")) {
+            command = command.substring("player:".length()).trim();
+        }
+        while (command.startsWith("/")) {
+            command = command.substring(1).trim();
+        }
+        return new ConfiguredCommand(command, console);
+    }
+
+    private String applyCommandPlaceholders(String command, Player player) {
+        if (command == null) {
+            return "";
+        }
+        return command
+                .replace("{player}", player.getName())
+                .replace("{player_name}", player.getName())
+                .replace("%player%", player.getName())
+                .replace("%player_name%", player.getName())
+                .replace("{uuid}", player.getUniqueId().toString())
+                .replace("{world}", player.getWorld().getName());
+    }
+
     void onClose(InventoryCloseEvent event) {
         if (event.getView().getTopInventory().getHolder() != this) return;
         if (closed) return;
@@ -2527,6 +2657,9 @@ public class RecipeViewGui implements InventoryHolder {
         if (closed) return;
         closed = true;
         GuiTickManager.getInstance(plugin).unregisterCallback(tickCallback);
+    }
+
+    private record ConfiguredCommand(String command, boolean console) {
     }
 
     private void returnToCookingPot(Player player) {

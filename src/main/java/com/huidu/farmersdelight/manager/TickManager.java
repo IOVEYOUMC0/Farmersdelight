@@ -841,7 +841,7 @@ public class TickManager {
         }
 
         try {
-            return Particle.valueOf(normalized.trim().toUpperCase());
+            return Particle.valueOf(normalized.trim().toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException ignored) {
             return defaultParticle;
         }
@@ -855,9 +855,9 @@ public class TickManager {
         String trimmed = configured.trim();
         String registryKey;
         if (trimmed.contains(":")) {
-            registryKey = trimmed.toLowerCase();
+            registryKey = trimmed.toLowerCase(java.util.Locale.ROOT);
         } else {
-            registryKey = "minecraft:" + trimmed.toLowerCase().replace('_', '.');
+            registryKey = "minecraft:" + trimmed.toLowerCase(java.util.Locale.ROOT).replace('_', '.');
         }
         Sound registrySound = Registry.SOUNDS.get(NamespacedKey.fromString(registryKey));
         if (registrySound != null) {
