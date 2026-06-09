@@ -99,6 +99,11 @@ public class FoodEatListener implements Listener {
 
         AdvancementManager advancementManager = FarmersDelightPlugin.getInstance().getAdvancementManager();
 
+        // Each distinct FD dish eaten completes one master_chef sub-task; non-dish ids are ignored.
+        if (advancementManager != null && itemId.startsWith("farmersdelight:")) {
+            advancementManager.awardCriteria(player, "master_chef", itemId.substring("farmersdelight:".length()));
+        }
+
         if (comfortFoodDurations.containsKey(itemId)) {
             if (comfortFoodsEnabled) {
                 int duration = comfortFoodDurations.get(itemId);

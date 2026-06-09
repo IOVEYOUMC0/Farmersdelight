@@ -91,6 +91,7 @@ public class AchievementListener implements Listener {
     public void onPlayerJoin(PlayerJoinEvent event) {
         AdvancementManager am = FarmersDelightPlugin.getInstance().getAdvancementManager();
         if (am != null) {
+            am.showTo(event.getPlayer());
             am.award(event.getPlayer(), "root");
         }
         checkSeedAdvancement(event.getPlayer());
