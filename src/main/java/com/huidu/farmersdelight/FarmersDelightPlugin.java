@@ -232,6 +232,9 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             HandlerList.unregisterAll(achievementListener);
             achievementListener = null;
         }
+        if (advancementManager != null) {
+            advancementManager.dispose();
+        }
         advancementManager = null;
         queueAdvancementDatapackRemoval(I18n.formatConsole("plugin.datapack_reason_remove_disabled_advancements"));
     }
@@ -254,9 +257,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             getServer().getPluginManager().registerEvents(achievementListener, this);
         }
 
-        queueDatapackSync(reloading
-                ? I18n.formatConsole("plugin.datapack_reason_apply_advancement_config")
-                : I18n.formatConsole("plugin.datapack_reason_apply_advancements"));
+        // Remove any legacy advancement datapack so its vanilla tree doesn't duplicate the UAA tab.
+        queueAdvancementDatapackRemoval(I18n.formatConsole("plugin.datapack_reason_remove_legacy_advancements"));
     }
 
     @Override
@@ -500,6 +502,9 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         strawDropConfig = null;
 
         legacyBlockStorageManager = null;
+        if (advancementManager != null) {
+            advancementManager.dispose();
+        }
         advancementManager = null;
 
         I18n.logInfo("plugin.disabled");
@@ -613,8 +618,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         if (primaryWorld == null || !primaryWorld.getUID().equals(event.getWorld().getUID())) {
             return;
         }
-        queueDatapackSync(I18n.formatConsole("plugin.datapack_reason_world_sync",
-                "world", event.getWorld().getName()));
+        // Advancements are sent via packets; no per-world datapack sync.
     }
 
     private void queueDatapackReload(String reason) {
