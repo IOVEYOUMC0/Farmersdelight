@@ -145,7 +145,7 @@ recipe-view-gui:
       X: background
     items:
       background:
-        material: GRAY_STAINED_GLASS_PANE
+        material: LIGHT_GRAY_STAINED_GLASS_PANE
         item_model: "farmersdelight:gui/empty"
         hide-tooltip: true
         name: " "
@@ -186,7 +186,7 @@ recipe-view-gui:
       X: background
     items:
       background:
-        material: GRAY_STAINED_GLASS_PANE
+        material: LIGHT_GRAY_STAINED_GLASS_PANE
         item_model: "farmersdelight:gui/empty"
         hide-tooltip: true
         name: " "
@@ -239,7 +239,7 @@ recipe-view-gui:
       X: background
     items:
       background:
-        material: GRAY_STAINED_GLASS_PANE
+        material: LIGHT_GRAY_STAINED_GLASS_PANE
         item_model: "farmersdelight:gui/empty"
         hide-tooltip: true
         name: " "
@@ -345,7 +345,7 @@ recipe-view-gui:
       X: background
     items:
       background:
-        material: GRAY_STAINED_GLASS_PANE
+        material: LIGHT_GRAY_STAINED_GLASS_PANE
         item_model: "farmersdelight:gui/empty"
         hide-tooltip: true
         name: " "
@@ -384,7 +384,7 @@ recipe-editor-gui:
     "#": background
   items:
     background:
-      material: GRAY_STAINED_GLASS_PANE
+      material: LIGHT_GRAY_STAINED_GLASS_PANE
       item_model: "farmersdelight:gui/empty"
       hide-tooltip: true
       name: " "
@@ -393,23 +393,23 @@ recipe-editor-gui:
       name: "&a厨锅配方: &f{recipe_id}"
       lore:
         - "&7类型: &f{type}"
-        - "&7点击背包物品 → 复制到光标,点槽位放入。"
-        - "&7已填原料槽再放一个 = 追加为或选 (a|b)。"
-        - "&7右键或选 = 挑选删除某一项;右键单物品 = 清空。"
-        - "&7原料槽 Shift 点击 = 打开或选构建器。"
-        - "&7数值槽: 左键 +,右键 -。背包物品不会被消耗。"
+        - "&7点击背包物品 → 复制到光标。"
+        - "&7光标有物点槽位 → 放入;空光标点已填槽 → 取回(清空)。"
+        - "&7数值槽: 左键 +,右键 -。"
+        - "&7原料槽 Shift 点击: 标签/或选/排除(后续支持)。"
+        - "&7背包物品不会被消耗。"
     ingredient:
-      material: LIGHT_GRAY_STAINED_GLASS_PANE
+      material: GRAY_STAINED_GLASS_PANE
       name: "&7原料 &8(空)"
       lore:
         - "&7从光标放入一个物品作为原料。"
     container:
-      material: LIGHT_GRAY_STAINED_GLASS_PANE
+      material: GRAY_STAINED_GLASS_PANE
       name: "&b容器 &8(可选)"
       lore:
         - "&7随成品返还的碗/瓶等。"
     result:
-      material: LIGHT_GRAY_STAINED_GLASS_PANE
+      material: GRAY_STAINED_GLASS_PANE
       name: "&a成品 &8(空)"
       lore:
         - "&7本配方产出的物品。"
@@ -477,7 +477,7 @@ recipe-editor-confirm-delete-gui:
     "#": background
   items:
     background:
-      material: GRAY_STAINED_GLASS_PANE
+      material: LIGHT_GRAY_STAINED_GLASS_PANE
       item_model: "farmersdelight:gui/empty"
       hide-tooltip: true
       name: " "
@@ -538,18 +538,18 @@ recipe-cutting-board-editor-gui:
         - "&7工具全空时使用默认刀具标签。"
         - "&7背包物品不会被消耗。"
     input:
-      material: LIGHT_GRAY_STAINED_GLASS_PANE
+      material: GRAY_STAINED_GLASS_PANE
       name: "&7输入物 &8(空)"
       lore:
         - "&7被切割处理的物品。"
     tool:
-      material: LIGHT_GRAY_STAINED_GLASS_PANE
+      material: GRAY_STAINED_GLASS_PANE
       name: "&b工具 &8(空)"
       lore:
         - "&7放入一个工具物品。"
         - "&7全部留空 = 使用默认刀具标签。"
     result:
-      material: LIGHT_GRAY_STAINED_GLASS_PANE
+      material: GRAY_STAINED_GLASS_PANE
       name: "&a产物 &8(空)"
       lore:
         - "&7左键放入/选中,右键清空。"
@@ -585,109 +585,3 @@ recipe-cutting-board-editor-gui:
       name: "&4删除配方"
       lore:
         - "&7从配方文件中移除该配方。"
-
-# 或选原料构建器。在厨锅编辑器 Shift 点击原料槽时打开。
-# info: {index}(原料序号)
-recipe-choice-builder-gui:
-  title: "<white>或选原料"
-  rows: 4
-  layout:
-    - "####i####"
-    - "#OOOOOOO#"
-    - "#########"
-    - "X###C###S"
-  legend:
-    i: info
-    O: option
-    X: cancel
-    C: clear-all
-    S: save
-    "#": background
-  items:
-    background:
-      material: GRAY_STAINED_GLASS_PANE
-      item_model: "farmersdelight:gui/empty"
-      hide-tooltip: true
-      name: " "
-    info:
-      material: CHEST
-      name: "&d或选原料 #{index}"
-      lore:
-        - "&7放入多个物品 = 该原料任选其一。"
-        - "&7点光标物品放入,右键槽位清空。"
-        - "&7只放 1 个 = 普通物品;放 0 个 = 清空该原料。"
-        - "&7背包物品不会被消耗。"
-    option:
-      material: LIGHT_GRAY_STAINED_GLASS_PANE
-      name: "&7可选物 &8(空)"
-      lore:
-        - "&7从光标放入一个物品作为可选项。"
-    save:
-      material: LIME_CONCRETE
-      name: "&a确认"
-      lore:
-        - "&7应用到原料并返回编辑器。"
-    clear-all:
-      material: RED_STAINED_GLASS_PANE
-      name: "&c全部清除"
-      lore:
-        - "&7清空所有可选物。"
-    cancel:
-      material: BARRIER
-      name: "&c取消"
-      lore:
-        - "&7返回,不修改该原料。"
-
-recipe-tag-picker-gui:
-  title: "<white>选择标签"
-  rows: 6
-  layout:
-    - "i#######X"
-    - "#EEEEEEE#"
-    - "#EEEEEEE#"
-    - "#EEEEEEE#"
-    - "#########"
-    - "P##B#V##N"
-  legend:
-    i: info
-    X: cancel
-    E: entry
-    P: prev
-    N: next
-    B: back
-    V: confirm
-    "#": background
-  items:
-    background:
-      material: GRAY_STAINED_GLASS_PANE
-      item_model: "farmersdelight:gui/empty"
-      hide-tooltip: true
-      name: " "
-    info:
-      material: NAME_TAG
-      name: "&d标签选择"
-      lore:
-        - "&7左键标签 = 直接使用该标签。"
-        - "&7右键标签 = 进入排除项编辑。"
-        - "&7排除页:点物品在'排除/包含'间切换。"
-        - "&8当前标签: &7{tag}"
-        - "&8已排除: &7{excluded}"
-    prev-page:
-      material: ARROW
-      name: "&a上一页"
-    next-page:
-      material: ARROW
-      name: "&a下一页"
-    back:
-      material: SPECTRAL_ARROW
-      name: "&e返回标签列表"
-    confirm:
-      material: LIME_CONCRETE
-      name: "&a确认排除项"
-      lore:
-        - "&7应用标签(含排除项)并返回编辑器。"
-    cancel:
-      material: BARRIER
-      name: "&c取消"
-      lore:
-        - "&7返回,不修改该原料。"
