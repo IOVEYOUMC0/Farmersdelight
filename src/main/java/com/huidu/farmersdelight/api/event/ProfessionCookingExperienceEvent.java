@@ -1,4 +1,4 @@
-package fr.ateastudio.farmersdelight.api.event;
+package com.huidu.farmersdelight.api.event;
 
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;

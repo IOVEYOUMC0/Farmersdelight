@@ -15,6 +15,7 @@ import com.huidu.farmersdelight.compat.CraftEngineStateUsageMonitor;
 import com.huidu.farmersdelight.effect.EffectListener;
 import com.huidu.farmersdelight.gui.CookingPotGui;
 import com.huidu.farmersdelight.gui.GuiConfig;
+import com.huidu.farmersdelight.gui.RecipeEditorGuiConfig;
 import com.huidu.farmersdelight.gui.RecipeViewGui;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.loot.KnifeDropHandler;
@@ -34,7 +35,7 @@ import com.huidu.farmersdelight.util.scheduler.PluginTask;
 import com.huidu.farmersdelight.util.scheduler.SchedulerAdapter;
 import com.huidu.farmersdelight.visual.ProxyItemDisplayManager;
 import com.huidu.farmersdelight.visual.ItemDisplayManager;
-import fr.ateastudio.farmersdelight.api.event.ProfessionCookingExperienceEvent;
+import com.huidu.farmersdelight.api.event.ProfessionCookingExperienceEvent;
 import net.momirealms.craftengine.bukkit.api.event.CraftEngineReloadEvent;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.world.BukkitWorldManager;
@@ -137,6 +138,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private KnifeDropHandler knifeDropHandler;
     private CookingPotRecipeManager cookingPotRecipeManager;
     private CuttingBoardRecipeManager cuttingBoardRecipeManager;
+    private volatile com.huidu.farmersdelight.recipe.RecipeEditorStore recipeEditorStore;
     private BlockBreakListener blockBreakListener;
     private BlockPlaceListener blockPlaceListener;
     private StrawDropListener strawDropListener;
@@ -148,17 +150,19 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private EffectListener effectListener;
     private AuraSkillsHook auraSkillsHook;
 
-    private HeatSourceConfig heatSourceConfig;
+    // volatile: reassigned on reload, read from region threads.
+    private volatile HeatSourceConfig heatSourceConfig;
     private GuiConfig cookingPotGuiConfig;
     private Map<String, GuiConfig> customCookingPotGuiConfigs = Map.of();
+    private volatile RecipeEditorGuiConfig recipeEditorGuiConfig;
     private YamlConfiguration guiConfig;
     private StrawDropConfig strawDropConfig;
     private PetFoodConfig petFoodConfig;
-    private ContainerReturnConfig containerReturnConfig;
-    private CuttingBoardDisplayConfig cuttingBoardDisplayConfig;
-    private CuttingBoardDisplayConfig skilletDisplayConfig;
-    private CuttingBoardDisplayConfig stoveDisplayConfig;
-    private CookingPotExperienceRewardConfig cookingPotExperienceRewardConfig;
+    private volatile ContainerReturnConfig containerReturnConfig;
+    private volatile CuttingBoardDisplayConfig cuttingBoardDisplayConfig;
+    private volatile CuttingBoardDisplayConfig skilletDisplayConfig;
+    private volatile CuttingBoardDisplayConfig stoveDisplayConfig;
+    private volatile CookingPotExperienceRewardConfig cookingPotExperienceRewardConfig;
     private AdvancementManager advancementManager;
     private boolean advancementsEnabled;
     private boolean debugEnabled;
@@ -174,6 +178,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private boolean hopperInteractionsEnabled;
     private boolean cookingPotHopperInteractionsEnabled;
     private boolean cuttingBoardHopperInteractionsEnabled;
+    private boolean skilletHopperInteractionsEnabled;
     private boolean cookingPotPackContentsOnBreak;
     private boolean skilletConductorsAllowed;
     private float skilletDisplayScale = 0.5F;
@@ -183,6 +188,10 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private Set<String> knifeItemIds = Set.of();
     private Set<String> knifeTagIds = Set.of();
     private Set<String> debugCategories = Set.of();
+
+    private final Object primaryLevelNameLock = new Object();
+    private volatile boolean primaryLevelNameResolved = false;
+    private volatile String cachedPrimaryLevelName;
 
     public static FarmersDelightPlugin getInstance() {
         return instance;
@@ -392,7 +401,12 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             }
         });
         runDisableStep("plugin.disable_step_close_cooking_pot_guis", CookingPotGui::cleanupAll);
-        runDisableStep("plugin.disable_step_close_recipe_view_guis", RecipeViewGui::cleanupAll);
+        runDisableStep("plugin.disable_step_close_recipe_view_guis", () -> {
+            RecipeViewGui.cleanupAll();
+            // The editor listener is unregistered with HandlerList below; reset its flag so a soft
+            // re-enable re-registers a fresh listener.
+            com.huidu.farmersdelight.gui.editor.RecipeEditorListener.reset();
+        });
         runDisableStep("plugin.disable_step_save_block_data", this::saveAllBlockData);
 
         runDisableStep("plugin.disable_step_clear_placement_cache", this::cleanupPlacementCache);
@@ -851,6 +865,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                 ? GuiConfig.fromConfig(cookingPotSection)
                 : GuiConfig.createDefault();
         customCookingPotGuiConfigs = loadCustomCookingPotGuiConfigs(guiConfig);
+        recipeEditorGuiConfig = RecipeEditorGuiConfig.fromConfig(guiConfig);
         RecipeViewGui.clearConfigCache();
         CookingPotGui.closeAllOpenGuis();
         RecipeViewGui.closeAllOpenGuis();
@@ -916,6 +931,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                 ? GuiConfig.fromConfig(cookingPotSection)
                 : GuiConfig.createDefault();
         customCookingPotGuiConfigs = loadCustomCookingPotGuiConfigs(guiConfig);
+        recipeEditorGuiConfig = RecipeEditorGuiConfig.fromConfig(guiConfig);
 
         ConfigurationSection strawDropSection = getConfig().getConfigurationSection("straw-drops");
         strawDropConfig = new StrawDropConfig();
@@ -937,12 +953,15 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             containerReturnConfig.loadFromConfig(containerReturnSection);
         }
 
-        cuttingBoardDisplayConfig = new CuttingBoardDisplayConfig();
-        cuttingBoardDisplayConfig.loadFromConfig(getConfig().getConfigurationSection("cutting-board"));
-        skilletDisplayConfig = createSkilletDisplayConfig();
-        skilletDisplayConfig.loadFromConfig(getFirstConfigSection("skillet.display", "display-visuals.skillet"));
-        stoveDisplayConfig = createStoveDisplayConfig();
-        stoveDisplayConfig.loadFromConfig(getFirstConfigSection("stove.display", "display-visuals.stove"));
+        CuttingBoardDisplayConfig newCuttingBoardDisplayConfig = new CuttingBoardDisplayConfig();
+        newCuttingBoardDisplayConfig.loadFromConfig(getConfig().getConfigurationSection("cutting-board"));
+        cuttingBoardDisplayConfig = newCuttingBoardDisplayConfig;
+        CuttingBoardDisplayConfig newSkilletDisplayConfig = createSkilletDisplayConfig();
+        newSkilletDisplayConfig.loadFromConfig(getFirstConfigSection("skillet.display", "display-visuals.skillet"));
+        skilletDisplayConfig = newSkilletDisplayConfig;
+        CuttingBoardDisplayConfig newStoveDisplayConfig = createStoveDisplayConfig();
+        newStoveDisplayConfig.loadFromConfig(getFirstConfigSection("stove.display", "display-visuals.stove"));
+        stoveDisplayConfig = newStoveDisplayConfig;
 
         cookingPotProgressDisplayEnabled = getConfigBoolean(true,
                 "cooking-pot.progress-display.enabled",
@@ -982,6 +1001,9 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         cuttingBoardHopperInteractionsEnabled = getConfigBoolean(true,
                 "cutting-board.hopper-interactions",
                 "hopper-interactions.cutting-board");
+        skilletHopperInteractionsEnabled = getConfigBoolean(true,
+                "skillet.hopper-interactions",
+                "hopper-interactions.skillet");
         skilletConductorsAllowed = getConfigBoolean(false,
                 "skillet.heat.allow-conductors",
                 "heat-sources.skillet.allow-conductors");
@@ -1137,6 +1159,10 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     public boolean isCuttingBoardHopperInteractionsEnabled() {
         return hopperInteractionsEnabled && cuttingBoardHopperInteractionsEnabled;
+    }
+
+    public boolean isSkilletHopperInteractionsEnabled() {
+        return hopperInteractionsEnabled && skilletHopperInteractionsEnabled;
     }
 
     public boolean isSkilletConductorsAllowed() {
@@ -1673,6 +1699,20 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         return cuttingBoardRecipeManager;
     }
 
+    public com.huidu.farmersdelight.recipe.RecipeEditorStore getRecipeEditorStore() {
+        com.huidu.farmersdelight.recipe.RecipeEditorStore store = this.recipeEditorStore;
+        if (store == null) {
+            synchronized (this) {
+                store = this.recipeEditorStore;
+                if (store == null) {
+                    store = new com.huidu.farmersdelight.recipe.RecipeEditorStore(this);
+                    this.recipeEditorStore = store;
+                }
+            }
+        }
+        return store;
+    }
+
     public HeatSourceConfig getHeatSourceConfig() {
         if (heatSourceConfig == null) {
             heatSourceConfig = new HeatSourceConfig();
@@ -1693,6 +1733,15 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         }
         GuiConfig customConfig = customCookingPotGuiConfigs.get(customId);
         return customConfig != null ? customConfig : getCookingPotGuiConfig();
+    }
+
+    public RecipeEditorGuiConfig getRecipeEditorGuiConfig() {
+        RecipeEditorGuiConfig config = recipeEditorGuiConfig;
+        if (config == null) {
+            config = RecipeEditorGuiConfig.fromConfig(guiConfig);
+            recipeEditorGuiConfig = config;
+        }
+        return config;
     }
 
     public ConfigurationSection getRecipeViewGuiSection() {
@@ -1847,6 +1896,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                 "hopper", hopperInteractionsEnabled,
                 "cooking_pot_hopper", cookingPotHopperInteractionsEnabled,
                 "cutting_board_hopper", cuttingBoardHopperInteractionsEnabled,
+                "skillet_hopper", skilletHopperInteractionsEnabled,
                 "advancements", advancementsEnabled);
     }
 
@@ -1880,6 +1930,21 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     }
 
     private String getConfiguredPrimaryLevelName() {
+        // Cached: read server.properties at most once.
+        if (primaryLevelNameResolved) {
+            return cachedPrimaryLevelName;
+        }
+        synchronized (primaryLevelNameLock) {
+            if (primaryLevelNameResolved) {
+                return cachedPrimaryLevelName;
+            }
+            cachedPrimaryLevelName = readConfiguredPrimaryLevelName();
+            primaryLevelNameResolved = true;
+            return cachedPrimaryLevelName;
+        }
+    }
+
+    private String readConfiguredPrimaryLevelName() {
         Path serverProperties = getServer().getWorldContainer().toPath().resolve("server.properties");
         if (!Files.isRegularFile(serverProperties)) {
             return null;

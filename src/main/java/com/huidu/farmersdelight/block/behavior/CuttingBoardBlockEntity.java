@@ -73,20 +73,27 @@ public class CuttingBoardBlockEntity {
     }
 
     public void setItem(ItemStack item, World world, BlockPosKey posKey, BlockFace facing, boolean itemCarved) {
+        setStoredItem(item, world, posKey, facing, itemCarved);
+    }
+
+    /** Normal board storage uses the flat item pose. */
+    public void setStoredItem(ItemStack item, World world, BlockPosKey posKey, BlockFace facing) {
+        setStoredItem(item, world, posKey, facing, CuttingBoardStoredItemPose.FLAT);
+    }
+
+    /** Controller sync uses this overload to preserve a manually inserted tool pose. */
+    public void setStoredItem(ItemStack item, World world, BlockPosKey posKey, BlockFace facing, boolean itemCarved) {
+        setStoredItem(item, world, posKey, facing, CuttingBoardStoredItemPose.fromCarved(itemCarved));
+    }
+
+    private void setStoredItem(ItemStack item, World world, BlockPosKey posKey, BlockFace facing,
+                               CuttingBoardStoredItemPose pose) {
         this.world = world;
         this.storedItem = cloneOrNull(item);
-        this.itemCarved = itemCarved;
+        this.itemCarved = pose.itemCarved();
         if (this.storedItem != null) {
             this.storedItem.setAmount(Math.max(1, this.storedItem.getAmount()));
         }
-        syncWorldlyContainer();
-        updateDisplayEntity(world, posKey, facing);
-    }
-
-    public void setStoredItem(ItemStack item, World world, BlockPosKey posKey, BlockFace facing) {
-        this.world = world;
-        this.storedItem = cloneOrNull(item);
-        this.itemCarved = false;
         syncWorldlyContainer();
         updateDisplayEntity(world, posKey, facing);
     }

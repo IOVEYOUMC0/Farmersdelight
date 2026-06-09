@@ -9,7 +9,7 @@ import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.storage.LegacyBlockStorageManager;
 import com.huidu.farmersdelight.util.scheduler.PluginTask;
 import com.huidu.farmersdelight.visual.ItemDisplayManager;
-import fr.ateastudio.farmersdelight.api.event.ProfessionCookingExperienceEvent;
+import com.huidu.farmersdelight.api.event.ProfessionCookingExperienceEvent;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -25,6 +25,7 @@ import org.joml.Vector3f;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
@@ -341,8 +342,125 @@ public class SkilletManager {
         return true;
     }
 
+    public ItemStack getStoredItemSnapshot(Location location) {
+        Location normalized = ManagerSupport.normalize(location);
+        if (normalized == null) {
+            return null;
+        }
+        SkilletData skillet = skillets.get(normalized);
+        if (skillet == null || !skillet.hasItem()) {
+            return null;
+        }
+        return skillet.storedItem.clone();
+    }
+
+    public boolean canAcceptHopperInput(Location location, ItemStack item) {
+        Location normalized = ManagerSupport.normalize(location);
+        if (normalized == null || !isSkilletBlock(normalized) || !isValidHopperInput(item)) {
+            return false;
+        }
+
+        SkilletData skillet = skillets.get(normalized);
+        if (skillet == null || !skillet.hasItem()) {
+            return true;
+        }
+
+        CookingRecipe<?> incomingRecipe = findCampfireRecipe(item);
+        CookingRecipe<?> storedRecipe = skillet.currentRecipe;
+        if (storedRecipe == null) {
+            storedRecipe = findCampfireRecipe(skillet.storedItem);
+        }
+        if (!canStackWithStored(skillet.storedItem, item, storedRecipe, incomingRecipe)) {
+            return false;
+        }
+
+        return skillet.storedItem.getAmount() < skillet.storedItem.getMaxStackSize();
+    }
+
+    public ItemStack insertHopperInput(Location location, ItemStack item) {
+        Location normalized = ManagerSupport.normalize(location);
+        if (normalized == null || item == null) {
+            return item == null ? null : item.clone();
+        }
+        if (!isSkilletBlock(normalized) || !isValidHopperInput(item)) {
+            return item.clone();
+        }
+
+        SkilletData skillet = getOrLoadSkillet(normalized);
+        ensurePlacedSkilletState(skillet);
+        CookingRecipe<?> incomingRecipe = findCampfireRecipe(item);
+        ItemStack pending = item.clone();
+
+        if (skillet.hasItem()) {
+            CookingRecipe<?> storedRecipe = skillet.currentRecipe;
+            if (storedRecipe == null) {
+                storedRecipe = findCampfireRecipe(skillet.storedItem);
+                skillet.currentRecipe = storedRecipe;
+            }
+            if (!canStackWithStored(skillet.storedItem, pending, storedRecipe, incomingRecipe)) {
+                return pending;
+            }
+
+            int freeSpace = Math.max(0, skillet.storedItem.getMaxStackSize() - skillet.storedItem.getAmount());
+            int toMove = Math.min(freeSpace, pending.getAmount());
+            if (toMove <= 0) {
+                return pending;
+            }
+
+            debug("hopper input: stacking onto skillet, move=" + toMove + ", storedBefore="
+                    + formatItem(skillet.storedItem) + ", input=" + formatItem(pending)
+                    + ", location=" + formatLocation(normalized));
+            skillet.storedItem.setAmount(skillet.storedItem.getAmount() + toMove);
+            createVisual(normalized, skillet);
+            saveSkillet(normalized, skillet);
+            return remainingAfterMove(pending, toMove);
+        }
+
+        int toMove = Math.min(pending.getAmount(), pending.getMaxStackSize());
+        if (toMove <= 0) {
+            return pending;
+        }
+
+        ItemStack toPlace = pending.clone();
+        toPlace.setAmount(toMove);
+        skillet.storedItem = toPlace;
+        skillet.currentRecipe = incomingRecipe;
+        skillet.cookingDuration = getAdjustedCookingTime(incomingRecipe.getCookingTime(), skillet.fireAspectLevel);
+        skillet.cookingProgress = 0;
+        skillet.ownerId = null;
+        skillet.ownerName = null;
+        debug("hopper input: stored=" + formatItem(toPlace) + ", recipe=" + incomingRecipe.getKey()
+                + ", duration=" + skillet.cookingDuration + ", fireAspect=" + skillet.fireAspectLevel
+                + ", location=" + formatLocation(normalized));
+
+        createVisual(normalized, skillet);
+        saveSkillet(normalized, skillet);
+        return remainingAfterMove(pending, toMove);
+    }
+
     public boolean canCook(ItemStack item) {
         return findCampfireRecipe(item) != null;
+    }
+
+    private boolean isValidHopperInput(ItemStack item) {
+        return item != null
+                && !item.getType().isAir()
+                && !isTool(item)
+                && !isSkilletItem(item)
+                && findCampfireRecipe(item) != null;
+    }
+
+    private ItemStack remainingAfterMove(ItemStack source, int moved) {
+        if (source == null || source.getType().isAir()) {
+            return null;
+        }
+        int remaining = source.getAmount() - moved;
+        if (remaining <= 0) {
+            return null;
+        }
+        ItemStack result = source.clone();
+        result.setAmount(remaining);
+        return result;
     }
 
     public String findRecipeId(ItemStack item) {
@@ -816,10 +934,11 @@ public class SkilletManager {
 
         skillet.cookingProgress++;
 
-        if (smokeEnabled && Math.random() < smokeChance) {
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        if (smokeEnabled && random.nextDouble() < smokeChance) {
             spawnCookingParticles(location);
         }
-        if (sizzleEnabled && Math.random() < sizzleChance) {
+        if (sizzleEnabled && random.nextDouble() < sizzleChance) {
             SoundUtils.play(world, location, getSizzleSound(location), Sound.BLOCK_CAMPFIRE_CRACKLE, sizzleVolume, sizzlePitch);
         }
         if (skillet.cookingProgress >= skillet.cookingDuration) {

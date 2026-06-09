@@ -200,7 +200,7 @@ public class KnifeDropHandler implements Listener {
         ItemStack mainHand = killer.getInventory().getItemInMainHand();
         if (!isDropTool(mainHand, rule)) return;
 
-        int lootingLevel = getLootingLevel(killer);
+        int lootingLevel = getLootingLevel(mainHand);
         double finalChance = Math.min(1.0, rule.getBaseChance() + (lootingLevel * rule.getLootingMultiplier()));
 
         if (ThreadLocalRandom.current().nextDouble() > finalChance) return;
@@ -274,11 +274,10 @@ public class KnifeDropHandler implements Listener {
 
         return false;
     }
-    private int getLootingLevel(Player player) {
-        ItemStack mainHand = player.getInventory().getItemInMainHand();
-        if (mainHand == null || mainHand.getType().isAir()) return 0;
+    private int getLootingLevel(ItemStack tool) {
+        if (tool == null || tool.getType().isAir()) return 0;
 
-        ItemMeta meta = mainHand.getItemMeta();
+        ItemMeta meta = tool.getItemMeta();
         if (meta == null) return 0;
 
         return meta.getEnchantLevel(Enchantment.LOOTING);
