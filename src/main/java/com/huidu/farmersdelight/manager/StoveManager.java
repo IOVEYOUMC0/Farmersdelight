@@ -8,7 +8,7 @@ import com.huidu.farmersdelight.storage.LegacyBlockStorageManager;
 import com.huidu.farmersdelight.util.*;
 import com.huidu.farmersdelight.util.scheduler.PluginTask;
 import com.huidu.farmersdelight.visual.ItemDisplayManager;
-import fr.ateastudio.farmersdelight.api.event.ProfessionCookingExperienceEvent;
+import com.huidu.farmersdelight.api.event.ProfessionCookingExperienceEvent;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.property.Property;
@@ -25,6 +25,7 @@ import org.joml.Vector3f;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
@@ -660,6 +661,7 @@ public class StoveManager {
         // than once per crackling slot.
         String crackleSound = null;
         boolean crackleResolved = false;
+        ThreadLocalRandom random = ThreadLocalRandom.current();
         if (debugStove) {
             debug(() -> "tick state: lit=" + isLit + ", hasAnyItem=" + hasAnyItem(stove)
                     + ", location=" + formatLocation(location));
@@ -680,10 +682,10 @@ public class StoveManager {
             if (isLit) {
                 stove.cookingTime[i]++;
 
-                if (smokeEnabled && Math.random() < smokeChance) {
+                if (smokeEnabled && random.nextDouble() < smokeChance) {
                     spawnCookingParticles(location, i, facing);
                 }
-                if (crackleEnabled && Math.random() < crackleChance) {
+                if (crackleEnabled && random.nextDouble() < crackleChance) {
                     if (!crackleResolved) {
                         crackleSound = getCrackleSound(location);
                         crackleResolved = true;

@@ -1095,7 +1095,10 @@ public class CookingPotBlockEntity {
 
         ItemStack existing = inventory[slot];
         if (existing != null && isSimilarIgnoringStoredExperience(existing, item)) {
-            existing.setAmount(existing.getAmount() + item.getAmount());
+            // Clamp the merge to the stack size so a slot can never hold an over-stack.
+            int maxStack = Math.max(1, existing.getMaxStackSize());
+            int merged = Math.min(maxStack, existing.getAmount() + item.getAmount());
+            existing.setAmount(merged);
             slotExperience[slot] += Math.max(0.0D, itemStoredExperience);
             return;
         }

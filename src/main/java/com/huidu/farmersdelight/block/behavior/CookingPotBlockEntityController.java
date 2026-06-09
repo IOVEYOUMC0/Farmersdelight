@@ -33,6 +33,17 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * CraftEngine container/hopper bridge for the cooking pot. The authoritative inventory lives in
+ * {@link CookingPotBlockEntity}; this controller keeps a shadow copy reconciled via
+ * {@link #refreshFromEntity}/{@link #writeToEntity} with dirty-slot tracking.
+ *
+ * <p>{@link #getItem(int)} must return the live shadow {@code Item} so the vanilla hopper's in-place
+ * merge ({@code getItem(slot).grow(n)} followed by {@link #setChanged()}, without {@link #setItem})
+ * is captured; a detached copy would drop every merged item. Any mutator must {@link #markDirty(int)}
+ * the touched slot(s) and call {@link #setChanged()}, or be part of a larger op that ends in
+ * {@link #setChanged()}; otherwise the next {@link #refreshFromEntity} reverts it.
+ */
 public final class CookingPotBlockEntityController extends BlockEntityController implements BukkitContainer, WorldlyContainer, InventoryHolder {
 
     private static final String DATA_VERSION = "data_version";
@@ -462,6 +473,9 @@ public final class CookingPotBlockEntityController extends BlockEntityController
 
         this.items[slot] = Item.empty();
         this.slotExperience[slot] = 0.0D;
+        // Persist the removal so refreshFromEntity does not restore it from the entity.
+        markDirty(slot);
+        this.setChanged();
         return item;
     }
 

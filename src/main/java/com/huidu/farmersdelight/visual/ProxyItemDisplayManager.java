@@ -93,15 +93,12 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
                 "performance.proxy-item-display-sync-interval-ticks", DEFAULT_SYNC_INTERVAL_TICKS));
         syncBatchSize = Math.max(1, plugin.getConfig().getInt(
                 "performance.proxy-item-display-sync-batch-size", DEFAULT_SYNC_BATCH_SIZE));
-        // Restart the sync task so the new interval takes effect; also (re)start it if displays
-        // exist but no task is running, so the reloaded interval/distance is actually applied.
+        // Restart the sync task so the new interval takes effect.
         if (syncTask != null) {
             syncTask.cancel();
             syncTask = null;
         }
-        if (!displays.isEmpty()) {
-            startSyncTask();
-        }
+        ensureSyncTask();
     }
 
     @Override
@@ -126,6 +123,7 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         );
         displays.put(entityId, display);
         markDisplaySnapshotDirty();
+        ensureSyncTask();
         scheduleSyncDisplay(display);
         return entityId;
     }
@@ -253,6 +251,12 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
 
     private void startSyncTask() {
         syncTask = plugin.scheduler().runRepeating(this::syncAll, syncIntervalTicks, syncIntervalTicks);
+    }
+
+    private void ensureSyncTask() {
+        if (syncTask == null) {
+            startSyncTask();
+        }
     }
 
     private void syncAll() {
@@ -650,5 +654,4 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         }
     }
 }
-
 

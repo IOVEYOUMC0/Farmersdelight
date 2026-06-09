@@ -335,11 +335,19 @@ public class I18n {
         if (key == null) return "";
         if (locale == null) locale = defaultLocale;
         
-        YamlConfiguration lang = locales.get(locale.toLowerCase());
+        YamlConfiguration lang = locales.get(locale.toLowerCase(Locale.ROOT));
+        if (lang == null) {
+            // Fall back to a language-prefix match (e.g. player locale en_gb -> installed en_us)
+            // before dropping all the way to the server locale, so clients still get their language.
+            String matched = matchInstalledLocale(locale);
+            if (matched != null) {
+                lang = locales.get(matched);
+            }
+        }
         if (lang == null) {
             lang = currentLocale;
         }
-        
+
         if (lang != null) {
             String value = lang.getString(key);
             if (value != null) {
@@ -366,7 +374,7 @@ public class I18n {
 
     private static String getPlayerLocale(Player player) {
         try {
-            return player.locale().toString().toLowerCase();
+            return player.locale().toString().toLowerCase(Locale.ROOT);
         } catch (Exception e) {
             return defaultLocale;
         }
