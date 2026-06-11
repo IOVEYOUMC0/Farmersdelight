@@ -1,10 +1,7 @@
 package com.huidu.farmersdelight.advancement;
 
-import com.fren_gor.ultimateAdvancementAPI.advancement.Advancement;
-import com.fren_gor.ultimateAdvancementAPI.advancement.RootAdvancement;
 import com.fren_gor.ultimateAdvancementAPI.advancement.display.AdvancementDisplay;
 import com.fren_gor.ultimateAdvancementAPI.advancement.display.AdvancementFrameType;
-import com.fren_gor.ultimateAdvancementAPI.nms.wrappers.advancement.AdvancementDisplayWrapper;
 import net.md_5.bungee.api.chat.BaseComponent;
 import net.md_5.bungee.api.chat.TranslatableComponent;
 import org.bukkit.inventory.ItemStack;
@@ -12,8 +9,8 @@ import org.jetbrains.annotations.NotNull;
 
 /**
  * Advancement display whose title/description are resource-pack translation keys rather than baked
- * server-side strings, so each client renders them in its own language. Keys resolve client-side from
- * the resource pack lang files.
+ * server-side strings, so each client renders them in its own language. Only the (non-NMS) component
+ * getters are overridden; the patched UltimateAdvancementAPI reads them for the GUI, toast and chat.
  */
 public class LocalizedAdvancementDisplay extends AdvancementDisplay {
 
@@ -28,21 +25,11 @@ public class LocalizedAdvancementDisplay extends AdvancementDisplay {
         this.descriptionKey = descriptionKey;
     }
 
-    @Override
-    @NotNull
-    public AdvancementDisplayWrapper getNMSWrapper(@NotNull Advancement advancement) {
-        try {
-            BaseComponent title = new TranslatableComponent(titleKey);
-            BaseComponent description = new TranslatableComponent(descriptionKey);
-            if (advancement instanceof RootAdvancement root) {
-                return AdvancementDisplayWrapper.craft(getIcon(), title, description,
-                        getFrame().getNMSWrapper(), getX(), getY(), root.getBackgroundTexture());
-            }
-            return AdvancementDisplayWrapper.craft(getIcon(), title, description,
-                    getFrame().getNMSWrapper(), getX(), getY());
-        } catch (ReflectiveOperationException e) {
-            throw new RuntimeException(e);
-        }
+    // No @Override: this overrides the method added by the patched UltimateAdvancementAPI, but the
+    // plugin compiles against the stock API jar where it doesn't exist yet. At runtime the patched UAA
+    // calls it to opt this display into component (per-client) rendering.
+    public boolean usesComponentDisplay() {
+        return true;
     }
 
     @Override

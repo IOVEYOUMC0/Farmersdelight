@@ -73,6 +73,15 @@ items:
         parent: minecraft:item/generated
         textures:
           layer0: farmersdelight:gui/sprites/icons/${__ID__}
+  farmersdelight:slot:
+    material: paper
+    model:
+      type: minecraft:model
+      path: farmersdelight:gui/icons/${__ID__}
+      generation:
+        parent: minecraft:item/generated
+        textures:
+          layer0: farmersdelight:gui/sprites/icons/${__ID__}
   farmersdelight:0:
     template: farmersdelight:item
     data:

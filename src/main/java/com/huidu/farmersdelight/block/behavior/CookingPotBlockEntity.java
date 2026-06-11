@@ -28,8 +28,10 @@ public class CookingPotBlockEntity {
     private volatile World world;
     private volatile CookingPotLayout layout;
     private volatile String recipeGroupId;
-    private ItemStack[] inventory;
-    private double[] slotExperience;
+    // volatile: the arrays are swapped wholesale on layout change under inventoryLock, but read via
+    // getInventoryInternal() outside the lock from region threads — publish the new reference safely.
+    private volatile ItemStack[] inventory;
+    private volatile double[] slotExperience;
     private final AtomicInteger cookingProgress = new AtomicInteger(0);
     private final AtomicInteger cookingDuration = new AtomicInteger(200);
     private final AtomicBoolean hasHeatSource = new AtomicBoolean(false);
