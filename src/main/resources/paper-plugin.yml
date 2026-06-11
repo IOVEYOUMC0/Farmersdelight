@@ -13,7 +13,7 @@ dependencies:
       required: true
     UltimateAdvancementAPI:
       load: BEFORE
-      required: true
+      required: false
     AuraSkills:
       load: BEFORE
       required: false

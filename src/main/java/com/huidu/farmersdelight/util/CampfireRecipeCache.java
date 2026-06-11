@@ -11,13 +11,14 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public final class CampfireRecipeCache {
     private final String debugName;
-    private final Consumer<String> debug;
+    private final Consumer<Supplier<String>> debug;
     private final AtomicReference<List<CampfireRecipe>> cache = new AtomicReference<>(List.of());
 
-    public CampfireRecipeCache(String debugName, Consumer<String> debug) {
+    public CampfireRecipeCache(String debugName, Consumer<Supplier<String>> debug) {
         this.debugName = debugName;
         this.debug = debug;
     }
@@ -30,12 +31,12 @@ public final class CampfireRecipeCache {
 
         for (CampfireRecipe cookingRecipe : getRecipes()) {
             if (matches(cookingRecipe, recipeInput)) {
-                debug.accept("Campfire recipe match: input=" + formatItem(recipeInput) + ", recipe=" + cookingRecipe.getKey());
+                debug.accept(() -> "Campfire recipe match: input=" + formatItem(recipeInput) + ", recipe=" + cookingRecipe.getKey());
                 return cookingRecipe;
             }
         }
 
-        debug.accept("Campfire recipe miss: input=" + formatItem(recipeInput));
+        debug.accept(() -> "Campfire recipe miss: input=" + formatItem(recipeInput));
         return null;
     }
 
@@ -49,7 +50,7 @@ public final class CampfireRecipeCache {
             }
         }
         cache.set(List.copyOf(recipes));
-        debug.accept("Loaded " + recipes.size() + " cached campfire recipes for " + debugName);
+        debug.accept(() -> "Loaded " + recipes.size() + " cached campfire recipes for " + debugName);
     }
 
     private List<CampfireRecipe> getRecipes() {
