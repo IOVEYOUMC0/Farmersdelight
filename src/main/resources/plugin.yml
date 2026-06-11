@@ -3,8 +3,8 @@ version: ${version}
 main: com.huidu.farmersdelight.FarmersDelightPlugin
 api-version: '1.21'
 folia-supported: true
-depend: [CraftEngine, UltimateAdvancementAPI]
-softdepend: [AuraSkills]
+depend: [CraftEngine]
+softdepend: [AuraSkills, UltimateAdvancementAPI]
 authors:
   - HuiDu_OwO
 description: Farmer's Delight addon for CraftEngine

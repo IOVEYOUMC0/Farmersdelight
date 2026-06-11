@@ -20,6 +20,13 @@ debug:
 advancements:
   enabled: true
 
+# CraftEngine 资源自动补齐。
+# 首次启动始终会整包释放内置 CraftEngine 资源到 CraftEngine/resources/farmersdelight。
+# auto-completion=true 时，之后每次启动还会自动补回被删除/缺失的资源文件。
+# 如果你手动删除了某些内置配置且不希望被重新加回，设为 false 即可（首次释放不受影响）。
+craftengine-resources:
+  auto-completion: true
+
 # 旧版文件存储兼容层。新数据优先写入 CraftEngine 方块实体；这里主要用于迁移/兜底保存。
 storage:
   # 旧版存储自动保存间隔，单位秒。
