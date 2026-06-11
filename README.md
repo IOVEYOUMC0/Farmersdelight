@@ -15,13 +15,14 @@ FarmersDelight 是一个基于 CraftEngine 26.5 的 Farmer's Delight 风格玩�
 - 食物效果：宠物食物、舒适效果、营养效果、容器返还。
 - 配方查看 GUI：厨锅和砧板配方列表、详情页、标签/多选原料展示。
 - 配方编辑 GUI：管理员可在游戏内可视化创建、编辑、删除厨锅与砧板配方，支持标签原料（按物品反查标签 + 排除项编辑）、或选 `a|b` 原料、自定义厨锅槽位；不输入配方 ID 时打开配方列表点击即可编辑。
-- 进度系统：内置 Farmer's Delight 风格进度数据包。
+- 进度系统：基于 UltimateAdvancementAPI（可选依赖）的 Farmer's Delight 风格进度，toast 与聊天提示按玩家客户端语言本地化、使用 CE 物品图标；未安装该插件时自动关闭，不影响其它功能。
 
 ## 2. 安装环境
 
 - Java 21
 - Paper / Purpur 1.21+
 - CraftEngine 26.5
+- 可选依赖：UltimateAdvancementAPI（进度系统）、AuraSkills（厨锅经验奖励）。未安装对应插件时该功能自动关闭，不影响插件其它部分。进度功能支持的 Minecraft 版本由所安装的 UltimateAdvancementAPI 构建决定（随附构建覆盖 1.21.x 与 26.1.x）。
 
 插件内调度通过 scheduler adapter 适配 Paper 与 Folia；在 Folia 上优先走全局、区域或实体调度器。Folia 环境建议在测试服验证厨锅/砧板容器、方块存储、显示同步和异步保存流程。
 
@@ -29,9 +30,21 @@ FarmersDelight 是一个基于 CraftEngine 26.5 的 Farmer's Delight 风格玩�
 
 1. 将 `farmersdelight-1.0.0.jar` 放入服务器 `plugins` 目录。
 2. 安装 CraftEngine 26.5。
-3. 放入本插件配套的 CraftEngine 资源配置。
-4. 启动服务器，等待生成配置文件。
+3. 启动服务器。首次启动时本插件会自动把内置 CraftEngine 资源配置整包释放到 `plugins/CraftEngine/resources/farmersdelight`，之后每次启动会补回被删除/缺失的文件（见下方 `craftengine-resources.auto-completion`）。
+4. 等待生成插件配置文件。
 5. 修改配置后可使用 `/fd reload`；修改 jar、CraftEngine 资源或资源包后建议完整重启服务器。
+6. 如需进度系统，另行安装 UltimateAdvancementAPI 插件（可选）。
+
+### 2.1 CraftEngine 资源自动补齐
+
+本插件自带的 CraftEngine 资源会在首次启动整包释放到 `plugins/CraftEngine/resources/farmersdelight`，之后每次启动还会自动补回被删除/缺失的文件：
+
+```yaml
+craftengine-resources:
+  auto-completion: true
+```
+
+如果你手动删除了某些内置配置且不希望被重新加回，设为 `false`（首次整包释放不受该开关影响）。
 
 生成文件：
 
@@ -985,7 +998,7 @@ cooking-pot:
 | `/fd reload gui` | - | `farmersdelight.command` + `farmersdelight.admin` | OP | 重载 `gui.yml`，用于刷新 GUI 标题、布局、按钮、图标等。 |
 | `/fd reload lang` | `language`、`languages` | `farmersdelight.command` + `farmersdelight.admin` | OP | 重载语言文件。 |
 | `/fd reload recipes` | `recipe` | `farmersdelight.command` + `farmersdelight.admin` | OP | 重载厨锅、砧板配方，并刷新 CE 物品缓存。 |
-| `/fd reload advancements` | `advancement` | `farmersdelight.command` + `farmersdelight.admin` | OP | 重载内置进度数据包。 |
+| `/fd reload advancements` | `advancement` | `farmersdelight.command` + `farmersdelight.admin` | OP | 重载进度并重建进度树（需安装 UltimateAdvancementAPI；未安装则跳过）。 |
 | `/fd reload all` | - | `farmersdelight.command` + `farmersdelight.admin` | OP | 完整重载配置、GUI、语言、配方和进度。修改 CE 资源或 jar 后仍建议重启。 |
 | `/fd cleanup` | - | `farmersdelight.command` + `farmersdelight.admin` | OP | 清理插件生成的 CE 代理物品展示实体，并清理不符合条件的自动托盘。 |
 
@@ -1045,7 +1058,7 @@ behavior:
 - `/fd reload gui`：重载 `gui.yml`。
 - `/fd reload lang`：重载语言文件。
 - `/fd reload recipes`：重载厨锅和砧板配方，并刷新 CE 物品缓存。
-- `/fd reload advancements`：重载进度数据包。
+- `/fd reload advancements`：重载进度并重建进度树（需安装 UltimateAdvancementAPI）。
 - `/fd reload all`：完整重载本插件配置、GUI、语言、配方和进度。
 
 建议完整重启：

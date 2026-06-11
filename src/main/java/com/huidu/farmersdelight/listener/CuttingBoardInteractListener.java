@@ -39,7 +39,8 @@ public class CuttingBoardInteractListener implements Listener {
         if (block == null) {
             return;
         }
-        if (!CuttingBoardBlockBehavior.isCuttingBoardBlock(block.getWorld(), new BlockPosKey(block.getLocation()))) {
+        BlockPosKey posKey = new BlockPosKey(block.getLocation());
+        if (!CuttingBoardBlockBehavior.isCuttingBoardBlock(block.getWorld(), posKey)) {
             return;
         }
         if (!player.hasPermission("farmersdelight.use.cutting_board")) {
@@ -56,7 +57,6 @@ public class CuttingBoardInteractListener implements Listener {
             return;
         }
 
-        BlockPosKey posKey = new BlockPosKey(block.getLocation());
         CuttingBoardBlockEntity blockEntity = CuttingBoardBlockBehavior.getBlockEntity(block.getWorld(), posKey);
         if (blockEntity != null && blockEntity.hasItem()) {
             return;

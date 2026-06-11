@@ -320,6 +320,7 @@ public class StoveManager {
         if (removedAny) {
             markTickLocationsDirty();
         }
+        blockedAboveCache.keySet().removeIf(loc -> loc.getWorld() != null && worldId.equals(loc.getWorld().getUID()));
         stopTaskIfIdle();
     }
 
@@ -430,6 +431,7 @@ public class StoveManager {
         stovesByWorld.clear();
         stovesByChunk.clear();
         scheduledStoveTicks.clear();
+        blockedAboveCache.clear();
         tickLocationsSnapshot = List.of();
         markTickLocationsDirty();
     }
@@ -654,7 +656,7 @@ public class StoveManager {
         }
 
         boolean isLit = isStoveLit(state);
-        BlockFace facing = CustomBlockUtils.getFacing(block).getOppositeFace();
+        BlockFace facing = CustomBlockUtils.getFacing(state).getOppositeFace();
         // Cache the debug flag so the per-slot debug lambdas are only allocated when debug is on.
         boolean debugStove = plugin.isDebugEnabled("stove");
         // Resolve the crackle sound (a CE block-state lookup) at most once per tick, lazily, rather

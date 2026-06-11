@@ -240,16 +240,23 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     }
 
     private void refreshAdvancementSystem(boolean reloading) {
-        if (!advancementsEnabled) {
+        if (!advancementsEnabled || !getServer().getPluginManager().isPluginEnabled("UltimateAdvancementAPI")) {
             disableAdvancementSystem();
             return;
         }
 
-        if (advancementManager == null) {
-            advancementManager = new AdvancementManager(this);
-            advancementManager.load();
-        } else if (reloading) {
-            advancementManager.reload();
+        try {
+            if (advancementManager == null) {
+                advancementManager = new AdvancementManager(this);
+                advancementManager.load();
+            } else if (reloading) {
+                advancementManager.reload();
+            }
+        } catch (Throwable t) {
+            // UltimateAdvancementAPI missing/incompatible at runtime — run without advancements.
+            advancementManager = null;
+            I18n.logWarning("advancement.award_failed", "id", "init", "error", String.valueOf(t.getMessage()));
+            return;
         }
 
         if (achievementListener == null) {
@@ -1377,9 +1384,16 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
         Path targetRoot = pluginsFolder.resolve(CRAFTENGINE_RESOURCE_TARGET);
         try {
-            int copiedFiles = Files.exists(targetRoot)
-                    ? copyMissingBundledResourceFiles(CRAFTENGINE_RESOURCE_ROOT, targetRoot)
-                    : copyBundledResourceDirectory(CRAFTENGINE_RESOURCE_ROOT, targetRoot);
+            int copiedFiles;
+            if (Files.exists(targetRoot)) {
+                // First-time extraction is unconditional; the toggle only gates re-filling missing files on later starts.
+                if (!getConfig().getBoolean("craftengine-resources.auto-completion", true)) {
+                    return;
+                }
+                copiedFiles = copyMissingBundledResourceFiles(CRAFTENGINE_RESOURCE_ROOT, targetRoot);
+            } else {
+                copiedFiles = copyBundledResourceDirectory(CRAFTENGINE_RESOURCE_ROOT, targetRoot);
+            }
             if (copiedFiles > 0) {
                 I18n.logInfo("plugin.craftengine_resources_released",
                         "path", targetRoot,

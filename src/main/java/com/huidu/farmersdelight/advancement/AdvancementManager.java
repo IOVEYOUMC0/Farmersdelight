@@ -10,6 +10,7 @@ import com.fren_gor.ultimateAdvancementAPI.advancement.tasks.MultiTasksAdvanceme
 import com.fren_gor.ultimateAdvancementAPI.advancement.tasks.TaskAdvancement;
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.i18n.I18n;
+import com.huidu.farmersdelight.util.ItemUtils;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -88,27 +89,27 @@ public class AdvancementManager {
 
     private void buildTree() {
         RootAdvancement root = new RootAdvancement(tab, "root",
-                display("root", Material.BRICKS, AdvancementFrameType.TASK, 0, 0), ROOT_BACKGROUND);
+                display("root", icon("farmersdelight:cooking_pot", Material.BRICKS), AdvancementFrameType.TASK, 0, 0), ROOT_BACKGROUND);
 
-        BaseAdvancement craftKnife = base("craft_knife", Material.WOODEN_SWORD, AdvancementFrameType.TASK, root, 1, 0);
-        BaseAdvancement placeCampfire = base("place_campfire", Material.CAMPFIRE, AdvancementFrameType.TASK, root, 1, 3);
-        BaseAdvancement getFdSeed = base("get_fd_seed", Material.WHEAT_SEEDS, AdvancementFrameType.TASK, root, 1, 6);
+        BaseAdvancement craftKnife = base("craft_knife", icon("farmersdelight:flint_knife", Material.WOODEN_SWORD), AdvancementFrameType.TASK, root, 1, 0);
+        BaseAdvancement placeCampfire = base("place_campfire", icon(null, Material.CAMPFIRE), AdvancementFrameType.TASK, root, 1, 3);
+        BaseAdvancement getFdSeed = base("get_fd_seed", icon("farmersdelight:cabbage_seeds", Material.WHEAT_SEEDS), AdvancementFrameType.TASK, root, 1, 6);
 
-        BaseAdvancement getHam = base("get_ham", Material.COOKED_BEEF, AdvancementFrameType.TASK, craftKnife, 2, 0);
-        BaseAdvancement harvestStraw = base("harvest_straw", Material.WHEAT, AdvancementFrameType.TASK, craftKnife, 2, 1);
-        BaseAdvancement useCuttingBoard = base("use_cutting_board", Material.OAK_SLAB, AdvancementFrameType.TASK, craftKnife, 2, 2);
-        BaseAdvancement netheriteKnife = base("obtain_netherite_knife", Material.NETHERITE_SWORD, AdvancementFrameType.CHALLENGE, useCuttingBoard, 3, 2);
+        BaseAdvancement getHam = base("get_ham", icon("farmersdelight:ham", Material.COOKED_BEEF), AdvancementFrameType.TASK, craftKnife, 2, 0);
+        BaseAdvancement harvestStraw = base("harvest_straw", icon("farmersdelight:straw", Material.WHEAT), AdvancementFrameType.TASK, craftKnife, 2, 1);
+        BaseAdvancement useCuttingBoard = base("use_cutting_board", icon("farmersdelight:cutting_board", Material.OAK_SLAB), AdvancementFrameType.TASK, craftKnife, 2, 2);
+        BaseAdvancement netheriteKnife = base("obtain_netherite_knife", icon("farmersdelight:netherite_knife", Material.NETHERITE_SWORD), AdvancementFrameType.CHALLENGE, useCuttingBoard, 3, 2);
 
-        BaseAdvancement useSkillet = base("use_skillet", Material.IRON_SWORD, AdvancementFrameType.TASK, placeCampfire, 2, 3);
-        BaseAdvancement placeSkillet = base("place_skillet", Material.IRON_SWORD, AdvancementFrameType.TASK, useSkillet, 3, 3);
-        BaseAdvancement placeCookingPot = base("place_cooking_pot", Material.BRICKS, AdvancementFrameType.GOAL, placeCampfire, 2, 4);
-        BaseAdvancement placeFeast = base("place_feast", Material.COOKED_CHICKEN, AdvancementFrameType.TASK, placeCookingPot, 3, 4);
-        MultiTasksAdvancement masterChef = multi("master_chef", Material.COOKED_PORKCHOP, AdvancementFrameType.CHALLENGE, placeFeast, 4, 4, DISHES);
+        BaseAdvancement useSkillet = base("use_skillet", icon("farmersdelight:skillet", Material.IRON_SWORD), AdvancementFrameType.TASK, placeCampfire, 2, 3);
+        BaseAdvancement placeSkillet = base("place_skillet", icon("farmersdelight:skillet", Material.IRON_SWORD), AdvancementFrameType.TASK, useSkillet, 3, 3);
+        BaseAdvancement placeCookingPot = base("place_cooking_pot", icon("farmersdelight:cooking_pot", Material.BRICKS), AdvancementFrameType.GOAL, placeCampfire, 2, 4);
+        BaseAdvancement placeFeast = base("place_feast", icon("farmersdelight:roast_chicken", Material.COOKED_CHICKEN), AdvancementFrameType.TASK, placeCookingPot, 3, 4);
+        MultiTasksAdvancement masterChef = multi("master_chef", icon("farmersdelight:beef_stew", Material.COOKED_PORKCHOP), AdvancementFrameType.CHALLENGE, placeFeast, 4, 4, DISHES);
 
-        BaseAdvancement hitRaider = base("hit_raider_with_rotten_tomato", Material.RED_DYE, AdvancementFrameType.TASK, getFdSeed, 2, 5);
-        BaseAdvancement getMushroom = base("get_mushroom_colony", Material.RED_MUSHROOM, AdvancementFrameType.TASK, getFdSeed, 2, 6);
-        BaseAdvancement plantRice = base("plant_rice", Material.WHEAT_SEEDS, AdvancementFrameType.TASK, getFdSeed, 2, 7);
-        MultiTasksAdvancement plantAllCrops = multi("plant_all_crops", Material.WHEAT_SEEDS, AdvancementFrameType.CHALLENGE, plantRice, 3, 7, CROPS);
+        BaseAdvancement hitRaider = base("hit_raider_with_rotten_tomato", icon("farmersdelight:rotten_tomato", Material.RED_DYE), AdvancementFrameType.TASK, getFdSeed, 2, 5);
+        BaseAdvancement getMushroom = base("get_mushroom_colony", icon("farmersdelight:red_mushroom_colony", Material.RED_MUSHROOM), AdvancementFrameType.TASK, getFdSeed, 2, 6);
+        BaseAdvancement plantRice = base("plant_rice", icon("farmersdelight:rice", Material.WHEAT_SEEDS), AdvancementFrameType.TASK, getFdSeed, 2, 7);
+        MultiTasksAdvancement plantAllCrops = multi("plant_all_crops", icon("farmersdelight:cabbage_seeds", Material.WHEAT_SEEDS), AdvancementFrameType.CHALLENGE, plantRice, 3, 7, CROPS);
 
         Set<BaseAdvancement> all = new HashSet<>(Arrays.asList(
                 craftKnife, placeCampfire, getFdSeed, getHam, harvestStraw, useCuttingBoard, netheriteKnife,
@@ -137,16 +138,23 @@ public class AdvancementManager {
         byId.put("plant_all_crops", plantAllCrops);
     }
 
-    private LocalizedAdvancementDisplay display(String key, Material icon, AdvancementFrameType frame, float x, float y) {
-        return new LocalizedAdvancementDisplay(new ItemStack(icon), KEY_PREFIX + key, KEY_PREFIX + key + ".desc",
+    /** Builds the CraftEngine item for ceId, or the vanilla fallback if it can't resolve. */
+    private static ItemStack icon(String ceId, Material fallback) {
+        ItemStack item = ceId == null ? null : ItemUtils.createItem(ceId);
+        return item != null && !item.getType().isAir() ? item : new ItemStack(fallback);
+    }
+
+    private LocalizedAdvancementDisplay display(String key, ItemStack icon, AdvancementFrameType frame, float x, float y) {
+        // The patched UltimateAdvancementAPI renders the toast + chat per-client from this display.
+        return new LocalizedAdvancementDisplay(icon, KEY_PREFIX + key, KEY_PREFIX + key + ".desc",
                 frame, true, true, x, y);
     }
 
-    private BaseAdvancement base(String key, Material icon, AdvancementFrameType frame, Advancement parent, float x, float y) {
+    private BaseAdvancement base(String key, ItemStack icon, AdvancementFrameType frame, Advancement parent, float x, float y) {
         return new BaseAdvancement(key, display(key, icon, frame, x, y), parent);
     }
 
-    private MultiTasksAdvancement multi(String key, Material icon, AdvancementFrameType frame, Advancement parent,
+    private MultiTasksAdvancement multi(String key, ItemStack icon, AdvancementFrameType frame, Advancement parent,
                                         float x, float y, List<String> criteria) {
         MultiTasksAdvancement multi = new MultiTasksAdvancement(key, display(key, icon, frame, x, y), parent, criteria.size());
         Map<String, TaskAdvancement> taskMap = new HashMap<>();
