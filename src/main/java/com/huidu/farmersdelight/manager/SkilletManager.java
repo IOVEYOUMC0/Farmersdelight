@@ -10,6 +10,7 @@ import com.huidu.farmersdelight.storage.LegacyBlockStorageManager;
 import com.huidu.farmersdelight.util.scheduler.PluginTask;
 import com.huidu.farmersdelight.visual.ItemDisplayManager;
 import com.huidu.farmersdelight.api.event.ProfessionCookingExperienceEvent;
+import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -509,6 +510,11 @@ public class SkilletManager {
                 || CustomBlockUtils.hasId(location, Constants.BLOCK_SKILLET);
     }
 
+    private boolean isSkilletBlock(ImmutableBlockState state) {
+        return CustomBlockUtils.hasBehavior(state, SkilletBlockBehavior.class)
+                || Constants.BLOCK_SKILLET.equals(CustomBlockUtils.getId(state));
+    }
+
     public void breakSkillet(Location blockLocation, Location dropLocation) {
         breakSkillet(blockLocation, dropLocation, true);
     }
@@ -898,7 +904,7 @@ public class SkilletManager {
         World world = location.getWorld();
         if (world == null) return;
         if (!world.isChunkLoaded(location.getBlockX() >> 4, location.getBlockZ() >> 4)) return;
-        if (!isSkilletBlock(location)) {
+        if (!isSkilletBlock(CustomBlockUtils.getState(location.getBlock()))) {
             debug(() -> "tick remove: skillet carrier block is gone at " + formatLocation(location));
             cleanupVisual(skillet);
             removeStoredData(location);

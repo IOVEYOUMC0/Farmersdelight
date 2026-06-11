@@ -31,7 +31,7 @@ cooking-pot-gui:
   items:
     background:
       material: GRAY_STAINED_GLASS_PANE
-      item_model: "farmersdelight:gui/empty"
+      item_model: "air"
       hide-tooltip: true
       name: " "
     heat-active:
@@ -104,7 +104,7 @@ cooking-pot-guis: {}
 #     items:
 #       background:
 #         material: GRAY_STAINED_GLASS_PANE
-#         item_model: "farmersdelight:gui/empty"
+#         item_model: "air"
 #         hide-tooltip: true
 #         name: " "
 #       heat-active:
@@ -146,7 +146,7 @@ recipe-view-gui:
     items:
       background:
         material: LIGHT_GRAY_STAINED_GLASS_PANE
-        item_model: "farmersdelight:gui/empty"
+        item_model: "air"
         hide-tooltip: true
         name: " "
       cooking_pot:
@@ -187,16 +187,16 @@ recipe-view-gui:
     items:
       background:
         material: LIGHT_GRAY_STAINED_GLASS_PANE
-        item_model: "farmersdelight:gui/empty"
+        item_model: "air"
         hide-tooltip: true
         name: " "
       prev_page:
         material: ARROW
-        item_model: "farmersdelight:gui/empty"
+        item_model: "air"
         name: "上一页"
       next_page:
         material: ARROW
-        item_model: "farmersdelight:gui/empty"
+        item_model: "air"
         name: "下一页"
       back:
         material: BARRIER
@@ -240,7 +240,7 @@ recipe-view-gui:
     items:
       background:
         material: LIGHT_GRAY_STAINED_GLASS_PANE
-        item_model: "farmersdelight:gui/empty"
+        item_model: "air"
         hide-tooltip: true
         name: " "
       arrow:
@@ -251,7 +251,7 @@ recipe-view-gui:
           - "&7经验: &a{experience}"
       back:
         material: ARROW
-        item_model: "farmersdelight:gui/empty"
+        item_model: "air"
         name: "返回"
       # 配方详情页的填入按钮。
       # 普通点击：每个配方材料最多填入 1 个匹配物品。
@@ -313,7 +313,7 @@ recipe-view-gui:
   #     items:
   #       background:
   #         material: GRAY_STAINED_GLASS_PANE
-  #         item_model: "farmersdelight:gui/empty"
+  #         item_model: "air"
   #         hide-tooltip: true
   #         name: " "
   #       back:
@@ -346,12 +346,12 @@ recipe-view-gui:
     items:
       background:
         material: LIGHT_GRAY_STAINED_GLASS_PANE
-        item_model: "farmersdelight:gui/empty"
+        item_model: "air"
         hide-tooltip: true
         name: " "
       back:
         material: ARROW
-        item_model: "farmersdelight:gui/empty"
+        item_model: "air"
         name: "返回"
 
 # 厨锅配方编辑器界面。/fd recipe edit pot <id> [组] 打开。
@@ -385,7 +385,7 @@ recipe-editor-gui:
   items:
     background:
       material: LIGHT_GRAY_STAINED_GLASS_PANE
-      item_model: "farmersdelight:gui/empty"
+      item_model: "air"
       hide-tooltip: true
       name: " "
     info:
@@ -478,7 +478,7 @@ recipe-editor-confirm-delete-gui:
   items:
     background:
       material: LIGHT_GRAY_STAINED_GLASS_PANE
-      item_model: "farmersdelight:gui/empty"
+      item_model: "air"
       hide-tooltip: true
       name: " "
     info:
@@ -525,7 +525,7 @@ recipe-cutting-board-editor-gui:
   items:
     background:
       material: GRAY_STAINED_GLASS_PANE
-      item_model: "farmersdelight:gui/empty"
+      item_model: "air"
       hide-tooltip: true
       name: " "
     info:
