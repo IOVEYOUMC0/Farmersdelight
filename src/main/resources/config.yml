@@ -593,52 +593,78 @@ pet-foods:
       # true = 已驯服且主人为喂食玩家的马不会被自己的马食继续拉扯。
       ignore-owned-tamed: true
 
-# 舒适效果。默认关闭；开启后吃下列表食物会给玩家 Comfort。
+# 舒适效果。原版模组已弃用 Comfort（改用 Nourishment），故默认关闭、列表留空。
+# 机制代码保留：需要可把 enabled 设为 true 并在 foods 下自行添加食物。
 comfort-foods:
-  enabled: true
+  enabled: false
   # 舒适效果每隔多少 tick 回复半颗心；设为 0 可关闭舒适回血，只保留消息/状态。
   heal-interval-ticks: 80
   # 效果剩余多少 tick 时发送即将结束提醒；设为 0 可关闭提醒。
   fade-warning-ticks: 200
-  foods:
-    farmersdelight:apple_cider:
-      duration: 300
-    farmersdelight:glow_berry_custard:
-      duration: 300
-    minecraft:pumpkin_pie:
-      duration: 300
-    farmersdelight:hot_cocoa:
-      duration: 300
-    farmersdelight:baked_cod_stew:
-      duration: 300
-    minecraft:rabbit_stew:
-      duration: 300
-    farmersdelight:pasta_with_meatballs:
-      duration: 300
-    farmersdelight:pasta_with_mutton_chop:
-      duration: 300
-    farmersdelight:dumplings:
-      duration: 300
-    farmersdelight:cabbage_rolls:
-      duration: 300
+  foods: {}
 
-# 营养效果。默认关闭；开启后吃下列表食物会给玩家 Nourishment。
+# 营养效果。吃下列表食物给玩家 Nourishment（清零疲劳值、防止掉饿）。
+# 时长（秒）按原版模组分档：cooked_rice=30；汤底/培根蛋等=60；炖菜/意面等=180；浓汤/盛宴等=300。
 nourishment-foods:
   enabled: true
   # 效果剩余多少 tick 时发送即将结束提醒；设为 0 可关闭提醒。
   fade-warning-ticks: 200
   foods:
+    farmersdelight:cooked_rice:
+      duration: 30
+    farmersdelight:bone_broth:
+      duration: 60
+    farmersdelight:bacon_and_eggs:
+      duration: 60
+    farmersdelight:ratatouille:
+      duration: 60
+    farmersdelight:beef_stew:
+      duration: 180
+    farmersdelight:vegetable_soup:
+      duration: 180
+    farmersdelight:fish_stew:
+      duration: 180
+    farmersdelight:onion_soup:
+      duration: 180
+    farmersdelight:steak_and_potatoes:
+      duration: 180
+    farmersdelight:pasta_with_meatballs:
+      duration: 180
+    farmersdelight:pasta_with_mutton_chop:
+      duration: 180
+    farmersdelight:mushroom_rice:
+      duration: 180
+    farmersdelight:grilled_salmon:
+      duration: 180
+    minecraft:mushroom_stew:
+      duration: 180
+    minecraft:beetroot_soup:
+      duration: 180
+    farmersdelight:chicken_soup:
+      duration: 300
+    farmersdelight:fried_rice:
+      duration: 300
+    farmersdelight:pumpkin_soup:
+      duration: 300
+    farmersdelight:baked_cod_stew:
+      duration: 300
     farmersdelight:noodle_soup:
+      duration: 300
+    farmersdelight:roasted_mutton_chops:
       duration: 300
     farmersdelight:vegetable_noodles:
       duration: 300
-    farmersdelight:beef_stew:
+    farmersdelight:squid_ink_pasta:
       duration: 300
-    farmersdelight:chicken_soup:
+    farmersdelight:roast_chicken:
       duration: 300
-    farmersdelight:vegetable_soup:
+    farmersdelight:stuffed_pumpkin:
       duration: 300
-    farmersdelight:fish_stew:
+    farmersdelight:honey_glazed_ham:
       duration: 300
-    farmersdelight:fried_rice:
+    farmersdelight:shepherds_pie:
+      duration: 300
+    farmersdelight:gleaming_salad:
+      duration: 300
+    minecraft:rabbit_stew:
       duration: 300

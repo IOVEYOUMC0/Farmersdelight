@@ -104,26 +104,12 @@ public class FoodEatListener implements Listener {
             advancementManager.awardCriteria(player, "master_chef", itemId.substring("farmersdelight:".length()));
         }
 
-        if (comfortFoodDurations.containsKey(itemId)) {
-            if (comfortFoodsEnabled) {
-                int duration = comfortFoodDurations.get(itemId);
-                EffectManager.applyComfort(player, duration);
-            }
-
-            if (advancementManager != null) {
-                advancementManager.award(player, "eat_comfort_food");
-            }
+        if (comfortFoodsEnabled && comfortFoodDurations.containsKey(itemId)) {
+            EffectManager.applyComfort(player, comfortFoodDurations.get(itemId));
         }
 
-        if (nourishmentFoodDurations.containsKey(itemId)) {
-            if (nourishmentFoodsEnabled) {
-                int duration = nourishmentFoodDurations.get(itemId);
-                EffectManager.applyNourishment(player, duration);
-            }
-
-            if (advancementManager != null) {
-                advancementManager.award(player, "eat_nourishing_food");
-            }
+        if (nourishmentFoodsEnabled && nourishmentFoodDurations.containsKey(itemId)) {
+            EffectManager.applyNourishment(player, nourishmentFoodDurations.get(itemId));
         }
     }
 
