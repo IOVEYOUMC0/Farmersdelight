@@ -428,10 +428,8 @@ public final class CookingPotBlockEntityController extends BlockEntityController
         if (!isValidSlot(slot)) {
             return Item.empty();
         }
-        // Return the live shadow without re-pulling from the entity: the shadow is refreshed once when
-        // the hopper acquires the container (getContainer) and whenever the pot tick changes it
-        // (setChangedFromEntity). Re-pulling on every accessor call would overwrite a hopper's in-place
-        // grow before setChanged() persists it (lost items), and re-wraps all slots per call.
+        // Live shadow, no per-call refresh: re-pulling would clobber the hopper's in-place grow before
+        // setChanged() persists it (lost items). Shadow stays current via getContainer + the pot tick.
         return this.items[slot];
     }
 

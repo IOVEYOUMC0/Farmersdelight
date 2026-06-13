@@ -100,7 +100,6 @@ console:
     proxy_display_unavailable: "CraftEngine 代理 ItemDisplay 管线不可用，炉灶和煎锅视觉显示将被禁用。"
     enabled: "FarmersDelight 插件已启用。"
     disabled: "FarmersDelight 插件已禁用。"
-    recipe_load_deferred: "CraftEngine 自定义物品尚未就绪，暂时跳过配方加载。"
     loading_recipes: "正在加载配方..."
     refreshing_recipes_after_ce: "正在于 CraftEngine 重载后刷新配方..."
     reloading_recipes: "正在重新加载配方..."
