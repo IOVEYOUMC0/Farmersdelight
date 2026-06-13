@@ -218,9 +218,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private void loadRecipeManagersWhenReady(String logKey) {
         if (areCraftEngineItemsReady()) {
             loadRecipeManagers(logKey);
-        } else {
-            I18n.logInfo("plugin.recipe_load_deferred");
         }
+        // else: defer silently; CraftEngineReloadEvent retries once CE items are loaded.
     }
 
     public boolean isAdvancementsEnabled() {
@@ -237,6 +236,19 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         }
         advancementManager = null;
         queueAdvancementDatapackRemoval(I18n.formatConsole("plugin.datapack_reason_remove_disabled_advancements"));
+    }
+
+    // Build/refresh advancements only once CraftEngine items are loaded, else icon() falls back to
+    // vanilla Material icons instead of the CE items.
+    private void refreshAdvancementSystemWhenReady(boolean reloading) {
+        if (!advancementsEnabled || !getServer().getPluginManager().isPluginEnabled("UltimateAdvancementAPI")) {
+            disableAdvancementSystem();
+            return;
+        }
+        if (!areCraftEngineItemsReady()) {
+            return; // CraftEngineReloadEvent retries this once CE items are loaded.
+        }
+        refreshAdvancementSystem(reloading);
     }
 
     private void refreshAdvancementSystem(boolean reloading) {
@@ -324,18 +336,17 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         getServer().getPluginManager().registerEvents(new RicePlantListener(this), this);
         getServer().getPluginManager().registerEvents(new UpperHalfLootRelayListener(), this);
 
-        // WIP feature set aside (comfort/nourishment foods) — listener not registered until completed.
-        // foodEatListener = new FoodEatListener(this);
-        // getServer().getPluginManager().registerEvents(foodEatListener, this);
+        // Awards the master_chef criteria on eating FD dishes and applies comfort/nourishment when enabled in config.
+        foodEatListener = new FoodEatListener(this);
+        getServer().getPluginManager().registerEvents(foodEatListener, this);
 
         petFoodListener = new PetFoodListener(this);
         getServer().getPluginManager().registerEvents(petFoodListener, this);
         horseFeedTemptListener = new HorseFeedTemptListener(this);
         getServer().getPluginManager().registerEvents(horseFeedTemptListener, this);
         horseFeedTemptListener.start();
-        // WIP feature set aside (comfort/nourishment effects) — effect task not started until completed.
-        // effectListener = new EffectListener(this);
-        // effectListener.start();
+        effectListener = new EffectListener(this);
+        effectListener.start();
 
         getServer().getPluginManager().registerEvents(this, this);
 
@@ -361,7 +372,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         getServer().getPluginManager().registerEvents(chunkLoadListener, this);
         chunkLoadListener.loadAlreadyLoadedChunks();
 
-        refreshAdvancementSystem(false);
+        refreshAdvancementSystemWhenReady(false);
 
         scheduler.run(() -> startupSyncCompleted = true);
 
@@ -745,6 +756,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             I18n.logInfo("plugin.craftengine_reload");
             refreshAfterCraftEngineReload();
             loadRecipeManagersWhenReady("plugin.refreshing_recipes_after_ce");
+            // CE items are loaded now: (re)build advancements so icons use CE items.
+            refreshAdvancementSystemWhenReady(true);
             CraftEngineStateUsageMonitor.logRealStateUsage(this, I18n.formatConsole("plugin.craftengine_reload_reason"));
         }, 1L);
     }
@@ -1643,6 +1656,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         registerBehavior(Constants.BEHAVIOR_WILD_RICE, WildRiceBlockBehavior.FACTORY);
         registerBehavior(Constants.BEHAVIOR_ROPE, RopeBlockBehavior.FACTORY);
         registerBehavior(Constants.BEHAVIOR_MUSHROOM_COLONY, MushroomColonyBehavior.FACTORY);
+        registerBehavior(Constants.BEHAVIOR_WILD_PLANT, WildPlantBlockBehavior.FACTORY);
 
         getLogger().info(I18n.formatConsole("plugin.registered_block_behaviors"));
     }

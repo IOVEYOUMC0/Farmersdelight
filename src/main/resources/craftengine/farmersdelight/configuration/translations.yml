@@ -51,7 +51,6 @@
     block.farmersdelight.tray: "Tray"
 
     # Wild Plant Blocks
-    block.farmersdelight.sandy_shrub: "Sandy Shrub"
     block.farmersdelight.brown_mushroom_colony: "Brown Mushroom Colony"
     block.farmersdelight.red_mushroom_colony: "Red Mushroom Colony"
     block.farmersdelight.wild_cabbages: "Wild Cabbage"
@@ -265,7 +264,6 @@
     block.farmersdelight.tray: "托盘"
 
     # Wild Plant Blocks
-    block.farmersdelight.sandy_shrub: "沙生灌木"
     block.farmersdelight.brown_mushroom_colony: "棕色蘑菇菌落"
     block.farmersdelight.red_mushroom_colony: "红色蘑菇菌落"
     block.farmersdelight.wild_cabbages: "野生卷心菜"

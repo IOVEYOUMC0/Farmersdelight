@@ -936,17 +936,19 @@ pet-foods:
 
 `pet-foods` 的每个键就是一个食物物品 ID，支持 CraftEngine 物品 ID 和原版物品 ID。`entities` 使用 Bukkit `EntityType` 名称，例如 `HORSE`、`DONKEY`、`MULE`、`LLAMA`、`CAMEL`。`tempt` 是手持吸引配置；`tick-interval` 单位是 tick，10 tick 约等于 0.5 秒。需要更多可吸引食物时，直接在 `pet-foods` 下新增物品条目即可。
 
-舒适效果和营养效果默认关闭：
+营养效果（吃下后清除疲劳值、防止掉饿）：吃 `nourishment-foods` 列表里的食物时生效。`duration` 单位为秒，默认按原版模组分档（30 / 60 / 180 / 300）。舒适效果（周期回血）在原版模组里已弃用，因此 `comfort-foods` 默认关闭、列表留空；机制代码保留，需要可自行启用并添加食物。
 
 ```yaml
 comfort-foods:
   enabled: false
-  foods:
-    farmersdelight:pasta_with_meatballs:
-      duration: 300
+  foods: {}
 nourishment-foods:
-  enabled: false
+  enabled: true
   foods:
+    farmersdelight:cooked_rice:
+      duration: 30        # 30/60/180/300 秒分档
+    farmersdelight:beef_stew:
+      duration: 180
     farmersdelight:noodle_soup:
       duration: 300
 ```
