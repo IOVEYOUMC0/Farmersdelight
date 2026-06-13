@@ -100,7 +100,6 @@ console:
     proxy_display_unavailable: "CraftEngine proxy item display pipeline unavailable, stove and skillet visuals will be disabled."
     enabled: "FarmersDelight plugin has been enabled."
     disabled: "FarmersDelight plugin has been disabled."
-    recipe_load_deferred: "Skipping recipe load for now because CraftEngine custom items are not ready yet."
     loading_recipes: "Loading recipes..."
     refreshing_recipes_after_ce: "Refreshing recipes after CraftEngine reload..."
     reloading_recipes: "Reloading recipes..."
