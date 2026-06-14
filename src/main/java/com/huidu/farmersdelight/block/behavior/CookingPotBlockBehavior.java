@@ -70,9 +70,9 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
 
     private static final Map<UUID, Map<BlockPosKey, CookingPotBlockEntity>> worldBlockEntities = new ConcurrentHashMap<>();
     private static final Map<UUID, Map<BlockPosKey, TextDisplay>> worldProgressDisplays = new ConcurrentHashMap<>();
-    // These per-pot display caches must be keyed by world too: BlockPosKey carries no world, so two
-    // pots at identical x,y,z in different worlds would otherwise share progress text / visibility
-    // throttle / recipe-name state.
+    // 这些每个锅的显示缓存也必须以世界作为键：BlockPosKey 不包含世界信息，因此在不同世界中
+    // 位于相同 x,y,z 坐标的两个锅，否则会共享进度文本 / 可见性
+    // 节流 / 配方名称状态。
     private static final Map<DisplayStateKey, Set<UUID>> displayVisibleToPlayers = new ConcurrentHashMap<>();
     private static final Map<DisplayStateKey, Long> displayVisibilityLastCheckTick = new ConcurrentHashMap<>();
     private static final Map<DisplayStateKey, Long> progressDisplayCreateLastCheckTick = new ConcurrentHashMap<>();
@@ -82,7 +82,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     private static final Map<BlockPosKey, Long> recentPlacements = new ConcurrentHashMap<>();
     private static final long PLACE_INTERACTION_COOLDOWN_MS = 1000L;
 
-    /** World-scoped key for the per-pot display caches above. */
+    /** 上述每个锅的显示缓存所用的世界范围键。 */
     private record DisplayStateKey(UUID worldId, BlockPosKey pos) {
     }
 
@@ -361,8 +361,8 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             return;
         }
         long now = System.currentTimeMillis();
-        // Drop expired entries here too: isRecentlyPlaced() only prunes on lookup, so a pot that is
-        // placed but never interacted with would otherwise leak its entry until cleanup.
+        // 这里也要清除过期的条目：isRecentlyPlaced() 仅在查询时进行清理，因此一个被放置
+        // 但从未交互过的锅，否则会一直泄漏其条目，直到清理为止。
         recentPlacements.entrySet().removeIf(entry -> now - entry.getValue() > PLACE_INTERACTION_COOLDOWN_MS);
         recentPlacements.put(new BlockPosKey(location), now);
     }
@@ -507,8 +507,8 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     }
 
     private static boolean shouldCreateProgressDisplay(World world, BlockPosKey posKey) {
-        // Use the real server tick (not wall-clock) so the throttle interval reflects actual ticks
-        // and degrades gracefully under TPS lag instead of re-checking more often.
+        // 使用真实的服务器 tick（而非系统时钟），以便节流间隔反映实际经过的 tick 数，
+        // 并在 TPS 卡顿时优雅地降级，而不是更频繁地重新检查。
         long currentTick = Bukkit.getCurrentTick();
         DisplayStateKey stateKey = stateKey(world, posKey);
         Long lastCheckTick = progressDisplayCreateLastCheckTick.get(stateKey);
@@ -548,8 +548,8 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             return;
         }
 
-        // Use the real server tick (not wall-clock) so the throttle interval reflects actual ticks
-        // and degrades gracefully under TPS lag instead of re-checking more often.
+        // 使用真实的服务器 tick（而非系统时钟），以便节流间隔反映实际经过的 tick 数，
+        // 并在 TPS 卡顿时优雅地降级，而不是更频繁地重新检查。
         long currentTick = Bukkit.getCurrentTick();
         Long lastCheckTick = displayVisibilityLastCheckTick.get(stateKey);
         if (lastCheckTick != null && currentTick - lastCheckTick < VISIBILITY_CHECK_INTERVAL_TICKS) {
@@ -984,7 +984,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             CookingPotLayout layout = entity.getLayout();
             int filledSlots = entity.countFilledInputSlots();
 
-            if (entity.getMealDisplayItem() != null) {
+            if (entity.hasMealDisplayItem()) {
                 filledSlots++;
             }
 
@@ -995,7 +995,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
 
     @Override
     public void tick(Object thisBlock, Object[] args) {
-        // Managed by TickManager.
+        // 由 TickManager 管理。
     }
 
     @Override

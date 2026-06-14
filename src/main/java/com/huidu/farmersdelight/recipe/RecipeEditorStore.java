@@ -17,12 +17,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Writes edited recipes back to the recipes/*.yml files and reloads them.
+ * 将编辑后的配方写回 recipes/*.yml 文件并重新加载它们。
  *
- * <p>Saves are synchronous: they are triggered by an admin action (a GUI button), the files are
- * small, and FarmersDelightPlugin#reloadRecipeFiles() must run on the main/region thread
- * anyway. The file itself is written atomically (temp file + move) so a crash mid-write cannot
- * corrupt the recipe file.
+ * <p>保存操作是同步的：它们由管理员操作（一个 GUI 按钮）触发，文件很小，而且
+ * FarmersDelightPlugin#reloadRecipeFiles() 无论如何都必须在主线程/区域线程上运行。
+ * 文件本身以原子方式写入（临时文件 + 移动），因此写入过程中崩溃不会
+ * 损坏配方文件。
  */
 public final class RecipeEditorStore {
 
@@ -40,8 +40,8 @@ public final class RecipeEditorStore {
     }
 
     /**
-     * @param customGroupId null/blank to write to the default cooking-pot recipe group, otherwise the
-     *                      custom large-pot group id.
+     * @param customGroupId 为 null 或空白时写入默认的 cooking-pot 配方组，否则写入
+     *                      自定义大锅配方组 id。
      */
     public boolean saveCookingPotRecipe(CookingPotRecipe recipe, String customGroupId) {
         String path = cookingPotPath(recipe.getId(), customGroupId);

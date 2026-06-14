@@ -28,8 +28,8 @@ public class CookingPotBlockEntity {
     private volatile World world;
     private volatile CookingPotLayout layout;
     private volatile String recipeGroupId;
-    // volatile: the arrays are swapped wholesale on layout change under inventoryLock, but read via
-    // getInventoryInternal() outside the lock from region threads — publish the new reference safely.
+    // volatile：布局变更时会在 inventoryLock 保护下整体替换这些数组，但区域线程会在锁外通过
+    // getInventoryInternal() 读取它们——以此安全地发布新的引用。
     private volatile ItemStack[] inventory;
     private volatile double[] slotExperience;
     private final AtomicInteger cookingProgress = new AtomicInteger(0);
@@ -37,7 +37,6 @@ public class CookingPotBlockEntity {
     private final AtomicBoolean hasHeatSource = new AtomicBoolean(false);
     private final AtomicReference<CookingPotRecipe> currentRecipe = new AtomicReference<>(null);
     private final AtomicReference<String> lastRecipeId = new AtomicReference<>(null);
-    private final AtomicReference<String> lastRecipeFingerprint = new AtomicReference<>(null);
     private final AtomicReference<ItemStack> mealContainerStack = new AtomicReference<>(null);
     private final Object inventoryLock = new Object();
     private final Object cookingLock = new Object();
@@ -269,6 +268,13 @@ public class CookingPotBlockEntity {
         }
     }
 
+    /** 仅判断输出槽是否有成品，不克隆物品（供比较器信号等高频查询使用）。 */
+    public boolean hasMealDisplayItem() {
+        synchronized (inventoryLock) {
+            return hasAnyItem(layout.outputSlots());
+        }
+    }
+
     public void setMealDisplayItem(ItemStack item) {
         synchronized (inventoryLock) {
             addItemToSlots(layout.outputSlots(), item);
@@ -300,7 +306,7 @@ public class CookingPotBlockEntity {
         return false;
     }
 
-    /** Counts filled input slots without copying the inventory (for the redstone comparator signal). */
+    /** 在不复制 inventory 的情况下统计已填充的输入槽数量（用于红石比较器信号）。 */
     public int countFilledInputSlots() {
         int count = 0;
         synchronized (inventoryLock) {
@@ -540,6 +546,16 @@ public class CookingPotBlockEntity {
                     if (!canCookInternal()) return false;
                     recipe = currentRecipe.get();
                     if (recipe == null) return false;
+                } else {
+                    // 缓存的配方在 canCook 与 finishCooking 之间可能因输入被改动（如跨 region 的 GUI 同步、
+                    // 漏斗交互）而失配；产出前在锁内再次校验，避免用零/少量原料凭空产出成品（刷物品）。
+                    FarmersDelightPlugin instance = FarmersDelightPlugin.getInstance();
+                    if (instance == null || !instance.getCookingPotRecipes()
+                            .canCraft(recipe, getIngredientSlotsInternal(), getContainerItemInternal())) {
+                        currentRecipe.set(null);
+                        lastRecipeId.set(null);
+                        return false;
+                    }
                 }
 
                 ItemStack resultItem = recipe.getResult();
@@ -558,7 +574,6 @@ public class CookingPotBlockEntity {
                 cookingProgress.set(0);
                 currentRecipe.set(null);
                 lastRecipeId.set(null);
-                lastRecipeFingerprint.set(null);
 
                 syncWorldlyContainer();
                 return true;
@@ -579,7 +594,6 @@ public class CookingPotBlockEntity {
             if (previousRecipe != null
                     && instance.getCookingPotRecipes().canCraft(previousRecipe, inputItems, containerItem)) {
                 lastRecipeId.set(previousRecipe.getId());
-                lastRecipeFingerprint.set(buildRecipeFingerprint(previousRecipe));
                 currentRecipe.set(previousRecipe);
                 return true;
             }
@@ -590,7 +604,6 @@ public class CookingPotBlockEntity {
             if (recipe == null) {
                 currentRecipe.set(null);
                 lastRecipeId.set(null);
-                lastRecipeFingerprint.set(null);
                 return false;
             }
 
@@ -602,7 +615,6 @@ public class CookingPotBlockEntity {
             }
 
             lastRecipeId.set(newRecipeId);
-            lastRecipeFingerprint.set(buildRecipeFingerprint(recipe));
 
             currentRecipe.set(recipe);
             return true;
@@ -662,38 +674,6 @@ public class CookingPotBlockEntity {
         }
     }
 
-    private String buildRecipeFingerprint(CookingPotRecipe recipe) {
-        StringBuilder builder = new StringBuilder(recipe.getId()).append('|');
-
-        synchronized (inventoryLock) {
-            List<String> ingredientFingerprints = new ArrayList<>();
-            for (int i : layout.inputSlots()) {
-                String fingerprint = buildItemFingerprint(inventory[i]);
-                if (!"none".equals(fingerprint)) {
-                    ingredientFingerprints.add(fingerprint);
-                }
-            }
-            ingredientFingerprints.sort(String::compareTo);
-            for (String fingerprint : ingredientFingerprints) {
-                builder.append(fingerprint).append(';');
-            }
-        }
-
-        return builder.toString();
-    }
-
-    private String buildItemFingerprint(ItemStack item) {
-        if (item == null || item.getType().isAir()) {
-            return "none";
-        }
-
-        String customId = ItemUtils.getCustomItemId(item);
-        if (customId != null) {
-            return customId;
-        }
-        return "minecraft:" + item.getType().name().toLowerCase(java.util.Locale.ROOT);
-    }
-    
     public boolean doesMealHaveContainer() {
         ItemStack container = mealContainerStack.get();
         return container != null && !container.getType().isAir();
@@ -878,9 +858,8 @@ public class CookingPotBlockEntity {
     public void dropExperience(World world, double totalExp) {
         if (world == null || totalExp <= 0.0D) return;
 
-        // Probabilistically round so sub-1.0 experience (e.g. taking meals one at a time, where each
-        // portion's share is < 1) is not floored away to 0 every time; the expected total still
-        // equals the configured experience over many takes.
+        // 采用概率性取整，使得小于 1.0 的经验值（例如一次取一份食物时，每份所占的份额 < 1）
+        // 不会每次都被向下取整为 0；在多次领取后，期望的总量仍然等于配置的经验值。
         int expValue = (int) Math.floor(totalExp);
         double fraction = totalExp - expValue;
         if (fraction > 0.0D && java.util.concurrent.ThreadLocalRandom.current().nextDouble() < fraction) {
@@ -1097,7 +1076,7 @@ public class CookingPotBlockEntity {
 
         ItemStack existing = inventory[slot];
         if (existing != null && isSimilarIgnoringStoredExperience(existing, item)) {
-            // Clamp the merge to the stack size so a slot can never hold an over-stack.
+            // 将合并结果限制在最大堆叠数量内，使某个槽位永远不会持有超出堆叠上限的物品。
             int maxStack = Math.max(1, existing.getMaxStackSize());
             int merged = Math.min(maxStack, existing.getAmount() + item.getAmount());
             existing.setAmount(merged);
@@ -1225,10 +1204,10 @@ public class CookingPotBlockEntity {
     }
 
     public void setCookingProgress(int progress) {
-        // Progress is a transient counter advanced every tick. Marking the block entity dirty on
-        // every change forced a chunk re-serialization each tick for every actively-cooking pot
-        // (defeating "save only changed chunks"). The live value is still persisted by saveData()
-        // on chunk save/unload, and a meaningful state change (ingredients/output) marks dirty.
+        // progress 是一个每 tick 递增的临时计数器。在每次变化时都将该方块实体标记为脏，
+        // 会导致每个正在烹饪的锅在每 tick 都重新序列化所在区块
+        //（从而使“仅保存已变更的区块”失效）。实时数值仍会在区块保存/卸载时由 saveData()
+        // 持久化，而有意义的状态变化（原料/产出）才会标记为脏。
         cookingProgress.set(progress);
     }
 
