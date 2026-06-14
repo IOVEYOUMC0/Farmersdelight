@@ -78,6 +78,8 @@ public class CookingPotGui implements InventoryHolder {
     private final Map<Integer, ItemStack> cachedDisplayItems = new HashMap<>();
     private ItemStack cachedPendingContainer;
     private boolean syncQueued;
+    // 上一次重扫输入槽时看到的库存版本号；版本未变化则跳过该轮重扫。
+    private long lastSeenInventoryVersion = Long.MIN_VALUE;
 
     public CookingPotGui(FarmersDelightPlugin plugin, CookingPotBlockEntity blockEntity,
                          CookingPotBlockBehavior blockBehavior, World world) {
@@ -175,6 +177,8 @@ public class CookingPotGui implements InventoryHolder {
 
     private void refreshInventory() {
         resetDisplayCache();
+        // 强制下一次 updateDisplayItems 必定重扫一次，确保打开/重绘后输入槽状态正确。
+        lastSeenInventoryVersion = Long.MIN_VALUE;
         inventory.clear();
 
         for (int slot = 0; slot < config.getSize(); slot++) {
@@ -284,7 +288,12 @@ public class CookingPotGui implements InventoryHolder {
     @SuppressWarnings({ "null" })
     private void updateDisplayItems() {
         if (!syncQueued) {
-            refreshInputSlotsFromBlockEntity();
+            // 仅当库存版本变化时才做全量输入槽重扫，锅内容未变时跳过这次重扫。
+            long version = blockEntity.getInventoryVersion();
+            if (version != lastSeenInventoryVersion) {
+                refreshInputSlotsFromBlockEntity();
+                lastSeenInventoryVersion = version;
+            }
         }
 
         if (heatSlot >= 0) {

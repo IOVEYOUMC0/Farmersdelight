@@ -315,6 +315,14 @@ public class TrayManager {
             return;
         }
 
+        // 托盘只可能存在于厨锅/煎锅下方。若全服没有任何被跟踪的厨锅和煎锅,就不可能有自动托盘,
+        // 直接跳过,避免每次破坏普通方块都白白调度一个 region 任务。这两个判断都很廉价(不分配列表)。
+        SkilletManager skilletManager = plugin.getSkilletManager();
+        boolean anySkillets = skilletManager != null && skilletManager.hasTrackedSkillets();
+        if (!CookingPotBlockBehavior.hasAnyBlockEntities() && !anySkillets) {
+            return;
+        }
+
         Location normalized = new Location(
                 supportLocation.getWorld(),
                 supportLocation.getBlockX(),
