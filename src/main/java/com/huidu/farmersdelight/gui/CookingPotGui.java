@@ -532,6 +532,8 @@ public class CookingPotGui implements InventoryHolder {
                 deliverOutputToPlayer(event, player, outputItem);
                 applyOutputExperienceReward(player, outputItem, meal.experience());
                 player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1.0f, 1.0f);
+                Bukkit.getPluginManager().callEvent(new com.huidu.farmersdelight.api.event.FarmersDelightProduceEvent(
+                        player.getUniqueId(), "cooking_pot", outputItem, cookingPotLocation));
 
                 updateDisplayItems();
             }

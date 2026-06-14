@@ -835,6 +835,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         }
         reloadRecipesWhenReady("plugin.reloading_recipes");
 
+        org.bukkit.Bukkit.getPluginManager().callEvent(
+                new com.huidu.farmersdelight.api.event.FarmersDelightReloadEvent("reloadAll"));
         I18n.logInfo("plugin.configuration_reloaded");
     }
 

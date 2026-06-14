@@ -172,8 +172,9 @@ fun registerObfuscationTask(
             public static final ** *;
         }
     """.trimIndent())
+        // Public addon-facing API (events + extension facade for addons like Brewin' And Chewin').
         keep("""
-        public class com.huidu.farmersdelight.api.event.** {
+        public class com.huidu.farmersdelight.api.** {
             public protected *;
         }
     """.trimIndent())
