@@ -74,7 +74,12 @@ public class TickManager {
     private static final int DEFAULT_ACTIVE_BLOCK_WARNING_THRESHOLD = 1000;
     private static final int CLEANUP_INTERVAL = 6000;
     private static final int DEFAULT_COOKING_POT_TICK_BUDGET = 512;
-    private static final int MAX_ELAPSED_TICKS = 100;
+    // 单次处理累加的最大补偿 tick 数。设得足够大,使被 tick 预算饿到(活跃方块数远超预算)的厨锅不会
+    // 丢失真实经过的烹饪时间。这里不会造成“重载瞬间烹饪一大批”:tickCookingPot 用 Math.min(duration, ...)
+    // 把进度封顶在配方时长,且每次处理最多 finishCooking 一次(单个 if、非循环),无论补偿值多大都只产出一批;
+    // 同时 previousTick 在(重新)激活时被重置、且每次被选中处理都会刷新,因此补偿值永远不包含未加载时段。
+    // 上限仍保留一个合理边界,避免冷却分支 elapsedTicks*2 处的 int 溢出。
+    private static final int MAX_ELAPSED_TICKS = 72_000;
     public TickManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
         reloadConfig();
