@@ -9,6 +9,7 @@ import com.huidu.farmersdelight.recipe.RecipeIngredient;
 import com.huidu.farmersdelight.recipe.RecipeSerializer;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.ItemUtils;
+import com.huidu.farmersdelight.util.Text;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
@@ -30,9 +31,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * In-game editor for a single cutting-board recipe (input, tools, weighted results, priority). Layout
- * and button text come from the recipe-cutting-board-editor-gui section of gui.yml; chat
- * feedback comes from the gui.editor.* language keys.
+ * 用于编辑单条 cutting-board 配方（输入、工具、带权重的产物、优先级）的游戏内编辑器。布局
+ * 和按钮文本来自 gui.yml 中的 recipe-cutting-board-editor-gui 部分；聊天栏
+ * 反馈来自 gui.editor.* 语言键。
  */
 public final class CuttingBoardEditorGui implements EditorGui {
 
@@ -434,7 +435,7 @@ public final class CuttingBoardEditorGui implements EditorGui {
     private static ItemStack named(ItemStack stack, String name) {
         ItemMeta meta = stack.getItemMeta();
         if (meta != null) {
-            meta.displayName(Component.text(name));
+            meta.displayName(Text.name(name));
             stack.setItemMeta(meta);
         }
         return stack;

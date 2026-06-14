@@ -8,6 +8,7 @@ import com.huidu.farmersdelight.recipe.CookingPotRecipe;
 import com.huidu.farmersdelight.recipe.RecipeIngredient;
 import com.huidu.farmersdelight.recipe.RecipeSerializer;
 import com.huidu.farmersdelight.util.ItemUtils;
+import com.huidu.farmersdelight.util.Text;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
@@ -28,10 +29,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * In-game editor for a single cooking-pot recipe. Layout, slot positions and button text come from
- * the recipe-editor-gui (or per-custom-pot recipe-editor-cooking-pot-guis.<id>) section
- * of gui.yml; chat feedback comes from the gui.editor.* language keys. The ingredient capacity
- * adapts to the resolved layout, so custom (large) pots can expose more ingredient slots.
+ * 用于编辑单个 cooking-pot 配方的游戏内编辑器。布局、槽位位置和按钮文本来自
+ * gui.yml 中的 recipe-editor-gui（或针对每个自定义锅的 recipe-editor-cooking-pot-guis.<id>）部分；
+ * 聊天反馈来自 gui.editor.* 语言键。原料容量会
+ * 根据解析后的布局自适应，因此自定义（大型）锅可以暴露更多的原料槽位。
  */
 public final class CookingPotEditorGui implements EditorGui {
 
@@ -470,7 +471,7 @@ public final class CookingPotEditorGui implements EditorGui {
     private static ItemStack named(ItemStack stack, String name) {
         ItemMeta meta = stack.getItemMeta();
         if (meta != null) {
-            meta.displayName(Component.text(name));
+            meta.displayName(Text.name(name));
             stack.setItemMeta(meta);
         }
         return stack;

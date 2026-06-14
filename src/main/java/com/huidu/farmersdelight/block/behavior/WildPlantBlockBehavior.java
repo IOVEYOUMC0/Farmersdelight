@@ -28,9 +28,9 @@ import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Bonemeal spread for the static wild plants (cabbages/onions/tomatoes), ported from the mod's
- * WildCropBlock: on a success roll, scatter a copy onto nearby air over valid soil, capped by how many
- * of the same plant already surround it. Placement/survival stay with bush_block; never random-ticks.
+ * 静态野生植物（卷心菜/洋葱/番茄）的骨粉传播逻辑，移植自该模组的
+ * WildCropBlock：成功判定通过后，将一个副本散布到附近合法土壤上方的空气中，散布数量受周围
+ * 已有相同植物数量的上限限制。放置/存活逻辑仍由 bush_block 处理；永远不进行随机刻更新。
  */
 public class WildPlantBlockBehavior extends BlockBehavior {
 
@@ -48,7 +48,7 @@ public class WildPlantBlockBehavior extends BlockBehavior {
         this.soilRules = soilRules;
     }
 
-    // Placement, collision and pathing stay with bush_block; these abstract hooks are left as passable no-ops.
+    // 放置、碰撞和寻路逻辑仍由 bush_block 处理；这些抽象钩子保持为可通过的空实现。
     @Override
     public boolean isPathFindable(Object thisBlock, Object[] args) {
         return true;
@@ -80,7 +80,7 @@ public class WildPlantBlockBehavior extends BlockBehavior {
         World world = player.getWorld();
         Block origin = world.getBlockAt(pos.x(), pos.y(), pos.z());
 
-        // Vanilla consumes bonemeal on a valid target; the spread itself only happens on the success roll.
+        // 原版在合法目标上会消耗骨粉；而传播本身仅在成功判定通过时才发生。
         if (ThreadLocalRandom.current().nextDouble() < successChance) {
             spread(world, origin, state);
         }
@@ -91,8 +91,8 @@ public class WildPlantBlockBehavior extends BlockBehavior {
         return InteractionResult.SUCCESS_AND_CANCEL;
     }
 
-    // Faithful port of WildCropBlock.performBonemeal: abort if spreadLimit same plants already sit in the
-    // 9x3x9 area, otherwise random-walk to a target and drop one copy on air over dirt/sand.
+    // 忠实移植 WildCropBlock.performBonemeal：若 9x3x9 区域内已有 spreadLimit 个相同植物则中止，
+    // 否则随机游走到一个目标位置，并在泥土/沙子上方的空气中放置一个副本。
     private void spread(World world, Block origin, ImmutableBlockState state) {
         String selfId = block().id().toString();
         int remaining = spreadLimit;
@@ -131,7 +131,7 @@ public class WildPlantBlockBehavior extends BlockBehavior {
             return false;
         }
         Block below = target.getRelative(BlockFace.DOWN);
-        // Spread only where this plant can actually survive: its own soil rules if set, else dirt/sand.
+        // 仅在该植物实际能存活的位置传播：若设置了自身的土壤规则则使用该规则，否则使用泥土/沙子。
         if (soilRules.isConfigured()) {
             return SoilRuleSupport.matches(below, soilRules);
         }
