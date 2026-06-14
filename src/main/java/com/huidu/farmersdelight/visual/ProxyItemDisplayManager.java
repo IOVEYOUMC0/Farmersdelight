@@ -51,7 +51,6 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
     private final AtomicInteger nextEntityId = new AtomicInteger(2_000_000);
     private final Map<Integer, ProxyItemDisplay> displays = new ConcurrentHashMap<>();
     private final Map<UUID, Player> onlinePlayers = new ConcurrentHashMap<>();
-    private final Set<Integer> scheduledDisplaySyncs = ConcurrentHashMap.newKeySet();
     private final AtomicLong displaySnapshotVersion = new AtomicLong();
     private volatile List<ProxyItemDisplay> displaySnapshot = List.of();
     private volatile long displaySnapshotCachedVersion = -1L;
@@ -93,7 +92,7 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
                 "performance.proxy-item-display-sync-interval-ticks", DEFAULT_SYNC_INTERVAL_TICKS));
         syncBatchSize = Math.max(1, plugin.getConfig().getInt(
                 "performance.proxy-item-display-sync-batch-size", DEFAULT_SYNC_BATCH_SIZE));
-        // Restart the sync task so the new interval takes effect.
+        // 重启同步任务，使新的间隔生效。
         if (syncTask != null) {
             syncTask.cancel();
             syncTask = null;
@@ -152,7 +151,6 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
 
     @Override
     public void destroyDisplay(int entityId) {
-        scheduledDisplaySyncs.remove(entityId);
         ProxyItemDisplay removed = displays.remove(entityId);
         if (removed != null) {
             markDisplaySnapshotDirty();
@@ -190,7 +188,6 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         for (Integer entityId : new ArrayList<>(displays.keySet())) {
             destroyDisplay(entityId);
         }
-        scheduledDisplaySyncs.clear();
         onlinePlayers.clear();
         displaySnapshot = List.of();
         markDisplaySnapshotDirty();
@@ -313,14 +310,7 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
             return;
         }
 
-        if (!scheduledDisplaySyncs.add(display.entityId)) {
-            return;
-        }
-        try {
-            scheduleDisplayForPlayers(display);
-        } finally {
-            scheduledDisplaySyncs.remove(display.entityId);
-        }
+        scheduleDisplayForPlayers(display);
     }
 
     private void scheduleDisplayForPlayers(ProxyItemDisplay display) {
@@ -332,8 +322,8 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
             return;
         }
         for (Player player : onlinePlayers.values()) {
-            // Cheap pre-filter: skip players in other worlds before paying the per-player scheduling
-            // cost. syncDisplayForPlayer still re-checks distance on the player's own thread.
+            // 廉价的预过滤：在为每个玩家承担调度开销之前，先跳过位于其他世界的玩家。
+            // syncDisplayForPlayer 仍会在玩家自己的线程上重新检查距离。
             if (player == null || !displayWorld.equals(player.getWorld())) {
                 continue;
             }
@@ -433,7 +423,12 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
             return false;
         }
 
-        return player.getLocation().distanceSquared(location) <= viewDistanceSquared;
+        // 手算平方距离，避免每次可见性判断都分配一个 Location 对象。
+        // 此处已确保同世界（见上方判断），因此不会出现跨世界异常，逻辑与 distanceSquared 等价。
+        double dx = player.getX() - location.getX();
+        double dy = player.getY() - location.getY();
+        double dz = player.getZ() - location.getZ();
+        return dx * dx + dy * dy + dz * dz <= viewDistanceSquared;
     }
 
     private void spawnForViewer(Player player, ProxyItemDisplay display) {
@@ -635,12 +630,15 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
     private static final class ProxyItemDisplay {
         private final int entityId;
         private final UUID entityUuid;
-        private DisplaySpec spec;
+        // 这些字段由方块所在 region 线程在 updateDisplay() 中写入，并由其他 region 线程（玩家/全局）
+        // 在 spawn/visibility 路径中读取；用 volatile 保证跨线程可见性，避免读到旧的物品/位置或撕裂状态。
+        // spawnPackets 始终最后赋值，且是一个一致的不可变 List，读取方只需读到完整的旧值或完整的新值。
+        private volatile DisplaySpec spec;
         private final Set<UUID> viewers = ConcurrentHashMap.newKeySet();
-        private Object spawnPacket;
-        private Object metadataPacket;
+        private volatile Object spawnPacket;
+        private volatile Object metadataPacket;
         private final Object destroyPacket;
-        private List<Object> spawnPackets;
+        private volatile List<Object> spawnPackets;
 
         private ProxyItemDisplay(int entityId, UUID entityUuid, DisplaySpec spec,
                                  Object spawnPacket, Object metadataPacket, Object destroyPacket) {

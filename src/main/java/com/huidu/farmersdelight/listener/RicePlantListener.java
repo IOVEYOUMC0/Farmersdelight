@@ -43,8 +43,8 @@ public class RicePlantListener implements Listener {
     private static final Key WILD_RICE_BLOCK_KEY = Key.of(WILD_RICE_BLOCK_ID);
 
     private final FarmersDelightPlugin plugin;
-    // Mutated from region-thread runLaterAt callbacks (different regions = different threads on
-    // Folia), so it must be a concurrent set.
+    // 会在区域线程的 runLaterAt 回调中被修改（在 Folia 上不同区域对应不同线程），
+    // 所以它必须是一个并发集合。
     private final Set<String> pendingRiceStabilizations = ConcurrentHashMap.newKeySet();
 
     public RicePlantListener(FarmersDelightPlugin plugin) {
@@ -778,9 +778,9 @@ public class RicePlantListener implements Listener {
         if (scheduleStabilization) {
             scheduleRiceStabilization(location.clone(), 3);
         }
-        // CE may not expose the custom state on the same tick even though the
-        // placement itself succeeded. Treat a successful place call as success
-        // and let stabilization reconcile the carrier block over the next ticks.
+        // 即使放置本身已经成功，CraftEngine 也可能不会在同一 tick 内暴露出自定义状态。
+        // 将一次成功的 place 调用视为成功，
+        // 并交由稳定化流程在后续若干 tick 内修正承载方块。
         return placementSucceeded || placedNow;
     }
 
@@ -794,9 +794,9 @@ public class RicePlantListener implements Listener {
             return;
         }
 
-        // CE may briefly rewrite the carrier block right after placement.
-        // Keep only one stabilization chain per position and retry once if the
-        // custom state is still settling on the next tick.
+        // CraftEngine 可能会在放置之后短暂地重写承载方块。
+        // 每个位置只保留一条稳定化链，
+        // 并在下一 tick 自定义状态仍未稳定时重试一次。
         plugin.scheduler().runLaterAt(location, () -> {
             pendingRiceStabilizations.remove(key);
             ensureRiceStable(location, attemptsRemaining);
@@ -862,8 +862,8 @@ public class RicePlantListener implements Listener {
             player.swingMainHand();
         }
 
-        // Reuse the planted block's own sound group so rice placement feels like a
-        // natural block placement instead of a hard-coded custom sound.
+        // 复用所种植方块自身的音效组，让稻谷的放置听起来像是
+        // 自然的方块放置，而不是写死的自定义音效。
         SoundGroup soundGroup = plantLocation.getBlock().getBlockData().getSoundGroup();
         if (soundGroup != null) {
             player.playSound(

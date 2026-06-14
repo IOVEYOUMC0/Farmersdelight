@@ -2,7 +2,7 @@ package com.huidu.farmersdelight.gui;
 
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.util.ItemUtils;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import com.huidu.farmersdelight.util.Text;
 import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -19,8 +19,6 @@ import java.util.Map;
 import java.util.Objects;
 
 public class GuiConfig {
-
-    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacyAmpersand();
 
     private final String title;
     private final String titleLayoutOffset;
@@ -117,7 +115,7 @@ public class GuiConfig {
     }
 
     public static GuiConfig fromConfig(ConfigurationSection section) {
-        String title = section.getString("title", "GUI");
+        String title = section.getString("title", "界面");
         String titleLayoutOffset = section.getString("title-layout.craftengine.offset", "");
         String titleLayoutIcon = section.getString("title-layout.craftengine.icon", "");
         boolean fillersEnabled = section.getBoolean("fillers-enabled", true);
@@ -239,7 +237,7 @@ public class GuiConfig {
 
         Map<String, GuiItem> items = new HashMap<>();
         items.put("background", new GuiItem(Material.GRAY_STAINED_GLASS_PANE, null, " ", List.of()));
-        items.put("recipe", new GuiItem(Material.KNOWLEDGE_BOOK, null, "View Recipes", List.of("Click to view all cooking pot recipes")));
+        items.put("recipe", new GuiItem(Material.KNOWLEDGE_BOOK, null, "查看配方", List.of("点击查看所有烹饪锅配方")));
 
         return new GuiConfig(
                 "<white><offset><icon>",
@@ -660,7 +658,8 @@ public class GuiConfig {
         }
 
         public ItemStack createItem() {
-            return createItem(new HashMap<>());
+            // 用不可变空 map，避免每次（每个槽位、每次重绘）都分配一个用不到的 HashMap。
+            return createItem(Map.of());
         }
 
         public ItemStack createItem(Map<String, String> placeholders) {
@@ -683,7 +682,7 @@ public class GuiConfig {
 
             if (!builtFromCustomItem && (name != null || nameKey != null)) {
                 String processedName = applyPlaceholders(resolveText(name, nameKey), placeholders);
-                meta.displayName(LEGACY.deserialize(processedName));
+                meta.displayName(Text.name(processedName));
             }
 
             if ((lore != null && !lore.isEmpty()) || !loreKeys.isEmpty()) {
@@ -693,11 +692,11 @@ public class GuiConfig {
                 }
                 if (lore != null) {
                     for (String line : lore) {
-                        processedLore.add(LEGACY.deserialize(applyPlaceholders(line, placeholders)));
+                        processedLore.add(Text.lore(applyPlaceholders(line, placeholders)));
                     }
                 }
                 for (String key : loreKeys) {
-                    processedLore.add(LEGACY.deserialize(applyPlaceholders(resolveText(null, key), placeholders)));
+                    processedLore.add(Text.lore(applyPlaceholders(resolveText(null, key), placeholders)));
                 }
                 meta.lore(processedLore);
             }
