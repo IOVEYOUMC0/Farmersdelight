@@ -128,7 +128,7 @@ public class ChunkLoadListener implements Listener {
                 switch (blockType) {
                     case "cooking_pot" -> {
                         BlockPosKey posKey = new BlockPosKey(pos);
-                        // Only drop the legacy entry after the CE block is confirmed and migrated.
+                        // 仅在确认 CE 方块存在并完成迁移后，才删除旧的 legacy 数据条目。
                         if (CookingPotBlockBehavior.isCookingPotBlock(world, posKey)) {
                             CookingPotBlockBehavior.migrateLegacyBlockData(world, posKey, data);
                             storage.removeBlockData(posKey.toLocation(world));

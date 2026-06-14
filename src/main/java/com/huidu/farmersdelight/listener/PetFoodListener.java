@@ -50,8 +50,8 @@ public class PetFoodListener implements Listener {
         
         if (!definition.entities.contains(entity.getType())) return;
 
-        // PlayerInteractEntityEvent fires once per hand. If the same pet food is held in both hands,
-        // debounce on (player, entity) so a single right-click can't consume/apply the food twice.
+        // PlayerInteractEntityEvent 每只手都会触发一次。如果同一种宠物食物被双手同时持有，
+        // 则按 (player, entity) 进行防抖，这样单次右键就不会重复消耗/施加该食物两次。
         if (!InteractionDebouncer.tryAcquire(player.getUniqueId(), entity.getLocation())) {
             event.setCancelled(true);
             return;

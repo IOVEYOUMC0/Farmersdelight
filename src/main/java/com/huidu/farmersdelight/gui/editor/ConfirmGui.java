@@ -18,8 +18,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Generic confirm/cancel page driven by a gui.yml layout (slot-types {@code confirm}, {@code cancel},
- * {@code info}, {@code background}). Closing the page (ESC) is treated as cancel.
+ * 由 gui.yml 布局驱动的通用确认/取消页面（slot 类型为 {@code confirm}、{@code cancel}、
+ * {@code info}、{@code background}）。关闭页面（按 ESC）会被视为取消。
  */
 public final class ConfirmGui implements EditorGui {
 
