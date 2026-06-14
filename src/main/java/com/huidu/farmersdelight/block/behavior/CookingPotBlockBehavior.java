@@ -39,6 +39,7 @@ import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -69,6 +70,10 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     public static final int INVENTORY_SIZE = 9;
 
     private static final Map<UUID, Map<BlockPosKey, CookingPotBlockEntity>> worldBlockEntities = new ConcurrentHashMap<>();
+    // 按区块索引权威 map 中的方块实体位置：worldId -> (chunkKey -> posKey 集合)。
+    // 该索引必须与 worldBlockEntities 的结构性写入紧耦合维护，否则区块卸载时
+    // 漏掉的实体将不会被保存，导致锅内内容丢失。
+    private static final Map<UUID, Map<Long, Set<BlockPosKey>>> chunkIndex = new ConcurrentHashMap<>();
     private static final Map<UUID, Map<BlockPosKey, TextDisplay>> worldProgressDisplays = new ConcurrentHashMap<>();
     // 这些每个锅的显示缓存也必须以世界作为键：BlockPosKey 不包含世界信息，因此在不同世界中
     // 位于相同 x,y,z 坐标的两个锅，否则会共享进度文本 / 可见性
@@ -176,7 +181,15 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         Map<BlockPosKey, CookingPotBlockEntity> worldEntities = worldBlockEntities.computeIfAbsent(
                 world.getUID(), k -> new ConcurrentHashMap<>());
         CookingPotBlockBehavior behavior = getBlockBehavior(location);
-        CookingPotBlockEntity entity = worldEntities.computeIfAbsent(posKey, key -> createBlockEntity(key, world, behavior));
+        // 仅在确实新建了实体时才维护索引:mapping 函数被调用即表示进行了一次结构性写入。
+        boolean[] created = {false};
+        CookingPotBlockEntity entity = worldEntities.computeIfAbsent(posKey, key -> {
+            created[0] = true;
+            return createBlockEntity(key, world, behavior);
+        });
+        if (created[0]) {
+            indexAdd(world.getUID(), posKey);
+        }
         if (behavior != null) {
             entity.applyBehavior(behavior);
         }
@@ -216,6 +229,50 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         return Set.of();
     }
 
+    /** 由方块坐标计算区块键(高 32 位为 chunkX,低 32 位为 chunkZ)。 */
+    private static long chunkKey(int blockX, int blockZ) {
+        return (((long) (blockX >> 4)) << 32) | ((blockZ >> 4) & 0xFFFFFFFFL);
+    }
+
+    /** 把一个位置加入区块索引。必须与 worldEntities 的注册写入紧耦合调用。 */
+    private static void indexAdd(UUID worldId, BlockPosKey posKey) {
+        chunkIndex.computeIfAbsent(worldId, k -> new ConcurrentHashMap<>())
+                .computeIfAbsent(chunkKey(posKey.x(), posKey.z()), k -> ConcurrentHashMap.newKeySet())
+                .add(posKey);
+    }
+
+    /** 把一个位置从区块索引移除。必须与 worldEntities 的移除写入紧耦合调用。 */
+    private static void indexRemove(UUID worldId, BlockPosKey posKey) {
+        Map<Long, Set<BlockPosKey>> worldChunks = chunkIndex.get(worldId);
+        if (worldChunks == null) return;
+        long ck = chunkKey(posKey.x(), posKey.z());
+        Set<BlockPosKey> set = worldChunks.get(ck);
+        if (set == null) return;
+        set.remove(posKey);
+        if (set.isEmpty()) worldChunks.remove(ck);
+        if (worldChunks.isEmpty()) chunkIndex.remove(worldId);
+    }
+
+    /**
+     * 仅返回指定区块内的厨锅方块实体,避免对整世界做线性扫描。
+     * 以权威 map(worldBlockEntities)为准:索引里可能存在的陈旧多余项若在权威 map 中查不到则跳过。
+     */
+    public static Map<BlockPosKey, CookingPotBlockEntity> getBlockEntitiesInChunk(World world, int chunkX, int chunkZ) {
+        Map<BlockPosKey, CookingPotBlockEntity> result = new HashMap<>();
+        if (world == null) return result;
+        Map<Long, Set<BlockPosKey>> worldChunks = chunkIndex.get(world.getUID());
+        if (worldChunks == null) return result;
+        Set<BlockPosKey> posKeys = worldChunks.get((((long) chunkX) << 32) | (chunkZ & 0xFFFFFFFFL));
+        if (posKeys == null) return result;
+        Map<BlockPosKey, CookingPotBlockEntity> worldEntities = worldBlockEntities.get(world.getUID());
+        if (worldEntities == null) return result;
+        for (BlockPosKey posKey : posKeys) {
+            CookingPotBlockEntity entity = worldEntities.get(posKey);
+            if (entity != null) result.put(posKey, entity);
+        }
+        return result;
+    }
+
     public static List<Location> getBlockEntityLocations() {
         List<Location> locations = new ArrayList<>();
         for (Map<BlockPosKey, CookingPotBlockEntity> worldEntities : worldBlockEntities.values()) {
@@ -227,6 +284,16 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             }
         }
         return locations;
+    }
+
+    /** 是否存在任何被跟踪的厨锅方块实体(廉价判断,只遍历世界数,不分配位置列表)。 */
+    public static boolean hasAnyBlockEntities() {
+        for (Map<BlockPosKey, CookingPotBlockEntity> worldEntities : worldBlockEntities.values()) {
+            if (!worldEntities.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public String getBoilSound() {
@@ -286,7 +353,10 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         removeProgressDisplay(world, posKey);
         Map<BlockPosKey, CookingPotBlockEntity> worldEntities = worldBlockEntities.get(world.getUID());
         if (worldEntities != null) {
-            worldEntities.remove(posKey);
+            // 仅在确实从权威 map 移除时才同步从索引移除,保持二者一致。
+            if (worldEntities.remove(posKey) != null) {
+                indexRemove(world.getUID(), posKey);
+            }
         }
 
         TrayManager trayManager = null;
@@ -311,6 +381,8 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         if (worldEntities != null) {
             worldEntities.clear();
         }
+        // 整世界移除时同步丢弃该世界的区块索引。
+        chunkIndex.remove(worldId);
         Map<BlockPosKey, TextDisplay> displays = worldProgressDisplays.remove(worldId);
         if (displays != null) {
             for (Map.Entry<BlockPosKey, TextDisplay> entry : displays.entrySet()) {
@@ -339,6 +411,8 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             worldEntities.clear();
         }
         worldBlockEntities.clear();
+        // 清空权威 map 时同步清空区块索引。
+        chunkIndex.clear();
         for (Map<BlockPosKey, TextDisplay> displays : worldProgressDisplays.values()) {
             for (TextDisplay display : displays.values()) {
                 if (removeDisplayEntities && display != null && display.isValid()) {
@@ -874,7 +948,15 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         Map<BlockPosKey, CookingPotBlockEntity> worldEntities = worldBlockEntities.computeIfAbsent(
                 world.getUID(), k -> new ConcurrentHashMap<>());
 
-        CookingPotBlockEntity blockEntity = worldEntities.computeIfAbsent(posKey, key -> createBlockEntity(key, world, this));
+        // 仅在确实新建了实体时才维护索引(同 getOrCreateBlockEntity)。
+        boolean[] created = {false};
+        CookingPotBlockEntity blockEntity = worldEntities.computeIfAbsent(posKey, key -> {
+            created[0] = true;
+            return createBlockEntity(key, world, this);
+        });
+        if (created[0]) {
+            indexAdd(world.getUID(), posKey);
+        }
         blockEntity.applyBehavior(this);
         blockEntity.setWorld(world);
         

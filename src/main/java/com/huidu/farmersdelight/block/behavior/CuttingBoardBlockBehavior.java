@@ -49,6 +49,10 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
     }
 
     private static final Map<UUID, Map<BlockPosKey, CuttingBoardBlockEntity>> worldBlockEntities = new ConcurrentHashMap<>();
+    // 按区块索引权威 map 中的方块实体位置：worldId -> (chunkKey -> posKey 集合)。
+    // 该索引必须与 worldBlockEntities 的结构性写入紧耦合维护，否则区块卸载时
+    // 漏掉的实体将不会被保存，导致砧板内容丢失。
+    private static final Map<UUID, Map<Long, Set<BlockPosKey>>> chunkIndex = new ConcurrentHashMap<>();
     private static final Map<UUID, Map<BlockPosKey, Long>> recentManualInsertions = new ConcurrentHashMap<>();
     private static final long MANUAL_INSERT_GUARD_MILLIS = 250L;
 
@@ -117,6 +121,50 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         return Set.of();
     }
 
+    /** 由方块坐标计算区块键(高 32 位为 chunkX,低 32 位为 chunkZ)。 */
+    private static long chunkKey(int blockX, int blockZ) {
+        return (((long) (blockX >> 4)) << 32) | ((blockZ >> 4) & 0xFFFFFFFFL);
+    }
+
+    /** 把一个位置加入区块索引。必须与 worldEntities 的注册写入紧耦合调用。 */
+    private static void indexAdd(UUID worldId, BlockPosKey posKey) {
+        chunkIndex.computeIfAbsent(worldId, k -> new ConcurrentHashMap<>())
+                .computeIfAbsent(chunkKey(posKey.x(), posKey.z()), k -> ConcurrentHashMap.newKeySet())
+                .add(posKey);
+    }
+
+    /** 把一个位置从区块索引移除。必须与 worldEntities 的移除写入紧耦合调用。 */
+    private static void indexRemove(UUID worldId, BlockPosKey posKey) {
+        Map<Long, Set<BlockPosKey>> worldChunks = chunkIndex.get(worldId);
+        if (worldChunks == null) return;
+        long ck = chunkKey(posKey.x(), posKey.z());
+        Set<BlockPosKey> set = worldChunks.get(ck);
+        if (set == null) return;
+        set.remove(posKey);
+        if (set.isEmpty()) worldChunks.remove(ck);
+        if (worldChunks.isEmpty()) chunkIndex.remove(worldId);
+    }
+
+    /**
+     * 仅返回指定区块内的砧板方块实体,避免对整世界做线性扫描。
+     * 以权威 map(worldBlockEntities)为准:索引里可能存在的陈旧多余项若在权威 map 中查不到则跳过。
+     */
+    public static Map<BlockPosKey, CuttingBoardBlockEntity> getBlockEntitiesInChunk(World world, int chunkX, int chunkZ) {
+        Map<BlockPosKey, CuttingBoardBlockEntity> result = new HashMap<>();
+        if (world == null) return result;
+        Map<Long, Set<BlockPosKey>> worldChunks = chunkIndex.get(world.getUID());
+        if (worldChunks == null) return result;
+        Set<BlockPosKey> posKeys = worldChunks.get((((long) chunkX) << 32) | (chunkZ & 0xFFFFFFFFL));
+        if (posKeys == null) return result;
+        Map<BlockPosKey, CuttingBoardBlockEntity> worldEntities = worldBlockEntities.get(world.getUID());
+        if (worldEntities == null) return result;
+        for (BlockPosKey posKey : posKeys) {
+            CuttingBoardBlockEntity entity = worldEntities.get(posKey);
+            if (entity != null) result.put(posKey, entity);
+        }
+        return result;
+    }
+
     public static CuttingBoardBlockEntity putBlockEntity(World world, BlockPosKey posKey, CuttingBoardBlockEntity entity) {
         if (world == null || posKey == null || entity == null) {
             return entity;
@@ -125,6 +173,8 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
                 world.getUID(), k -> new ConcurrentHashMap<>());
         entity.setWorld(world);
         worldEntities.put(posKey, entity);
+        // put 一定写入权威 map,故无条件维护索引。
+        indexAdd(world.getUID(), posKey);
         return entity;
     }
 
@@ -142,6 +192,8 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         if (worldEntities != null) {
             CuttingBoardBlockEntity entity = worldEntities.remove(posKey);
             if (entity != null) {
+                // 仅在确实从权威 map 移除时才同步从索引移除,保持二者一致。
+                indexRemove(world.getUID(), posKey);
                 entity.removeDisplayEntity();
             }
         }
@@ -164,6 +216,8 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
             }
             worldEntities.clear();
         }
+        // 整世界移除时同步丢弃该世界的区块索引。
+        chunkIndex.remove(worldId);
     }
 
     public static void cleanupAll() {
@@ -180,6 +234,8 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
             worldEntities.clear();
         }
         worldBlockEntities.clear();
+        // 清空权威 map 时同步清空区块索引。
+        chunkIndex.clear();
         recentManualInsertions.clear();
     }
 
@@ -289,8 +345,16 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
 
     public static void loadBlockEntity(World world, BlockPosKey posKey) {
         if (world == null || posKey == null || !isCuttingBoardBlock(world, posKey)) return;
+        // 仅在确实新建了实体时才维护索引。
+        boolean[] created = {false};
         CuttingBoardBlockEntity entity = worldBlockEntities.computeIfAbsent(world.getUID(), k -> new ConcurrentHashMap<>())
-                .computeIfAbsent(posKey, key -> new CuttingBoardBlockEntity(key, world));
+                .computeIfAbsent(posKey, key -> {
+                    created[0] = true;
+                    return new CuttingBoardBlockEntity(key, world);
+                });
+        if (created[0]) {
+            indexAdd(world.getUID(), posKey);
+        }
         entity.setWorld(world);
     }
 
@@ -421,6 +485,8 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         if (blockEntity == null) {
             blockEntity = new CuttingBoardBlockEntity(posKey, world);
             worldEntities.put(posKey, blockEntity);
+            // put 一定写入权威 map,故无条件维护索引。
+            indexAdd(world.getUID(), posKey);
         }
         blockEntity.setWorld(world);
 
