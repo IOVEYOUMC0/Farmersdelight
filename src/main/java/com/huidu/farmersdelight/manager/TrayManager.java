@@ -66,7 +66,7 @@ public class TrayManager {
     private long lastTrayOwnerScanMillis;
     private PluginTask queuedSyncTask;
     private PluginTask startupCleanupTask;
-    // Guards queuedSyncTask, which is started/stopped from region-thread queueTraySync callbacks.
+    // 保护 queuedSyncTask，它会在区域线程的 queueTraySync 回调中被启动/停止。
     private final Object queuedSyncTaskLock = new Object();
 
     public TrayManager(FarmersDelightPlugin plugin) {
@@ -85,9 +85,9 @@ public class TrayManager {
     private void loadConfig() {
         ConfigurationSection config = plugin.getFirstConfigSection("cooking-pot.tray", "tray");
         if (config == null) {
-            // Use a detached empty section so absent config falls back to the per-field defaults
-            // below without mutating the live FileConfiguration (createSection would inject an
-            // unexpected empty section the user never wrote).
+            // 使用一个游离的空 section，这样在配置缺失时会回退到下面各字段的默认值，
+            // 而不会改动正在使用的 FileConfiguration（createSection 会注入一个
+            // 用户从未写过的、意料之外的空 section）。
             config = new org.bukkit.configuration.MemoryConfiguration();
         }
 
@@ -135,7 +135,7 @@ public class TrayManager {
         resetSyncCursors();
         start();
 
-        // On offset change, sweep existing trays at the old offset before the resync re-places them.
+        // 当偏移量发生变化时，先清扫旧偏移位置上现有的托盘，然后再由重新同步将它们重新放置。
         if (wasEnabled && (oldXOffset != xOffset || oldYOffset != yOffset || oldZOffset != zOffset)) {
             purgeTraysAtOffset(oldXOffset, oldYOffset, oldZOffset);
         }
@@ -155,7 +155,7 @@ public class TrayManager {
                     ownerPos.x() + offsetX, ownerPos.y() + offsetY, ownerPos.z() + offsetZ);
             BlockPos oldTrayPos = new BlockPos(
                     oldTrayLoc.getBlockX(), oldTrayLoc.getBlockY(), oldTrayLoc.getBlockZ());
-            // Dispatch at the old tray location so the entity scan runs on the region that owns it.
+            // 在旧的托盘位置进行调度，以便实体扫描在拥有该位置的区域上执行。
             plugin.scheduler().runAt(oldTrayLoc, () -> removeTrayAt(world, oldTrayPos, "offset changed"));
         }
     }
@@ -236,7 +236,7 @@ public class TrayManager {
         }
 
         Location trayLoc = getTrayLocation(world, potPos);
-        // getMaxHeight() is exclusive (highest placeable Y is getMaxHeight() - 1).
+        // getMaxHeight() 不包含上界（可放置的最高 Y 为 getMaxHeight() - 1）。
         if (trayLoc.getY() < world.getMinHeight() || trayLoc.getY() >= world.getMaxHeight()) {
             return;
         }
@@ -251,9 +251,9 @@ public class TrayManager {
         }
 
         if (!existingTrayEntities.isEmpty()) {
-            // A tray furniture already exists at the auto-tray position but is not marked: its PDC marker
-            // was lost when CraftEngine recreated the display entity across a restart/chunk reload.
-            // Re-claim it (re-mark + track) so break-removal and break-protection recognize it again.
+            // 自动托盘位置上已经存在一个托盘家具，但它没有被标记：当 CraftEngine 在重启/区块重载时
+            // 重建显示实体时，它的 PDC 标记丢失了。
+            // 重新认领它（重新标记 + 跟踪），以便破坏移除和破坏保护逻辑能再次识别它。
             ItemDisplay reclaimed = existingTrayEntities.get(0);
             markTrayEntity(reclaimed, world, potPos);
             removeDuplicateAutoTrays(world, trayPos, existingTrayEntities, reclaimed, "reclaim unmarked tray");
@@ -493,7 +493,12 @@ public class TrayManager {
             return 0;
         }
 
-        List<Location> locations = new ArrayList<>(rawLocations);
+        // 来源方法每次都返回新建的私有 ArrayList（非底层活引用，空集合时为 List.of() 且已被上面 isEmpty() 短路），
+        // 因此当 rawLocations 同时是 List 且支持随机访问（RandomAccess）时，直接索引即可，省去一次整表拷贝；
+        // 否则保留原来的拷贝兜底，行为保持不变。
+        List<Location> locations = (rawLocations instanceof List<Location> list && rawLocations instanceof RandomAccess)
+                ? list
+                : new ArrayList<>(rawLocations);
         int size = locations.size();
         int start = cursor;
         if (start >= size) {
@@ -945,8 +950,8 @@ public class TrayManager {
             Set<UUID> removedEntities = new HashSet<>();
             for (BukkitFurniture furniture : findTrayFurnitures(world, location)) {
                 if (!isAutoPlacedTray(furniture)) {
-                    // Owner-specific cleanup still reclaims old unmarked tray furniture at the exact
-                    // auto-tray position. Global cleanup paths only scan marked trays.
+                    // 针对特定拥有者的清理仍会在精确的自动托盘位置上重新认领旧的、未标记的托盘家具。
+                    // 全局清理路径只扫描已标记的托盘。
                     if (!allowUnmarkedExactTray) {
                         continue;
                     }
@@ -1029,8 +1034,8 @@ public class TrayManager {
         double bx = location.getBlockX();
         double by = location.getBlockY();
         double bz = location.getBlockZ();
-        // Small margin so a display entity sitting exactly on a block edge is still matched; stays
-        // under the 1-block tray spacing.
+        // 留出一个较小的余量，使得恰好坐落在方块边缘上的显示实体仍能被匹配到；该余量
+        // 保持在 1 个方块的托盘间距之内。
         double margin = 0.3D;
         for (Entity entity : world.getNearbyEntities(
                 new BoundingBox(bx - margin, by - margin, bz - margin,

@@ -10,9 +10,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Parsed gui.yml configuration for the recipe editor GUIs. Reuses {@link RecipeViewGuiConfig.BaseConfig}
- * for layout/legend/items parsing, mirroring the {@code recipe-detail-cooking-pot-guis} per-custom-pot
- * override pattern.
+ * 配方编辑器 GUI 的已解析 gui.yml 配置。复用 {@link RecipeViewGuiConfig.BaseConfig}
+ * 来解析布局/图例/物品，参照 {@code recipe-detail-cooking-pot-guis} 的每个自定义锅
+ * 覆盖模式。
  */
 public final class RecipeEditorGuiConfig {
 
@@ -83,8 +83,8 @@ public final class RecipeEditorGuiConfig {
     }
 
     /**
-     * @return the editor layout for the given custom pot group (or the default when the group is
-     *         null/blank or has no dedicated section); null when no editor section is configured at all.
+     * @return 给定自定义锅分组的编辑器布局（当该分组为 null/空白或没有专属配置节时返回默认布局）；
+     *         当完全没有配置任何编辑器配置节时返回 null。
      */
     @Nullable
     public RecipeViewGuiConfig.BaseConfig getCookingPotConfig(@Nullable String customGroupId) {

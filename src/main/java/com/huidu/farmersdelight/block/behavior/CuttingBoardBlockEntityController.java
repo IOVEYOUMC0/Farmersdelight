@@ -327,8 +327,8 @@ public final class CuttingBoardBlockEntityController extends BlockEntityControll
         if (entity == null || !entity.hasItem()) {
             return true;
         }
-        // Once the board holds an item, only allow further input when stacking mode is on, the items
-        // match, and we are below the stack limit.
+        // 当砧板上已存放物品后，仅在开启堆叠模式、物品相互匹配
+        // 且数量低于堆叠上限时，才允许继续放入物品。
         com.huidu.farmersdelight.FarmersDelightPlugin plugin = com.huidu.farmersdelight.FarmersDelightPlugin.getInstance();
         ItemStack stored = entity.getStoredItem();
         ItemStack incoming = asBukkitStack(item);
