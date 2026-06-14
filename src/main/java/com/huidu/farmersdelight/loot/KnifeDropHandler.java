@@ -221,7 +221,7 @@ public class KnifeDropHandler implements Listener {
         if (dropItem != null) {
             entity.getWorld().dropItemNaturally(entity.getLocation(), dropItem);
 
-            // Fire ham-related advancements when a ham item actually drops.
+            // 当确实掉落 ham 物品时，触发与 ham 相关的进度（advancement）。
             if (isHamItem(itemId)) {
                 AdvancementManager advancementManager = FarmersDelightPlugin.getInstance().getAdvancementManager();
                 if (advancementManager != null) {
@@ -238,7 +238,7 @@ public class KnifeDropHandler implements Listener {
         }
     }
 
-    // Checks whether the configured drop is one of the ham variants.
+    // 检查所配置的掉落物是否为 ham 的某个变体。
     private boolean isHamItem(String itemId) {
         if (itemId == null) return false;
         String id = itemId.toLowerCase(java.util.Locale.ROOT);

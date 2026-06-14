@@ -213,7 +213,7 @@ public class RecipeViewGuiConfig {
                 return null;
             }
 
-            String title = section.getString("title", "GUI");
+            String title = section.getString("title", "界面");
             int rows = section.getInt("rows", 3);
             List<String> layout = section.getStringList("layout");
 
@@ -461,6 +461,7 @@ public class RecipeViewGuiConfig {
         private final int containerSlot;
         private final int toolSlot;
         private final int arrowSlot;
+        private final int progressSlot;
         private final int backSlot;
         private final int filterSlot;
         private final int materialsSlot;
@@ -470,7 +471,7 @@ public class RecipeViewGuiConfig {
                                   Map<Character, String> legend, Map<String, GuiConfig.GuiItem> items,
                                   List<Integer> ingredientSlots, int inputSlot, List<Integer> resultSlots,
                                   int resultSlot, int containerSlot,
-                                  int toolSlot, int arrowSlot, int backSlot,
+                                  int toolSlot, int arrowSlot, int progressSlot, int backSlot,
                                   int filterSlot, int materialsSlot, int fillSlot) {
             super(title, rows, layout, legend, items);
             this.ingredientSlots = ingredientSlots;
@@ -480,6 +481,7 @@ public class RecipeViewGuiConfig {
             this.containerSlot = containerSlot;
             this.toolSlot = toolSlot;
             this.arrowSlot = arrowSlot;
+            this.progressSlot = progressSlot;
             this.backSlot = backSlot;
             this.filterSlot = filterSlot;
             this.materialsSlot = materialsSlot;
@@ -518,6 +520,11 @@ public class RecipeViewGuiConfig {
 
         public int getArrowSlot() {
             return arrowSlot;
+        }
+
+        // 进度条槽位（layout 中 "progress" 类型的首个槽位），解析时缓存，避免每次 GUI tick 重新扫描布局。
+        public int getProgressSlot() {
+            return progressSlot;
         }
 
         public int getBackSlot() {
@@ -559,13 +566,14 @@ public class RecipeViewGuiConfig {
             int containerSlot = base.getFirstSlotByType("container");
             int toolSlot = base.getFirstSlotByType("tool");
             int arrowSlot = base.getFirstSlotByType("arrow");
+            int progressSlot = base.getFirstSlotByType("progress");
             int backSlot = base.getFirstSlotByType("back");
             int filterSlot = base.getFirstSlotByType("filter");
             int materialsSlot = base.getFirstSlotByType("materials");
             int fillSlot = base.getFirstSlotByType("fill");
 
             return new RecipeDetailConfig(base.title, base.rows, base.layout, base.legend,
-                    base.items, ingredientSlots, inputSlot, resultSlots, resultSlot, containerSlot, toolSlot, arrowSlot, backSlot,
+                    base.items, ingredientSlots, inputSlot, resultSlots, resultSlot, containerSlot, toolSlot, arrowSlot, progressSlot, backSlot,
                     filterSlot, materialsSlot, fillSlot);
         }
 
@@ -597,8 +605,9 @@ public class RecipeViewGuiConfig {
             );
 
             List<Integer> ingredientSlots = List.of(19, 20, 21, 28, 29, 30);
+            // progress 槽位对应 layout 中 'G'（第 3 行第 6 列 = 23），与 getFirstSlotByType("progress") 一致。
             return new RecipeDetailConfig("Recipe Details", 6, layout, legend, items,
-                    ingredientSlots, -1, List.of(43), 43, 41, -1, 14, 0, -1, -1, 7);
+                    ingredientSlots, -1, List.of(43), 43, 41, -1, 14, 23, 0, -1, -1, 7);
         }
 
         static RecipeDetailConfig createCuttingBoardDefault() {
@@ -623,8 +632,9 @@ public class RecipeViewGuiConfig {
             );
 
             List<Integer> resultSlots = List.of(32, 33, 41, 42);
+            // 切菜板布局没有 progress 类型，progressSlot 为 -1，与 getFirstSlotByType("progress") 一致。
             return new RecipeDetailConfig("Recipe Details", 6, layout, legend, items,
-                    List.of(), 28, resultSlots, 32, -1, 30, -1, 0, -1, -1, -1);
+                    List.of(), 28, resultSlots, 32, -1, 30, -1, -1, 0, -1, -1, -1);
         }
     }
 }

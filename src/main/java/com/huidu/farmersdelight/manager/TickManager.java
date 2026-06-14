@@ -212,8 +212,8 @@ public class TickManager {
     }
 
     private void pruneOldPerformanceWarnings() {
-        // The warning-times map is keyed by world/chunk and would otherwise grow without bound; drop
-        // entries past their cooldown (a future warning for the same key just re-adds it).
+        // warning-times 映射以 world/chunk 为键，否则会无限增长；移除
+        // 已超过冷却时间的条目（同一键的后续告警会重新添加它）。
         long cutoff = System.currentTimeMillis() - performanceWarningCooldownMillis;
         performanceWarningTimes.entrySet().removeIf(entry -> entry.getValue() < cutoff);
     }
@@ -578,8 +578,8 @@ public class TickManager {
             return;
         }
 
-        // Keep buffer -> output progression in the pot tick, matching the old plugin behavior
-        // instead of relying only on GUI refreshes or manual output pickup.
+        // 在锅的 tick 中保持 buffer -> output 的推进，以匹配旧插件的行为，
+        // 而不是仅依赖 GUI 刷新或手动拾取输出。
         entity.tryMovePendingToOutput();
 
         if (!entity.hasStoredContents()) {
@@ -599,8 +599,8 @@ public class TickManager {
         }
 
         entity.setHasHeatSource(hasHeat);
-        // Resolve the behavior from the already-fetched block state instead of re-reading the block
-        // (and its CE custom state) again inside emitCookingPotEffects every tick.
+        // 从已获取的 block state 解析 behavior，而不是每个 tick 都在 emitCookingPotEffects 内部
+        // 重新读取该方块（及其 CE 自定义状态）。
         CookingPotBlockBehavior behavior = CustomBlockUtils.getBehavior(state, CookingPotBlockBehavior.class);
         emitCookingPotEffects(world, posKey, entity, hasHeat, behavior);
 
@@ -629,9 +629,9 @@ public class TickManager {
                     return;
                 }
                 if (entity.finishCooking(world, blockLoc)) {
-                    // Keep the pot active after a successful cook so remaining
-                    // ingredients can immediately start the next batch, matching
-                    // the old plugin behavior.
+                    // 烹饪成功后保持锅处于活跃状态，使剩余的
+                    // 食材可以立即开始下一批，以匹配
+                    // 旧插件的行为。
                     recipe = entity.getCurrentRecipe();
                 }
             }

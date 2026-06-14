@@ -149,8 +149,8 @@ public class StoveCookingBlockBehavior extends BlockBehavior implements EntityBl
             return InteractionResult.PASS;
         }
 
-        // Both this CraftEngine behavior and StoveInteractListener can receive the same right-click;
-        // share a debounce token (the listener already uses it) so a single click fills one slot.
+        // 此 CraftEngine behavior 与 StoveInteractListener 都可能接收到同一次右键点击；
+        // 共用一个防抖令牌（该监听器已在使用它），从而保证单次点击只填充一个槽位。
         if (!InteractionDebouncer.tryAcquire(player.getUniqueId(), block.getLocation())) {
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
@@ -164,7 +164,7 @@ public class StoveCookingBlockBehavior extends BlockBehavior implements EntityBl
 
     @Override
     public void tick(Object thisBlock, Object[] args) {
-        // Managed by StoveManager.
+        // 由 StoveManager 管理。
     }
 
     @Override

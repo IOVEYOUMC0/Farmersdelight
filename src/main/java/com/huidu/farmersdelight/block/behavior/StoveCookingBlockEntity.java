@@ -1,68 +1,27 @@
 package com.huidu.farmersdelight.block.behavior;
 
-import org.bukkit.Bukkit;
-import org.bukkit.Material;
-import org.bukkit.inventory.CookingRecipe;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.Recipe;
-
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 /**
- * Legacy stove helper. The instance-based state model and tick loop that used to live here have
- * been removed: runtime stove logic is owned entirely by
- * {@link com.huidu.farmersdelight.manager.StoveManager} (which keeps its own
- * {@link com.huidu.farmersdelight.util.CampfireRecipeCache}). Only the static campfire-recipe
- * lookup cache survives, since reload/disable paths still reference {@link #clearRecipeCache()}.
+ * 旧版炉灶辅助类。原本位于此处的基于实例的状态模型和 tick 循环已被移除：
+ * 运行时的炉灶逻辑现在完全由
+ * {@link com.huidu.farmersdelight.manager.StoveManager} 负责（它维护着自己的
+ * {@link com.huidu.farmersdelight.util.CampfireRecipeCache}）。仅保留了静态的
+ * {@link #clearRecipeCache()} 钩子，因为重载/禁用流程仍会引用它。
  */
 @Deprecated(forRemoval = false)
 public final class StoveCookingBlockEntity {
 
-    private static final int MAX_CACHE_SIZE = 100;
-    private static final LinkedHashMap<Material, CookingRecipe<?>> recipeCache = new LinkedHashMap<>(16, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<Material, CookingRecipe<?>> eldest) {
-            return size() > MAX_CACHE_SIZE;
-        }
-    };
-
     private StoveCookingBlockEntity() {
     }
 
-    public static CookingRecipe<?> findCampfireRecipe(ItemStack item) {
-        if (item == null || item.getType().isAir()) return null;
+    // 已删除遗留方法 findCampfireRecipe(ItemStack) 及其 per-Material LinkedHashMap 缓存：
+    // 运行时由 StoveManager.findCampfireRecipe（委托给 CampfireRecipeCache）负责查找，
+    // 本类的版本已无任何活调用方。
 
-        Material material = item.getType();
-
-        synchronized (recipeCache) {
-            CookingRecipe<?> cached = recipeCache.get(material);
-            if (cached != null) {
-                return cached;
-            }
-        }
-
-        Iterator<Recipe> recipeIterator = Bukkit.recipeIterator();
-        while (recipeIterator.hasNext()) {
-            Recipe recipe = recipeIterator.next();
-            if (recipe instanceof CookingRecipe<?> cookingRecipe) {
-                var ingredient = cookingRecipe.getInputChoice();
-                if (ingredient != null && ingredient.test(item)) {
-                    synchronized (recipeCache) {
-                        recipeCache.put(material, cookingRecipe);
-                    }
-                    return cookingRecipe;
-                }
-            }
-        }
-
-        return null;
-    }
-
+    /**
+     * 保留此空实现是为了兼容重载/禁用流程（StoveCookingBlockBehavior.clearRecipeCache 仍会调用它）。
+     * 由于配方缓存已迁移到 StoveManager，这里不再需要清理任何状态。
+     */
     public static void clearRecipeCache() {
-        synchronized (recipeCache) {
-            recipeCache.clear();
-        }
+        // 无操作：缓存已迁移至 StoveManager 的 CampfireRecipeCache。
     }
 }

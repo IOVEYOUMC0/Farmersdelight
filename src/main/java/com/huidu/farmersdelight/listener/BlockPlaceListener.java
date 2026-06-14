@@ -68,7 +68,7 @@ public class BlockPlaceListener implements Listener {
     );
     private static final Map<PlacedItemKey, ItemStack> pendingPlacedItems = new ConcurrentHashMap<>();
     private static PluginTask cleanupTask;
-    // cleanupTask is started from per-player region threads and cleared from the scheduler thread.
+    // cleanupTask 由每个玩家所在的 region 线程启动，并由调度器线程清除。
     private static final Object cleanupTaskLock = new Object();
 
     public static void cleanup() {
@@ -308,8 +308,8 @@ public class BlockPlaceListener implements Listener {
 
         AdvancementManager am = FarmersDelightPlugin.getInstance().getAdvancementManager();
         if (am != null) {
-            // Vanilla placed_block cannot see CE custom crop IDs, so the plugin
-            // mirrors the original criterion names and advances them manually.
+            // 原版的 placed_block 无法识别 CraftEngine 的自定义作物 ID，因此插件
+            // 沿用原始的 criterion 名称，并手动推进这些进度。
             am.awardCriteria(player, "plant_all_crops", criterion);
         }
     }

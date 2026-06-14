@@ -93,8 +93,8 @@ public class HeatSourceConfig {
         try {
             NamespacedKey key = NamespacedKey.minecraft(blockId.replace("minecraft:", "").toLowerCase(java.util.Locale.ROOT));
             Material material = Registry.MATERIAL.get(key);
-            // Registry.get returns null (does not throw) for a well-formed but unknown id, so a typo'd
-            // block id would otherwise add a null to the set with no diagnostic.
+            // 对于格式正确但未知的 id，Registry.get 返回 null（而不是抛出异常），因此拼写错误的
+            // block id 否则会在没有任何诊断信息的情况下向集合中添加一个 null。
             if (material == null) {
                 if (LOGGER != null) {
                     LOGGER.warning(I18n.formatConsole("heat_source.invalid_vanilla_block", "id", blockId));
@@ -112,8 +112,8 @@ public class HeatSourceConfig {
     public void addVanillaTag(String tagId) {
         vanillaTags.add(tagId);
         if (tagId.contains("campfires") || tagId.contains("fire")) {
-            // Campfires only count as a heat source while lit, so they are handled specially via
-            // vanillaLitBlocks below rather than generic tag membership (which ignores the lit state).
+            // 篝火只有在点燃时才算作热源，因此它们通过下面的 vanillaLitBlocks 进行特殊处理，
+            // 而不是使用通用的标签匹配（后者会忽略点燃状态）。
             vanillaLitBlocks.add(Material.CAMPFIRE);
             vanillaLitBlocks.add(Material.SOUL_CAMPFIRE);
             return;
