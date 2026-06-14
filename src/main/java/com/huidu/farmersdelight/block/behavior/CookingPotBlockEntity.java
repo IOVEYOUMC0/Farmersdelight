@@ -31,6 +31,9 @@ public class CookingPotBlockEntity {
     // volatile：布局变更时会在 inventoryLock 保护下整体替换这些数组，但区域线程会在锁外通过
     // getInventoryInternal() 读取它们——以此安全地发布新的引用。
     private volatile ItemStack[] inventory;
+    // 库存版本号：每次 inventory 数组发生写入时递增，供 GUI 廉价判断“锅内是否变化”，
+    // 从而在未变化时跳过整轮输入槽重扫。volatile 用于让 GUI 线程读到最新值。
+    private volatile long inventoryVersion;
     private volatile double[] slotExperience;
     private final AtomicInteger cookingProgress = new AtomicInteger(0);
     private final AtomicInteger cookingDuration = new AtomicInteger(200);
@@ -114,6 +117,8 @@ public class CookingPotBlockEntity {
             double[] oldExperience = this.slotExperience;
             this.layout = newLayout;
             this.inventory = Arrays.copyOf(oldInventory, newLayout.size());
+            // 整体替换了数组，等同于一次库存变更，递增版本号让 GUI 重扫。
+            inventoryVersion++;
             this.slotExperience = Arrays.copyOf(oldExperience, newLayout.size());
         }
     }
@@ -143,12 +148,24 @@ public class CookingPotBlockEntity {
         }
     }
 
+    // 必须在持有 inventoryLock 时调用：所有对 inventory 数组的写入都收口到这里，顺带递增版本号，
+    // 供 GUI 廉价判断“锅内是否变化”。version++ 在锁内执行，故非原子自增是安全的。
+    private void setSlot(int slot, ItemStack item) {
+        inventory[slot] = item;
+        inventoryVersion++;
+    }
+
+    // 供 GUI 读取的库存版本号；版本未变化时 GUI 可跳过输入槽重扫。
+    public long getInventoryVersion() {
+        return inventoryVersion;
+    }
+
     public void setInventorySlot(int slot, ItemStack item) {
         synchronized (inventoryLock) {
             if (!isValidSlot(slot)) {
                 return;
             }
-            inventory[slot] = copyOrNull(item);
+            setSlot(slot, copyOrNull(item));
             if (inventory[slot] == null || inventory[slot].getType().isAir()) {
                 slotExperience[slot] = 0.0D;
             }
@@ -227,7 +244,7 @@ public class CookingPotBlockEntity {
         if (item.getAmount() > 1) {
             item.setAmount(item.getAmount() - 1);
         } else {
-            inventory[slot] = null;
+            setSlot(slot, null);
             slotExperience[slot] = 0.0D;
         }
         return true;
@@ -355,7 +372,7 @@ public class CookingPotBlockEntity {
         for (int i : layout.inputSlots()) {
             ItemStack slotItem = inventory[i];
             if (slotItem == null || slotItem.getType().isAir()) {
-                inventory[i] = pending;
+                setSlot(i, pending);
                 slotExperience[i] = 0.0D;
                 return null;
             }
@@ -420,7 +437,7 @@ public class CookingPotBlockEntity {
                 continue;
             }
 
-            inventory[i] = pending.clone();
+            setSlot(i, pending.clone());
             slotExperience[i] = 0.0D;
             return null;
         }
@@ -435,7 +452,7 @@ public class CookingPotBlockEntity {
 
         ItemStack existing = inventory[slot];
         if (existing == null || existing.getType().isAir()) {
-            inventory[slot] = item.clone();
+            setSlot(slot, item.clone());
             slotExperience[slot] = 0.0D;
             return null;
         }
@@ -650,7 +667,7 @@ public class CookingPotBlockEntity {
 
                 int newAmount = slotItem.getAmount() - 1;
                 if (newAmount <= 0) {
-                    inventory[i] = null;
+                    setSlot(i, null);
                     slotExperience[i] = 0.0D;
                 } else {
                     slotItem.setAmount(newAmount);
@@ -731,7 +748,7 @@ public class CookingPotBlockEntity {
 
             SplitItem result = splitItemFromSlot(pendingSlot, 1);
             if (meal.getAmount() <= 0) {
-                inventory[pendingSlot] = null;
+                setSlot(pendingSlot, null);
                 slotExperience[pendingSlot] = 0.0D;
                 if (!hasAnyItem(layout.pendingOutputSlots())) {
                     mealContainerStack.set(null);
@@ -799,7 +816,7 @@ public class CookingPotBlockEntity {
             SplitItem result = splitItemFromSlot(outputSlot, amount);
 
             if (meal.getAmount() <= 0) {
-                inventory[outputSlot] = null;
+                setSlot(outputSlot, null);
                 slotExperience[outputSlot] = 0.0D;
             }
 
@@ -818,7 +835,7 @@ public class CookingPotBlockEntity {
             ItemStack meal = inventory[outputSlot];
             if (meal != null && !meal.getType().isAir()) {
                 slotExperience[outputSlot] = 0.0D;
-                inventory[outputSlot] = null;
+                setSlot(outputSlot, null);
                 tryMovePendingToOutput();
                 syncWorldlyContainer();
                 return meal;
@@ -839,7 +856,7 @@ public class CookingPotBlockEntity {
                 return null;
             }
             meal = new SplitItem(item, slotExperience[outputSlot]);
-            inventory[outputSlot] = null;
+            setSlot(outputSlot, null);
             slotExperience[outputSlot] = 0.0D;
             tryMovePendingToOutput();
         }
@@ -881,7 +898,7 @@ public class CookingPotBlockEntity {
                 ItemStack item = inventory[i];
                 if (item != null && !item.getType().isAir()) {
                     returnedItems.add(item.clone());
-                    inventory[i] = null;
+                    setSlot(i, null);
                     slotExperience[i] = 0.0D;
                 }
             }
@@ -922,7 +939,7 @@ public class CookingPotBlockEntity {
                 }
 
                 if (pending.getAmount() <= 0) {
-                    inventory[pendingSlot] = null;
+                    setSlot(pendingSlot, null);
                     slotExperience[pendingSlot] = 0.0D;
                 }
             }
@@ -1018,7 +1035,7 @@ public class CookingPotBlockEntity {
             if (remaining > 0) {
                 container.setAmount(remaining);
             } else {
-                inventory[slot] = null;
+                setSlot(slot, null);
                 slotExperience[slot] = 0.0D;
             }
         }
@@ -1069,7 +1086,7 @@ public class CookingPotBlockEntity {
             return;
         }
         if (item == null || item.getType().isAir()) {
-            inventory[slot] = null;
+            setSlot(slot, null);
             slotExperience[slot] = 0.0D;
             return;
         }
@@ -1084,7 +1101,7 @@ public class CookingPotBlockEntity {
             return;
         }
 
-        inventory[slot] = item.clone();
+        setSlot(slot, item.clone());
         slotExperience[slot] = Math.max(0.0D, itemStoredExperience);
     }
 
