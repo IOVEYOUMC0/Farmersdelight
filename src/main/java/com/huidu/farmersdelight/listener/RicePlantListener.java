@@ -99,34 +99,42 @@ public class RicePlantListener implements Listener {
         }
     }
 
+    // 合并原来的 onPlantRice / onPlantWildRice 两个监听器:右键方块是高频动作,这里只解析一次手持物,
+    // 再按作物类型分派,避免每次右键都重复做一遍 NBT/自定义 ID 解析。各分支逻辑与原来逐字一致
+    // (水稻有进度奖励、与野生稻的判定顺序/无效提示条件不同),仅去掉了重复解析。
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onPlantRice(PlayerInteractEvent event) {
+    public void onPlantRiceCrops(PlayerInteractEvent event) {
         EquipmentSlot hand = event.getHand();
         if (hand != EquipmentSlot.HAND && hand != EquipmentSlot.OFF_HAND) {
             return;
         }
 
-        Action action = event.getAction();
-        if (action != Action.RIGHT_CLICK_BLOCK) {
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK) {
             return;
         }
 
         Player player = event.getPlayer();
         ItemStack item = getHeldItem(player, hand);
         Key cropId = resolvePlantingCrop(item);
-        if (!RICE_BLOCK_KEY.equals(cropId)) {
+        boolean isRice = RICE_BLOCK_KEY.equals(cropId);
+        boolean isWildRice = WILD_RICE_BLOCK_KEY.equals(cropId);
+        if (!isRice && !isWildRice) {
             return;
         }
 
         Block clickedBlock = event.getClickedBlock();
-        if (clickedBlock == null) {
+        if (clickedBlock == null || isBlockingInteractable(clickedBlock, player)) {
             return;
         }
 
-        if (isBlockingInteractable(clickedBlock, player)) {
-            return;
+        if (isRice) {
+            plantRice(event, player, hand, item, clickedBlock);
+        } else {
+            plantWildRice(event, player, hand, item, clickedBlock);
         }
+    }
 
+    private void plantRice(PlayerInteractEvent event, Player player, EquipmentSlot hand, ItemStack item, Block clickedBlock) {
         Location plantLocation = findPlantLocation(clickedBlock);
         if (plantLocation == null) {
             sendInvalidPlacementMessage(player, event, clickedBlock);
@@ -166,29 +174,7 @@ public class RicePlantListener implements Listener {
         event.setCancelled(true);
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onPlantWildRice(PlayerInteractEvent event) {
-        EquipmentSlot hand = event.getHand();
-        if (hand != EquipmentSlot.HAND && hand != EquipmentSlot.OFF_HAND) {
-            return;
-        }
-
-        if (event.getAction() != Action.RIGHT_CLICK_BLOCK) {
-            return;
-        }
-
-        Player player = event.getPlayer();
-        ItemStack item = getHeldItem(player, hand);
-        Key cropId = resolvePlantingCrop(item);
-        if (!WILD_RICE_BLOCK_KEY.equals(cropId)) {
-            return;
-        }
-
-        Block clickedBlock = event.getClickedBlock();
-        if (clickedBlock == null || isBlockingInteractable(clickedBlock, player)) {
-            return;
-        }
-
+    private void plantWildRice(PlayerInteractEvent event, Player player, EquipmentSlot hand, ItemStack item, Block clickedBlock) {
         Location plantLocation = findPlantLocation(clickedBlock);
         if (plantLocation != null && canPlantWildRiceAt(plantLocation.getBlock())) {
             if (!WorldGuardCompat.canBuild(player, plantLocation)) {

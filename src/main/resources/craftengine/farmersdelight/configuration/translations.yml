@@ -201,6 +201,9 @@
     farmersdelight.gui.progress.90: "Cooking Progress: 90%"
     farmersdelight.gui.progress.95: "Cooking Progress: 95%"
 
+    # 效果
+    effect.farmersdelight.nourishment: "Nourishment"
+
     # 工具提示
     farmersdelight.tooltip.dog_food.when_feeding: "When fed to a tamed Wolf:"
     farmersdelight.tooltip.effect_not_implemented: "Effect not implemented yet"
@@ -416,6 +419,9 @@
     farmersdelight.gui.cancooked.enabled: "当前可烹饪"
     farmersdelight.gui.cancooked.disenabled: "显示所有配方"
     farmersdelight.gui.recipe_book: "配方书"
+
+    # 效果
+    effect.farmersdelight.nourishment: "滋养"
 
     # 工具提示
     farmersdelight.tooltip.dog_food.when_feeding: "喂给已驯服的狗时："

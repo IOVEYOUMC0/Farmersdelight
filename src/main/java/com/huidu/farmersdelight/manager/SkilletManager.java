@@ -732,6 +732,11 @@ public class SkilletManager {
         return result;
     }
 
+    /** 是否存在任何被跟踪的煎锅(廉价判断,不分配位置列表)。 */
+    public boolean hasTrackedSkillets() {
+        return !skillets.isEmpty();
+    }
+
     public void reloadRecipeCache() {
         campfireRecipes.rebuild();
     }
