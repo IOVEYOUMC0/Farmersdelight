@@ -16,10 +16,10 @@ import java.util.concurrent.ConcurrentHashMap;
 public class CookingPotRecipeManager {
 
     private final FarmersDelightPlugin plugin;
-    // These lookup structures are rebuilt on /fd reload. They are published as whole, freshly-built
-    // immutable-after-publish maps via single volatile writes so concurrent readers (cooking-pot
-    // ticks / GUIs, which run on Folia region threads while reload runs on the global thread) never
-    // observe a half-cleared map. Never mutate these in place after publishing.
+    // 这些查找结构会在 /fd reload 时重建。它们以整体、全新构建的、发布后不可变的 map 形式，
+    // 通过单次 volatile 写入进行发布，从而保证并发读取者（cooking-pot 的 tick / GUI，它们在 Folia
+    // 的 region 线程上运行，而 reload 在 global 线程上运行）永远不会观察到一个被清空一半的 map。
+    // 发布之后绝不要对它们进行原地修改。
     private volatile Map<String, CookingPotRecipe> recipes = Map.of();
     private volatile Map<String, Map<String, CookingPotRecipe>> customRecipes = Map.of();
     private volatile Map<String, Set<String>> ingredientToRecipes = Map.of();
@@ -48,8 +48,8 @@ public class CookingPotRecipeManager {
     }
 
     public void loadRecipes() {
-        // Build everything into fresh local collections, then publish atomically (below) so readers
-        // never see a partially-cleared map. Do NOT clear()/repopulate the live fields in place.
+        // 先将所有内容构建到全新的本地集合中，然后（在下方）原子地发布，从而保证读取者
+        // 永远不会看到一个被清空一半的 map。不要对正在使用的字段进行原地 clear()/重新填充。
         Map<String, CookingPotRecipe> newRecipes = new LinkedHashMap<>();
         Map<String, Map<String, CookingPotRecipe>> newCustomRecipes = new HashMap<>();
         Map<String, Set<String>> newIngredientToRecipes = new HashMap<>();
@@ -84,7 +84,7 @@ public class CookingPotRecipeManager {
             newSortedCustomRecipes.put(entry.getKey(), sortedRecipeList(merged));
         }
 
-        // Publish the freshly-built structures (single volatile write each).
+        // 发布全新构建的结构（每个都是单次 volatile 写入）。
         this.recipes = newRecipes;
         this.customRecipes = newCustomRecipes;
         this.ingredientToRecipes = newIngredientToRecipes;
