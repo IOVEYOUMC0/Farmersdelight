@@ -136,11 +136,12 @@ recipe-view-gui:
     rows: 3
     layout:
       - "XXXXXXXXX"
-      - "XXCXXXDXX"
+      - "XXCXRXDXX"
       - "XXXXBXXXX"
     legend:
       C: cooking_pot
       D: cutting_board
+      R: recipe_book
       B: back
       X: background
     items:
@@ -159,6 +160,12 @@ recipe-view-gui:
         name: "砧板配方"
         lore:
           - "点击此处查看配方"
+      # Addon recipes button — only shown when an addon (e.g. Brewin' And Chewin') registers a recipe type.
+      recipe_book:
+        material: KNOWLEDGE_BOOK
+        name: "附属配方"
+        lore:
+          - "点击查看附属插件的配方"
       back:
         material: BARRIER
         name: "关闭页面"

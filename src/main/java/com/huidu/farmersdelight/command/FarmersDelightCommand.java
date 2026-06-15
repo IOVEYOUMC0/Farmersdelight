@@ -135,6 +135,14 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
+        if (args.length >= 2) {
+            String sub = normalize(args[1]);
+            if (sub.equals("book") || sub.equals("addon") || sub.equals("addons") || sub.equals("recipebook")) {
+                com.huidu.farmersdelight.gui.recipebook.RecipeBookGui.openMenu(player, null);
+                return;
+            }
+        }
+
         RecipeViewGui gui = new RecipeViewGui(plugin, player);
         if (args.length < 2) {
             gui.open(player);
@@ -294,7 +302,7 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
         boolean admin = sender.hasPermission("farmersdelight.admin");
         if (args.length == 2) {
             String partial = normalize(args[1]);
-            List<String> base = new ArrayList<>(List.of("cooking_pot", "cutting_board"));
+            List<String> base = new ArrayList<>(List.of("cooking_pot", "cutting_board", "book"));
             if (admin) {
                 base.add("edit");
             }
