@@ -463,10 +463,6 @@ items:
     template: farmersdelight:pie_slice_template
     data:
       item-name: <!i><l10n:block.farmersdelight.chocolate_pie_slice>
-  farmersdelight:pumpkin_pie_slice:
-    template: farmersdelight:pie_slice_template
-    data:
-      item-name: <!i><l10n:item.farmersdelight.pumpkin_pie_slice>
   farmersdelight:sweet_berry_cookie:
     template: farmersdelight:food_cut_template
     data:

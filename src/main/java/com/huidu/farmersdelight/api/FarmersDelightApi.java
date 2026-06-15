@@ -54,6 +54,60 @@ public final class FarmersDelightApi {
         }
     }
 
+    /**
+     * Registers (or replaces) a FarmersDelight cooking-pot recipe at runtime, so addon dishes are cooked
+     * by the real cooking pot. Ingredient specs use the recipe-file syntax ("ns:id", "#ns:tag", "a|b").
+     * container is the required bowl/bottle (null = none); result carries its own amount.
+     * The recipe persists across /fd reload. No-op when FarmersDelight is unavailable.
+     */
+    public void registerCookingPotRecipe(String id, List<String> ingredients, ItemStack container,
+                                         ItemStack result, double experience, int cookTime, String category) {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        if (plugin == null || !isAvailable() || id == null || ingredients == null || result == null) {
+            return;
+        }
+        plugin.getCookingPotRecipes().registerExternalRecipe(id, ingredients,
+                container == null ? null : container.clone(), result.clone(),
+                (float) experience, cookTime, category);
+    }
+
+    /** Removes a cooking-pot recipe registered via registerCookingPotRecipe. */
+    public void unregisterCookingPotRecipe(String id) {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        if (plugin != null && isAvailable() && id != null) {
+            plugin.getCookingPotRecipes().unregisterExternalRecipe(id);
+        }
+    }
+
+    /**
+     * Registers (or replaces) a FarmersDelight cutting-board recipe at runtime, so addon items can be cut
+     * on the real cutting board. input/tool use the recipe-file syntax ("ns:id", "#ns:tag");
+     * each results stack carries its own amount; sound is a sound id (null = default knife).
+     * The recipe persists across /fd reload. No-op when FarmersDelight is unavailable.
+     */
+    public void registerCuttingBoardRecipe(String id, String input, String tool,
+                                           List<ItemStack> results, String sound) {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        if (plugin == null || !isAvailable() || id == null || input == null || tool == null || results == null) {
+            return;
+        }
+        List<ItemStack> copies = new ArrayList<>();
+        for (ItemStack result : results) {
+            if (result != null) {
+                copies.add(result.clone());
+            }
+        }
+        plugin.getCuttingBoardRecipes().registerExternalRecipe(id, input, tool, copies, sound);
+    }
+
+    /** Removes a cutting-board recipe registered via registerCuttingBoardRecipe. */
+    public void unregisterCuttingBoardRecipe(String id) {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        if (plugin != null && isAvailable() && id != null) {
+            plugin.getCuttingBoardRecipes().unregisterExternalRecipe(id);
+        }
+    }
+
     /** All registered recipe types, in registration order. */
     public List<RecipeType> recipeTypes() {
         synchronized (recipeTypes) {

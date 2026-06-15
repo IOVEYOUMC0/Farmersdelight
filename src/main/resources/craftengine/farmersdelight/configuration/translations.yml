@@ -128,7 +128,6 @@
     item.farmersdelight.chicken_sandwich: "Chicken Sandwich"
     item.farmersdelight.chicken_soup: "Chicken Soup"
     item.farmersdelight.chocolate_pie_slice: "Slice of Chocolate Pie"
-    item.farmersdelight.pumpkin_pie_slice: "Slice of Pumpkin Pie"
     item.farmersdelight.cod_roll: "Cod Roll"
     item.farmersdelight.cooked_rice: "Cooked Rice"
     item.farmersdelight.dumplings: "Dumplings"
@@ -172,6 +171,7 @@
     farmersdelight.category.food: "Foods"
     farmersdelight.category.gui: "GUI"
     farmersdelight.category.item: "Items"
+    farmersdelight.category.item_display: "Item Displays"
     farmersdelight.category.root: "Farmer's Delight"
     farmersdelight.category.weapon: "Weapons"
 
@@ -341,7 +341,6 @@
     item.farmersdelight.chicken_sandwich: "鸡肉三明治"
     item.farmersdelight.chicken_soup: "鸡肉汤"
     item.farmersdelight.chocolate_pie_slice: "巧克力派切片"
-    item.farmersdelight.pumpkin_pie_slice: "南瓜派切片"
     item.farmersdelight.cod_roll: "鳕鱼寿司"
     item.farmersdelight.cooked_rice: "米饭"
     item.farmersdelight.dumplings: "饺子"
@@ -385,6 +384,7 @@
     farmersdelight.category.food: "食物"
     farmersdelight.category.gui: "界面"
     farmersdelight.category.item: "物品"
+    farmersdelight.category.item_display: "物品展示实体"
     farmersdelight.category.root: "农夫乐事"
     farmersdelight.category.weapon: "武器"
 
