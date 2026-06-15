@@ -582,15 +582,81 @@ public class CookingPotGui implements InventoryHolder {
 
     void onDrag(InventoryDragEvent event) {
         if (event.getInventory().getHolder() != this) return;
-
-        for (int slot : event.getRawSlots()) {
-            if (slot >= 0 && slot < config.getSize()) {
-                event.setCancelled(true);
-                return;
-            }
+        if (closed) {
+            event.setCancelled(true);
+            return;
         }
 
-        scheduleGuiSync(event.getWhoClicked() instanceof Player p ? p : null);
+        boolean touchesTop = false;
+        for (int slot : event.getRawSlots()) {
+            if (slot >= 0 && slot < config.getSize()) {
+                touchesTop = true;
+                break;
+            }
+        }
+        if (!touchesTop) {
+            // 纯玩家背包内的拖拽,交给原版处理。
+            scheduleGuiSync(event.getWhoClicked() instanceof Player p ? p : null);
+            return;
+        }
+
+        // 触及顶部:一律取消(原版会把拖拽应用到所有触及槽位,包括只读的展示/产出/缓冲槽 → 会刷物品),
+        // 改为只把原版计算好的分发结果手动应用到“可写入的输入槽”,其余份额原样留在光标上,杜绝刷/丢物品。
+        event.setCancelled(true);
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+
+        ItemStack oldCursor = event.getOldCursor();
+        if (oldCursor == null || oldCursor.getType().isAir()) {
+            return;
+        }
+
+        int placedTotal = 0;
+        boolean anyPlaced = false;
+        int maxStack = Math.min(oldCursor.getMaxStackSize(), inventory.getMaxStackSize());
+        for (Map.Entry<Integer, ItemStack> entry : event.getNewItems().entrySet()) {
+            int rawSlot = entry.getKey();
+            if (rawSlot < 0 || rawSlot >= config.getSize() || !isPlayerInputSlot(rawSlot)) {
+                continue; // 只处理顶部可写入的输入槽
+            }
+            ItemStack newItem = entry.getValue();
+            if (newItem == null || newItem.getType().isAir() || !newItem.isSimilar(oldCursor)) {
+                continue;
+            }
+            ItemStack existing = inventory.getItem(rawSlot);
+            int existingAmount = (existing == null || existing.getType().isAir()) ? 0 : existing.getAmount();
+            if (existingAmount > 0 && !newItem.isSimilar(existing)) {
+                continue; // 槽内已有不同物品,不混放
+            }
+            int finalAmount = Math.min(newItem.getAmount(), maxStack);
+            int delta = finalAmount - existingAmount;
+            if (delta <= 0) {
+                continue;
+            }
+            ItemStack placed = oldCursor.clone();
+            placed.setAmount(finalAmount);
+            inventory.setItem(rawSlot, placed);
+            placedTotal += delta;
+            anyPlaced = true;
+        }
+
+        if (!anyPlaced) {
+            return; // 没有可应用的输入槽,光标保持不变(事件已取消)
+        }
+
+        // 光标剩余 = 原光标数量 - 实际放入总量;未应用到只读槽/背包的份额都留在光标上。
+        int remaining = oldCursor.getAmount() - placedTotal;
+        if (remaining > 0) {
+            ItemStack leftover = oldCursor.clone();
+            leftover.setAmount(remaining);
+            player.setItemOnCursor(leftover);
+        } else {
+            player.setItemOnCursor(null);
+        }
+
+        syncToBlockEntity();
+        updateDisplayItems();
     }
 
     private void handleTopInventoryInteraction(InventoryClickEvent event) {
