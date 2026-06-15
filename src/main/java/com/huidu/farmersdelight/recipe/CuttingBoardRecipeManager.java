@@ -18,6 +18,11 @@ public class CuttingBoardRecipeManager {
     // threads never observe a half-cleared map. Never mutate in place after publishing.
     private volatile Map<String, CuttingBoardRecipe> recipes = Map.of();
     private volatile List<CuttingBoardRecipe> sortedRecipes = List.of();
+    // Recipes registered at runtime by addons via the public API; kept separate so they survive a
+    // /fd reload (which rebuilds the file-backed map) and merged into the published map in loadRecipes().
+    private final Map<String, CuttingBoardRecipe> externalRecipes = new java.util.concurrent.ConcurrentHashMap<>();
+    // External (un)register republishing is coalesced to the next tick (one loadRecipes() per batch).
+    private volatile boolean externalRepublishScheduled = false;
 
     public CuttingBoardRecipeManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
@@ -27,6 +32,9 @@ public class CuttingBoardRecipeManager {
         Map<String, CuttingBoardRecipe> newRecipes = new LinkedHashMap<>();
         RecipeFileLoader.loadRecipeSections(plugin, "recipes/cutting_board_recipes.yml", "cutting_board_recipes", "cutting board",
                 (recipeId, section) -> newRecipes.put(recipeId, parseRecipe(recipeId, section)));
+
+        // Merge addon-registered recipes last so they survive reloads (and override file ids on clash).
+        newRecipes.putAll(externalRecipes);
 
         List<CuttingBoardRecipe> newSorted;
         if (newRecipes.isEmpty()) {
@@ -308,6 +316,64 @@ public class CuttingBoardRecipeManager {
 
     public void reload() {
         loadRecipes();
+    }
+
+    /**
+     * Registers (or replaces) an addon-supplied cutting-board recipe at runtime and republishes. Retained
+     * across {@code /fd reload}. {@code inputSpec}/{@code toolSpec} use the recipe-file syntax ("ns:id" or
+     * "#ns:tag"); each result stack carries its own amount and is dropped with 100% chance.
+     */
+    public void registerExternalRecipe(String id, String inputSpec, String toolSpec,
+                                       List<ItemStack> results, String sound) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("Recipe id is required");
+        }
+        if (inputSpec == null || inputSpec.isBlank()) {
+            throw new IllegalArgumentException("Recipe must have an input");
+        }
+        if (toolSpec == null || toolSpec.isBlank()) {
+            throw new IllegalArgumentException("Recipe must have a tool");
+        }
+        RecipeIngredient input = parseIngredient(inputSpec);
+        ItemStack inputDisplay = createDisplayItem(input);
+        if (inputDisplay == null) {
+            throw new IllegalArgumentException("Invalid input ingredient: " + inputSpec);
+        }
+        List<CuttingBoardRecipe.ResultEntry> entries = new ArrayList<>();
+        if (results != null) {
+            for (ItemStack result : results) {
+                if (result != null && !result.getType().isAir()) {
+                    entries.add(new CuttingBoardRecipe.ResultEntry(result.clone(), 1.0d));
+                }
+            }
+        }
+        if (entries.isEmpty()) {
+            throw new IllegalArgumentException("Recipe must have at least one valid result");
+        }
+        List<CuttingBoardRecipe.ToolRequirement> tools = List.of(parseTool(toolSpec));
+        CuttingBoardRecipe recipe = new CuttingBoardRecipe(id, input, inputDisplay, tools, entries,
+                normalizeSound(sound), 0);
+        externalRecipes.put(id, recipe);
+        scheduleExternalRepublish();
+    }
+
+    /** Removes a previously {@link #registerExternalRecipe registered} addon recipe and republishes. */
+    public void unregisterExternalRecipe(String id) {
+        if (id != null && externalRecipes.remove(id) != null) {
+            scheduleExternalRepublish();
+        }
+    }
+
+    /** Coalesces external-recipe republishing to the next tick (one loadRecipes() per batch). */
+    private void scheduleExternalRepublish() {
+        if (externalRepublishScheduled) {
+            return;
+        }
+        externalRepublishScheduled = true;
+        plugin.scheduler().runLater(() -> {
+            externalRepublishScheduled = false;
+            loadRecipes();
+        }, 1L);
     }
 
     private record ToolContext(

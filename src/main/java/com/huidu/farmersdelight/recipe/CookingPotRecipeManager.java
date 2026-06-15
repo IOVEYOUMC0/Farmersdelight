@@ -36,6 +36,12 @@ public class CookingPotRecipeManager {
     };
     private static final int MAX_CACHE_SIZE = 100;
     private volatile Set<String> validContainerKeys = Set.of();
+    // Recipes registered at runtime by addons via the public API. Kept separate so they survive a
+    // /fd reload (which rebuilds the file-backed maps); merged into the published maps in loadRecipes().
+    private final Map<String, CookingPotRecipe> externalRecipes = new ConcurrentHashMap<>();
+    // Republishing after an external (un)register is coalesced to the next tick, so registering a batch
+    // of addon recipes triggers a single loadRecipes() instead of one full file reload per recipe.
+    private volatile boolean externalRepublishScheduled = false;
 
     public CookingPotRecipeManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
@@ -60,6 +66,13 @@ public class CookingPotRecipeManager {
                     indexContainer(newValidContainerKeys, recipe);
                 });
         loadCustomRecipes(config, newCustomRecipes, newCustomIngredientToRecipes, newValidContainerKeys);
+
+        // Merge addon-registered recipes last so they survive reloads (and override file ids on clash).
+        for (CookingPotRecipe recipe : externalRecipes.values()) {
+            newRecipes.put(recipe.getId(), recipe);
+            indexDefaultRecipe(newIngredientToRecipes, recipe.getId(), recipe);
+            indexContainer(newValidContainerKeys, recipe);
+        }
 
         List<CookingPotRecipe> newSortedRecipes = sortedRecipeList(newRecipes);
         Map<String, List<CookingPotRecipe>> newSortedCustomRecipes = new HashMap<>();
@@ -608,6 +621,53 @@ public class CookingPotRecipeManager {
 
     public void reload() {
         loadRecipes();
+    }
+
+    /**
+     * Registers (or replaces) an addon-supplied cooking pot recipe at runtime and republishes the recipe
+     * maps. The recipe is retained across {@code /fd reload}. Ingredient specs use the same syntax as the
+     * recipe files ("ns:id", "#ns:tag", "a|b" choices); {@code result} carries its own amount.
+     */
+    public void registerExternalRecipe(String id, List<String> ingredientSpecs, ItemStack container,
+                                       ItemStack result, float experience, int cookTime, String category) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("Recipe id is required");
+        }
+        if (ingredientSpecs == null || ingredientSpecs.isEmpty()) {
+            throw new IllegalArgumentException("Recipe must have at least one ingredient");
+        }
+        if (result == null || result.getType().isAir()) {
+            throw new IllegalArgumentException("Recipe must have a result");
+        }
+        List<RecipeIngredient> ingredients = new ArrayList<>();
+        for (String spec : ingredientSpecs) {
+            ingredients.add(parseIngredient(spec));
+        }
+        boolean needsContainer = container != null && !container.getType().isAir();
+        CookingPotRecipe recipe = new CookingPotRecipe(id, ingredients, needsContainer ? container : null,
+                needsContainer, result, Math.max(0f, experience), Math.max(1, cookTime),
+                category == null ? "misc" : category, 0);
+        externalRecipes.put(id, recipe);
+        scheduleExternalRepublish();
+    }
+
+    /** Removes a previously {@link #registerExternalRecipe registered} addon recipe and republishes. */
+    public void unregisterExternalRecipe(String id) {
+        if (id != null && externalRecipes.remove(id) != null) {
+            scheduleExternalRepublish();
+        }
+    }
+
+    /** Coalesces external-recipe republishing to the next tick (one loadRecipes() per batch). */
+    private void scheduleExternalRepublish() {
+        if (externalRepublishScheduled) {
+            return;
+        }
+        externalRepublishScheduled = true;
+        plugin.scheduler().runLater(() -> {
+            externalRepublishScheduled = false;
+            loadRecipes();
+        }, 1L);
     }
     
     public void clearCache() {

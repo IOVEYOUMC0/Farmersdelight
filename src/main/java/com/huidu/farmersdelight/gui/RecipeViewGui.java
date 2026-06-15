@@ -374,6 +374,11 @@ public class RecipeViewGui implements InventoryHolder {
 
         setGuiItem(menuConfig, "cooking_pot", menuConfig.getCookingPotSlot());
         setGuiItem(menuConfig, "cutting_board", menuConfig.getCuttingBoardSlot());
+        // Addon recipe-book button: only shown when an addon has registered a recipe type.
+        if (menuConfig.getRecipeBookSlot() >= 0
+                && !com.huidu.farmersdelight.api.FarmersDelightApi.get().recipeTypes().isEmpty()) {
+            setGuiItem(menuConfig, "recipe_book", menuConfig.getRecipeBookSlot());
+        }
         setGuiItem(menuConfig, "back", menuConfig.getBackSlot());
     }
 
@@ -1750,6 +1755,14 @@ public class RecipeViewGui implements InventoryHolder {
         } else if (slot == menuConfig.getCuttingBoardSlot()) {
             backButtonCommandsEnabled = false;
             navigateToState(player, GuiState.CUTTING_BOARD_LIST);
+        } else if (slot == menuConfig.getRecipeBookSlot()
+                && !com.huidu.farmersdelight.api.FarmersDelightApi.get().recipeTypes().isEmpty()) {
+            // Hand off to the generic addon recipe book (deferred a tick, like the editor handoff).
+            plugin.scheduler().runLaterForEntity(player, () -> {
+                if (player.isOnline()) {
+                    com.huidu.farmersdelight.gui.recipebook.RecipeBookGui.openMenu(player, null);
+                }
+            }, 1L);
         } else if (slot == menuConfig.getBackSlot()) {
             if (runBackButtonCommands(player, menuConfig.getItem("back"))) {
                 return;
