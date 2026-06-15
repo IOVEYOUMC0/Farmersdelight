@@ -189,8 +189,8 @@ public final class SchedulerAdapter {
     private static final class FoliaReflect {
         private static final Object GLOBAL_SCHEDULER = invokeStatic(Bukkit.class, "getGlobalRegionScheduler");
         private static final Object REGION_SCHEDULER = invokeStatic(Bukkit.class, "getRegionScheduler");
-        // Resolved scheduler Methods are stable per (class, name, arity); cache them so each
-        // dispatch on Folia doesn't re-walk the class/interface hierarchy.
+        // 解析出的 scheduler Method 对于每个 (class, name, arity) 组合都是稳定的；将其缓存，
+        // 这样 Folia 上的每次调度都无需再次遍历 class/interface 层级结构。
         private static final Map<String, Method> METHOD_CACHE = new ConcurrentHashMap<>();
 
         private FoliaReflect() {

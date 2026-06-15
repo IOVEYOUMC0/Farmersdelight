@@ -9,6 +9,7 @@ import org.bukkit.inventory.Recipe;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -17,6 +18,9 @@ public final class CampfireRecipeCache {
     private final String debugName;
     private final Consumer<Supplier<String>> debug;
     private final AtomicReference<List<CampfireRecipe>> cache = new AtomicReference<>(List.of());
+    // 记录是否已构建过缓存，与“缓存是否为空”分开：当服务器本身没有任何营火配方时，
+    // 缓存为空但仍算已构建，避免每次查找都重新遍历整个配方表。
+    private final AtomicBoolean built = new AtomicBoolean(false);
 
     public CampfireRecipeCache(String debugName, Consumer<Supplier<String>> debug) {
         this.debugName = debugName;
@@ -50,13 +54,13 @@ public final class CampfireRecipeCache {
             }
         }
         cache.set(List.copyOf(recipes));
+        built.set(true);
         debug.accept(() -> "Loaded " + recipes.size() + " cached campfire recipes for " + debugName);
     }
 
     private List<CampfireRecipe> getRecipes() {
-        List<CampfireRecipe> recipes = cache.get();
-        if (!recipes.isEmpty()) {
-            return recipes;
+        if (built.get()) {
+            return cache.get();
         }
 
         rebuild();

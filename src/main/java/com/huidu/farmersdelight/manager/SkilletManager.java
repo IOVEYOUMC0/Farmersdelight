@@ -83,6 +83,9 @@ public class SkilletManager {
         ItemStack displayedItem;
         BlockFace displayedFacing;
         CuttingBoardDisplayConfig.DisplayOverride displayedOverride;
+        // 上次构建视觉时所用的原始 storedItem 快照,作为 ensureVisualsExist 的廉价前置判断,
+        // 避免每 tick 重复做 facing/override/resolveDisplayItem 等昂贵的 CraftEngine 查找与分配。
+        ItemStack lastVisualStoredItem;
         int cookingProgress = 0;
         int cookingDuration;
         CookingRecipe<?> currentRecipe;
@@ -537,7 +540,12 @@ public class SkilletManager {
                 }
             }
         }
-        removeStoredData(normalized);
+        // 只有确实有煎锅(内存中)或有持久化数据时才清理,避免每次破坏普通方块都白白获取一次全局写锁
+        // + CEWorld 脏标记(普通方块该位置既无煎锅也无存储数据,清理是纯无用功)。
+        LegacyBlockStorageManager storage = plugin.getLegacyBlockStorageManager();
+        if (skillet != null || (storage != null && storage.hasBlockData(normalized))) {
+            removeStoredData(normalized);
+        }
         TrayManager trayManager = plugin.getTrayManager();
         if (trayManager != null) {
             trayManager.removeTrayIfAutoPlaced(normalized);
@@ -722,6 +730,11 @@ public class SkilletManager {
             }
         }
         return result;
+    }
+
+    /** 是否存在任何被跟踪的煎锅(廉价判断,不分配位置列表)。 */
+    public boolean hasTrackedSkillets() {
+        return !skillets.isEmpty();
     }
 
     public void reloadRecipeCache() {
@@ -923,6 +936,13 @@ public class SkilletManager {
 
         ensureVisualsExist(location, skillet);
 
+        // 没有匹配配方的煎锅永远不可能烹饪,直接冷却并返回,省去每 tick 的热源探测
+        // (热源判定常常要做 CraftEngine 自定义方块状态查找)。
+        if (skillet.currentRecipe == null) {
+            skillet.cookingProgress = Math.max(0, skillet.cookingProgress - coolingDecrement);
+            return;
+        }
+
         boolean hasHeat = hasHeatSource(location);
         if (!Objects.equals(skillet.lastHeatState, hasHeat)) {
             debug(() -> "heat state: hasHeat=" + hasHeat + ", progress=" + skillet.cookingProgress
@@ -933,7 +953,7 @@ public class SkilletManager {
         }
         skillet.lastHeatState = hasHeat;
 
-        if (!hasHeat || skillet.currentRecipe == null) {
+        if (!hasHeat) {
             skillet.cookingProgress = Math.max(0, skillet.cookingProgress - coolingDecrement);
             return;
         }
@@ -1107,6 +1127,7 @@ public class SkilletManager {
             skillet.displayedItem = visualItem;
             skillet.displayedFacing = facing;
             skillet.displayedOverride = displayOverride;
+            skillet.lastVisualStoredItem = skillet.storedItem == null ? null : skillet.storedItem.clone();
         }
 
         Random random = new Random(getVisualSeed(skillet.storedItem));
@@ -1267,6 +1288,16 @@ public class SkilletManager {
         }
 
         int expectedCount = getModelCount(skillet.storedItem);
+        // 廉价前置判断:显示实体数量正确、且 storedItem 自上次构建以来未变化时直接返回,跳过下面昂贵的
+        // facing/override/resolveDisplayItem 解析。storedItem 变化(放入/烹饪)与配置变化都会各自走重建路径
+        // (createVisual / refreshVisualsAfterConfigReload),而方块朝向放置后不会改变。数量不符(视觉丢失等)
+        // 会让此判断不成立,从而走慢路径重建,作为兜底。
+        if (skillet.displayEntityIds.size() == expectedCount
+                && skillet.lastVisualStoredItem != null
+                && skillet.lastVisualStoredItem.isSimilar(skillet.storedItem)) {
+            return;
+        }
+
         BlockFace facing = CustomBlockUtils.getFacing(location.getBlock());
         CuttingBoardDisplayConfig.DisplayOverride displayOverride = plugin.getSkilletDisplayConfig().getOverride(skillet.storedItem);
         ItemStack visualItem = plugin.getSkilletDisplayConfig().resolveDisplayItem(skillet.storedItem, displayOverride);

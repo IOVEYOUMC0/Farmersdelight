@@ -155,7 +155,7 @@ public final class SkilletBlockEntityController extends BlockEntityController im
         return 1;
     }
 
-    /** Re-syncs the cached item from the manager. Called at the start of each container interaction. */
+    /** 从 manager 重新同步缓存的物品。在每次容器交互开始时调用。 */
     public void syncFromManager() {
         refreshFromManager();
     }

@@ -76,12 +76,12 @@ public class CuttingBoardBlockEntity {
         setStoredItem(item, world, posKey, facing, itemCarved);
     }
 
-    /** Normal board storage uses the flat item pose. */
+    /** 普通切菜板存放物品时使用平放的物品姿态。 */
     public void setStoredItem(ItemStack item, World world, BlockPosKey posKey, BlockFace facing) {
         setStoredItem(item, world, posKey, facing, CuttingBoardStoredItemPose.FLAT);
     }
 
-    /** Controller sync uses this overload to preserve a manually inserted tool pose. */
+    /** Controller 同步时使用此重载方法，以保留手动插入的工具姿态。 */
     public void setStoredItem(ItemStack item, World world, BlockPosKey posKey, BlockFace facing, boolean itemCarved) {
         setStoredItem(item, world, posKey, facing, CuttingBoardStoredItemPose.fromCarved(itemCarved));
     }

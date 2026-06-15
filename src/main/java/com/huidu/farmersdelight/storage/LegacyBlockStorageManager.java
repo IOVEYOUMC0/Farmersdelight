@@ -233,6 +233,26 @@ public class LegacyBlockStorageManager {
         }
     }
 
+    /**
+     * 廉价判断某位置是否存有遗留方块数据(只取读锁,不修改)。供破坏方块的热路径在真正调用
+     * removeBlockData(写锁)前做前置判断,避免对普通方块也白白获取全局写锁。
+     * chunkIndex 始终与 worldData 同步写入/删除,因此查 worldData 即为权威判断。
+     */
+    public boolean hasBlockData(Location location) {
+        if (location == null || location.getWorld() == null) return false;
+
+        String worldId = location.getWorld().getUID().toString();
+        String posKey = posToKey(location.getBlockX(), location.getBlockY(), location.getBlockZ());
+
+        dataLock.readLock().lock();
+        try {
+            Map<String, BlockData> worldBlocks = worldData.get(worldId);
+            return worldBlocks != null && worldBlocks.containsKey(posKey);
+        } finally {
+            dataLock.readLock().unlock();
+        }
+    }
+
     public void removeBlockData(Location location) {
         if (location == null || location.getWorld() == null) return;
 
@@ -394,8 +414,8 @@ public class LegacyBlockStorageManager {
             }
 
             if (!restored && tempFile.exists()) {
-                // We are intentionally keeping the freshly-written temp file for manual recovery;
-                // the finally block must not delete it (it is the only up-to-date copy of the data).
+                // 我们有意保留刚写入的临时文件以便手动恢复；
+                // finally 代码块绝不能删除它（它是该数据唯一的最新副本）。
                 preserveTemp = true;
                 I18n.logWarning("legacy_storage.preserve_temp", "path", tempFile.getAbsolutePath());
             }
@@ -539,8 +559,8 @@ public class LegacyBlockStorageManager {
     private ItemStack deserializeModernItemStack(String encodedBytes) throws IOException {
         byte[] raw = Base64.getDecoder().decode(encodedBytes);
 
-        // Support a future length-prefixed wrapper format if we ever need it,
-        // while keeping today's plain ItemStack.serializeAsBytes() payloads simple.
+        // 如果将来需要，支持一种带长度前缀的封装格式，
+        // 同时保持当前直接的 ItemStack.serializeAsBytes() 数据简单。
         if (looksLikeLengthPrefixedPayload(raw)) {
             try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(raw))) {
                 int len = dis.readInt();
@@ -574,9 +594,9 @@ public class LegacyBlockStorageManager {
             worldData.remove(worldIdStr);
             chunkIndex.remove(worldIdStr);
         }
-        // Keep non-empty legacy records resident after world unload. They contain
-        // only serialized data, and the next async/full save can rewrite the file
-        // without blocking the unload event or losing not-yet-migrated entries.
+        // 在世界卸载后仍将非空的旧版记录保留在内存中。它们只包含
+        // 序列化后的数据，下一次异步/完整保存可以重写该文件，
+        // 而不会阻塞卸载事件或丢失尚未迁移的条目。
     }
 
     public void cleanupAll() {
