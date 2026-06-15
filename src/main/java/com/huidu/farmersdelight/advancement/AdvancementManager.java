@@ -26,10 +26,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Advancement backend on UltimateAdvancementAPI: a single farmersdelight tab of programmatic
- * advancements. award/awardCriteria/revoke/hasAdvancement are the
- * surface the event listeners call. Titles/descriptions localize per-client via
- * LocalizedAdvancementDisplay.
+ * 基于 UltimateAdvancementAPI 的进度后端：通过代码构建的单个 farmersdelight 进度标签页。
+ * award/awardCriteria/revoke/hasAdvancement 是事件监听器所调用的
+ * 对外接口。标题/描述通过 LocalizedAdvancementDisplay 按每个客户端进行本地化。
  */
 public class AdvancementManager {
 
@@ -37,12 +36,12 @@ public class AdvancementManager {
     private static final String ROOT_BACKGROUND = "minecraft:textures/block/bricks.png";
     private static final String KEY_PREFIX = "farmersdelight.advancement.";
 
-    /** plant_all_crops sub-tasks (criterion names emitted by the planting listeners). */
+    /** plant_all_crops 的子任务（由种植监听器发出的判定条件名称）。 */
     private static final List<String> CROPS = List.of(
             "wheat", "beetroot", "carrot", "potato", "cabbage", "tomato", "onion", "rice", "melon",
             "pumpkin", "sweet_berries", "sugar_cane", "kelp", "cocoa", "nether_wart", "chorus_flower",
             "brown_mushroom", "red_mushroom", "glow_berries");
-    /** master_chef sub-tasks (FD dish ids eaten, without the farmersdelight: prefix). */
+    /** master_chef 的子任务（已食用的 FD 菜肴 id，不含 farmersdelight: 前缀）。 */
     private static final List<String> DISHES = List.of(
             "mixed_salad", "cooked_rice", "bone_broth", "beef_stew", "vegetable_soup", "fish_stew",
             "chicken_soup", "fried_rice", "pumpkin_soup", "baked_cod_stew", "noodle_soup", "onion_soup",
@@ -71,14 +70,14 @@ public class AdvancementManager {
             buildTree();
             I18n.logInfo("advancement.loaded_keys", "count", byId.size());
         } catch (Exception e) {
-            // Drop a half-built (uninitialised) tab so it isn't left registered.
+            // 丢弃构建到一半（未初始化）的标签页，避免它仍处于已注册状态。
             try {
                 UltimateAdvancementAPI api = UltimateAdvancementAPI.getInstance(plugin);
                 if (api.isAdvancementTabRegistered(TAB)) {
                     api.unregisterAdvancementTab(TAB);
                 }
             } catch (Exception ignored) {
-                // best effort
+                // 尽力而为
             }
             tab = null;
             byId.clear();
@@ -138,14 +137,14 @@ public class AdvancementManager {
         byId.put("plant_all_crops", plantAllCrops);
     }
 
-    /** Builds the CraftEngine item for ceId, or the vanilla fallback if it can't resolve. */
+    /** 构建 ceId 对应的 CraftEngine 物品；若无法解析则使用原版的 fallback。 */
     private static ItemStack icon(String ceId, Material fallback) {
         ItemStack item = ceId == null ? null : ItemUtils.createItem(ceId);
         return item != null && !item.getType().isAir() ? item : new ItemStack(fallback);
     }
 
     private LocalizedAdvancementDisplay display(String key, ItemStack icon, AdvancementFrameType frame, float x, float y) {
-        // The patched UltimateAdvancementAPI renders the toast + chat per-client from this display.
+        // 经过修补的 UltimateAdvancementAPI 会依据此 display 为每个客户端渲染弹窗提示 + 聊天消息。
         return new LocalizedAdvancementDisplay(icon, KEY_PREFIX + key, KEY_PREFIX + key + ".desc",
                 frame, true, true, x, y);
     }
@@ -216,7 +215,7 @@ public class AdvancementManager {
         rootAwarded.add(player.getUniqueId());
     }
 
-    /** Drops a player's cached root-awarded state (call on quit) so the set stays bounded. */
+    /** 清除某玩家已缓存的 root 进度授予状态（在玩家退出时调用），以保持该集合大小有界。 */
     public void forgetPlayer(UUID playerId) {
         if (playerId != null) {
             rootAwarded.remove(playerId);
@@ -289,7 +288,7 @@ public class AdvancementManager {
                 api.unregisterAdvancementTab(TAB);
             }
         } catch (Exception ignored) {
-            // UAA already gone / not enabled — nothing to dispose.
+            // UAA 已经卸载 / 未启用 —— 无需释放任何资源。
         }
         tab = null;
         byId.clear();

@@ -126,7 +126,7 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
 
     private void executeRecipe(CommandSender sender, String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage(I18n.get("command.player_only"));
+            sender.sendMessage(I18n.getComponent("command.player_only"));
             return;
         }
 
@@ -223,11 +223,11 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
             }
         }
 
-        sender.sendMessage(I18n.get("general.config_reloaded"));
+        sender.sendMessage(I18n.getComponent("general.config_reloaded"));
         if (sender instanceof Player player) {
-            sender.sendMessage(I18n.get("general.hot_reload_warning", player));
+            sender.sendMessage(I18n.getComponent("general.hot_reload_warning", player));
         } else {
-            sender.sendMessage(I18n.get("general.hot_reload_warning"));
+            sender.sendMessage(I18n.getComponent("general.hot_reload_warning"));
         }
     }
 
@@ -244,7 +244,7 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
             removed += trayManager.cleanupInvalidAutoTrays();
         }
 
-        sender.sendMessage(I18n.get("command.cleanup_done").replace("{count}", String.valueOf(removed)));
+        sender.sendMessage(I18n.getComponent("command.cleanup_done", Map.of("count", String.valueOf(removed))));
     }
 
     private void executeDebugTools(CommandSender sender, String label, String[] args) {
@@ -394,9 +394,9 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
 
     private void sendNoPermission(CommandSender sender) {
         if (sender instanceof Player player) {
-            sender.sendMessage(I18n.get("general.no_permission", player));
+            sender.sendMessage(I18n.getComponent("general.no_permission", player));
         } else {
-            sender.sendMessage(I18n.get("general.no_permission"));
+            sender.sendMessage(I18n.getComponent("general.no_permission"));
         }
     }
 

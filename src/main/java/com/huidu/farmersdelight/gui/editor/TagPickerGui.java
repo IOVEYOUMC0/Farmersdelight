@@ -5,6 +5,7 @@ import com.huidu.farmersdelight.gui.GuiConfig;
 import com.huidu.farmersdelight.gui.RecipeViewGuiConfig;
 import com.huidu.farmersdelight.recipe.RecipeIngredient;
 import com.huidu.farmersdelight.util.ItemUtils;
+import com.huidu.farmersdelight.util.Text;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
@@ -31,9 +32,9 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 /**
- * Two-page picker for a tag ingredient. Page one lists every tag the source item belongs to; left-click
- * uses the tag as-is, right-click opens page two, which lists the tag's member items so the player can
- * toggle exclusions. Layout and text come from the recipe-tag-picker-gui section of gui.yml.
+ * 用于选择标签（tag）配料的两页选择器。第一页列出源物品所属的每一个标签；左键点击
+ * 直接使用该标签，右键点击则打开第二页，第二页列出该标签下的成员物品，供玩家
+ * 切换排除项。布局和文本来自 gui.yml 中的 recipe-tag-picker-gui 部分。
  */
 public final class TagPickerGui implements EditorGui {
 
@@ -301,8 +302,7 @@ public final class TagPickerGui implements EditorGui {
     private static void lore(ItemStack stack, String line) {
         ItemMeta meta = stack.getItemMeta();
         if (meta != null) {
-            meta.lore(List.of(LEGACY.deserialize(line.replaceAll("&(?=[0-9a-fk-orA-FK-OR])", "§"))
-                    .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false)));
+            meta.lore(List.of(Text.lore(line)));
             stack.setItemMeta(meta);
         }
     }
@@ -310,8 +310,7 @@ public final class TagPickerGui implements EditorGui {
     private static void named(ItemStack stack, String name) {
         ItemMeta meta = stack.getItemMeta();
         if (meta != null) {
-            meta.displayName(LEGACY.deserialize(name.replaceAll("&(?=[0-9a-fk-orA-FK-OR])", "§"))
-                    .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
+            meta.displayName(Text.name(name));
             stack.setItemMeta(meta);
         }
     }

@@ -31,12 +31,12 @@ import java.util.regex.Pattern;
 public final class ItemUtils {
 
     private static final Map<Key, List<ItemStack>> vanillaTagCache = new ConcurrentHashMap<>();
-    // Resolved Bukkit item tags are constant for the server's lifetime; cache them so per-match tag
-    // checks don't re-run NamespacedKey.fromString + Bukkit.getTag every call.
+    // 解析后的 Bukkit item tag 在服务器整个生命周期内保持不变；将其缓存，使得每次匹配时的 tag
+    // 检查不必每次调用都重新执行 NamespacedKey.fromString + Bukkit.getTag。
     private static final Map<Key, Optional<Tag<Material>>> vanillaItemTagResolveCache = new ConcurrentHashMap<>();
     private static final List<Material> ITEM_MATERIALS = new ArrayList<>();
 
-    // Cached CraftEngine TranslationManager reflection handles (resolved once, reused per translate).
+    // 缓存的 CraftEngine TranslationManager 反射句柄（只解析一次，每次 translate 时复用）。
     private static volatile Method ceTranslationInstanceMethod;
     private static volatile Method cePlainTranslationMethod;
     private static volatile Method ceMiniMessageTranslationMethod;
@@ -59,7 +59,7 @@ public final class ItemUtils {
     }
 
     /**
-     * Returns the custom item id, or null when the stack is not a CE custom item.
+     * 返回自定义物品 id；当该物品堆不是 CE 自定义物品时返回 null。
      */
     public static String getCustomItemId(ItemStack item) {
         if (item == null) return null;
@@ -91,10 +91,10 @@ public final class ItemUtils {
     }
 
     /**
-     * Creates an item stack from a namespaced item id.
+     * 根据带命名空间的物品 id 创建一个物品堆。
      *
-     * @param itemId item id in the form namespace:item_name
-     * @return the created stack, or null when the id cannot be resolved
+     * @param itemId 形如 namespace:item_name 的物品 id
+     * @return 创建出的物品堆；当该 id 无法解析时返回 null
      */
     public static ItemStack createItem(String itemId) {
         if (isEmptyItemId(itemId)) return null;
@@ -262,10 +262,10 @@ public final class ItemUtils {
             nameMeta = meta.displayName();
         }
 
-        // A vanilla item (no custom id, or a minecraft-namespaced CraftEngine wrapper) should be
-        // rendered via its client translation key so the player's own locale localizes it. CraftEngine
-        // can bake that key onto the item as a literal name (an <l10n:...> that did not resolve
-        // server-side); returning it verbatim shows raw "item.minecraft.cod" in the recipe GUI.
+        // 原版物品（没有自定义 id，或是带 minecraft 命名空间的 CraftEngine 包装物品）应当通过其
+        // 客户端翻译键来渲染，这样玩家自身的语言环境就能将其本地化。CraftEngine 可能会把该翻译键
+        // 作为字面名称烘焙到物品上（一个未在服务端解析的 <l10n:...>）；原样返回它会在配方 GUI 中
+        // 显示出原始的 "item.minecraft.cod"。
         String customId = getCustomItemId(item);
         boolean vanillaItem = (customId == null || customId.startsWith("minecraft:")) && item.getType().isItem();
         String vanillaKey = vanillaItem ? item.getType().getItemTranslationKey() : null;
@@ -275,8 +275,8 @@ public final class ItemUtils {
             if (resolved != null) {
                 return resolved;
             }
-            // Only override when the baked name is literally this item's own translation key; a real
-            // custom name (e.g. an anvil-renamed item) is left untouched.
+            // 仅当烘焙的名称恰好就是该物品自身的翻译键时才覆盖；真正的自定义名称
+            //（例如经铁砧重命名的物品）则保持原样不动。
             if (vanillaKey != null && PLAIN_TEXT.serialize(nameMeta).trim().equals(vanillaKey)) {
                 return Component.translatable(vanillaKey);
             }
@@ -405,7 +405,7 @@ public final class ItemUtils {
                 return stripMiniMessageTags(text);
             }
         } catch (ClassNotFoundException e) {
-            // CraftEngine translation API absent; stop retrying the forName on every call.
+            // CraftEngine 翻译 API 不存在；停止在每次调用时重试 forName。
             ceTranslationUnavailable = true;
         } catch (ReflectiveOperationException | LinkageError ignored) {
         }
@@ -600,8 +600,8 @@ public final class ItemUtils {
         String normalized = itemId.trim();
         String customId = getCustomItemId(item);
         if (customId != null) {
-            // A CraftEngine custom item is identified only by its custom id, never by its
-            // base vanilla material, so it cannot satisfy the base material's vanilla id.
+            // CraftEngine 自定义物品仅通过其自定义 id 来标识，绝不会通过其
+            // 基础原版材质来标识，因此它无法匹配基础材质的原版 id。
             return customId.equalsIgnoreCase(normalized);
         }
         String vanillaId = getVanillaMaterialItemId(item);

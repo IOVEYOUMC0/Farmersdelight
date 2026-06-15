@@ -274,7 +274,12 @@ public class StoveManager {
                 }
             }
         }
-        removeStoredData(normalized);
+        // 只有确实有炉灶(内存中)或有持久化数据时才清理,避免每次破坏普通方块都白白获取一次全局写锁
+        // + CEWorld 脏标记。
+        LegacyBlockStorageManager storage = plugin.getLegacyBlockStorageManager();
+        if (stove != null || (storage != null && storage.hasBlockData(normalized))) {
+            removeStoredData(normalized);
+        }
     }
 
     public boolean isStoveStateBlock(Location location) {
@@ -657,10 +662,10 @@ public class StoveManager {
 
         boolean isLit = isStoveLit(state);
         BlockFace facing = CustomBlockUtils.getFacing(state).getOppositeFace();
-        // Cache the debug flag so the per-slot debug lambdas are only allocated when debug is on.
+        // 缓存 debug 标志，这样仅在开启 debug 时才会分配每个槽位的 debug lambda。
         boolean debugStove = plugin.isDebugEnabled("stove");
-        // Resolve the crackle sound (a CE block-state lookup) at most once per tick, lazily, rather
-        // than once per crackling slot.
+        // 以惰性方式解析 crackle 声音（一次 CE block-state 查询），每个 tick 最多解析一次，
+        // 而不是每个发出噼啪声的槽位都解析一次。
         String crackleSound = null;
         boolean crackleResolved = false;
         ThreadLocalRandom random = ThreadLocalRandom.current();

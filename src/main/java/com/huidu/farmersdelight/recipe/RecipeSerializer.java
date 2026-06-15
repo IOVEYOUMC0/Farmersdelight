@@ -11,12 +11,12 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Converts in-memory recipe models back into the YAML string forms understood by the recipe parsers
- * (the inverse of RecipeParsingSupport / the manager parseRecipe methods).
+ * 将内存中的配方模型转换回配方解析器能够理解的 YAML 字符串形式
+ * （即 RecipeParsingSupport 与管理器的 parseRecipe 方法的逆操作）。
  *
- * <p>The string conversions here are pure (no Bukkit/CraftEngine state) so they can be unit-tested
- * for round-trip fidelity. Item resolution (itemIdString(ItemStack)) is the one method that
- * touches CraftEngine, kept separate for that reason.
+ * <p>这里的字符串转换是纯函数（不涉及 Bukkit/CraftEngine 状态），因此可以通过单元测试
+ * 验证往返转换的一致性。物品解析（itemIdString(ItemStack)）是唯一会
+ * 接触 CraftEngine 的方法，正因如此将其单独拆分出来。
  */
 public final class RecipeSerializer {
 
@@ -24,8 +24,8 @@ public final class RecipeSerializer {
     }
 
     /**
-     * Serializes an ingredient (cooking-pot ingredient slot, or cutting-board input) to its YAML
-     * string: an item key, a #tag with optional ,!exclusions, or a|b choices.
+     * 将一个配料（cooking-pot 的配料槽，或 cutting-board 的输入）序列化为其 YAML
+     * 字符串：一个物品 key、一个带可选 ,!exclusions 的 #tag，或者 a|b 形式的多选项。
      */
     public static String serializeIngredient(RecipeIngredient ingredient) {
         if (ingredient instanceof RecipeIngredient.Item item) {
@@ -49,8 +49,8 @@ public final class RecipeSerializer {
     }
 
     /**
-     * Serializes a cutting-board tool requirement. The tool key is matched as an item id or a tag
-     * indifferently, so it is emitted as a raw key plus any ,!exclusions.
+     * 序列化 cutting-board 的工具需求。工具 key 既可以作为物品 id 匹配，也可以作为 tag 匹配，
+     * 两者一视同仁，因此它以原始 key 加上任意 ,!exclusions 的形式输出。
      */
     public static String serializeTool(CuttingBoardRecipe.ToolRequirement tool) {
         return serializeKeyWithExclusions(tool.getKey().toString(), tool.getExcludedItems(), tool.getExcludedTags());
@@ -62,7 +62,7 @@ public final class RecipeSerializer {
 
     private static String serializeKeyWithExclusions(String base, Set<Key> excludedItems, Set<Key> excludedTags) {
         StringBuilder builder = new StringBuilder(base);
-        // Sort exclusions so the serialized form is deterministic (sets are unordered).
+        // 对排除项排序，使序列化结果具有确定性（集合本身是无序的）。
         List<String> exclusions = new ArrayList<>();
         for (Key excludedItem : excludedItems) {
             exclusions.add(",!" + excludedItem);
@@ -78,8 +78,8 @@ public final class RecipeSerializer {
     }
 
     /**
-     * Resolves an item stack to a recipe item id string: its CraftEngine custom id when present,
-     * otherwise minecraft:<material>.
+     * 将一个物品堆叠解析为配方的物品 id 字符串：若存在则使用其 CraftEngine 自定义 id，
+     * 否则使用 minecraft:<material>。
      */
     public static String itemIdString(ItemStack item) {
         if (item == null) {
