@@ -296,7 +296,11 @@ public final class CookingPotBlockEntityController extends BlockEntityController
         boolean writeAll = this.allSlotsDirty || !hasDirtySlots();
         synchronized (entity.getLock()) {
             for (int i = 0; i < this.items.length; i++) {
-                if (!writeAll && !this.dirtySlots[i]) {
+                // A hopper merge grows getItem(i) in place without marking it dirty. Skip a non-dirty slot
+                // only when the shadow still matches the entity; if it differs (an in-place grow), persist
+                // it, otherwise refreshFromEntity below would overwrite the merged amount with the stale value.
+                if (!writeAll && !this.dirtySlots[i]
+                        && itemStacksEqual(asBukkitStack(this.items[i]), entity.getInventorySlot(i))) {
                     continue;
                 }
                 entity.setInventorySlot(i, asBukkitStack(this.items[i]));
@@ -327,6 +331,15 @@ public final class CookingPotBlockEntityController extends BlockEntityController
 
     private ItemStack asBukkitStack(Item item) {
         return item == null || item.isEmpty() ? null : ItemStackUtils.getBukkitStack(item.minecraftItem());
+    }
+
+    private static boolean itemStacksEqual(ItemStack a, ItemStack b) {
+        boolean aEmpty = a == null || a.getType().isAir();
+        boolean bEmpty = b == null || b.getType().isAir();
+        if (aEmpty || bEmpty) {
+            return aEmpty && bEmpty;
+        }
+        return a.equals(b);
     }
 
     public ItemStack insertStackThroughFace(ItemStack stack, Direction direction) {
