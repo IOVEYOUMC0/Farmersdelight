@@ -31,9 +31,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 用于编辑单条 cutting-board 配方（输入、工具、带权重的产物、优先级）的游戏内编辑器。布局
- * 和按钮文本来自 gui.yml 中的 recipe-cutting-board-editor-gui 部分；聊天栏
- * 反馈来自 gui.editor.* 语言键。
+ * In-game editor for editing a single cutting-board recipe (input, tools, weighted results, priority). Layout
+ * and button text come from the recipe-cutting-board-editor-gui section of gui.yml; chat
+ * feedback comes from the gui.editor.* language keys.
  */
 public final class CuttingBoardEditorGui implements EditorGui {
 

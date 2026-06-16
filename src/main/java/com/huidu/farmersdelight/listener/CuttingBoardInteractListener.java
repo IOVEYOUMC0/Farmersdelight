@@ -67,7 +67,7 @@ public class CuttingBoardInteractListener implements Listener {
             CuttingBoardBlockBehavior.putBlockEntity(block.getWorld(), posKey, blockEntity);
         }
 
-        // Shift 插入是专门用于“将工具插入切割板”的处理路径。
+        // Shift-insert is the dedicated path for inserting a tool into the cutting board.
         ItemStack itemToPlace = mainHand.clone();
         itemToPlace.setAmount(1);
         blockEntity.setItem(itemToPlace, block.getWorld(), posKey, CustomBlockUtils.getFacing(block), true);

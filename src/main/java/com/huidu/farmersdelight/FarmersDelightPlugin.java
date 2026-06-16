@@ -26,7 +26,6 @@ import com.huidu.farmersdelight.manager.TickManager;
 import com.huidu.farmersdelight.manager.TrayManager;
 import com.huidu.farmersdelight.recipe.CookingPotRecipeManager;
 import com.huidu.farmersdelight.recipe.CuttingBoardRecipeManager;
-import com.huidu.farmersdelight.storage.LegacyBlockStorageManager;
 import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.InteractionDebouncer;
@@ -129,7 +128,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private String pendingDatapackSyncRetryReason;
 
     private SchedulerAdapter scheduler;
-    private LegacyBlockStorageManager legacyBlockStorageManager;
     private TickManager tickManager;
     private TrayManager trayManager;
     private StoveManager stoveManager;
@@ -148,11 +146,11 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private HorseFeedTemptListener horseFeedTemptListener;
     private AchievementListener achievementListener;
     private EffectListener effectListener;
-    // 懒加载，可能被多个 region 线程并发访问（厨锅取出成品时奖励经验），用 volatile + 双重检查加锁，
-    // 与 recipeEditorStore 的写法保持一致。
+    // Lazy-loaded, may be accessed concurrently by multiple region threads (awarding XP when collecting cooking pot results); uses volatile + double-checked locking,
+    // consistent with recipeEditorStore.
     private volatile AuraSkillsHook auraSkillsHook;
 
-    // volatile：在 reload 时被重新赋值，并由区域线程读取。
+    // volatile: reassigned on reload and read by region threads.
     private volatile HeatSourceConfig heatSourceConfig;
     private GuiConfig cookingPotGuiConfig;
     private Map<String, GuiConfig> customCookingPotGuiConfigs = Map.of();
@@ -221,7 +219,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         if (areCraftEngineItemsReady()) {
             loadRecipeManagers(logKey);
         }
-        // 否则：静默延迟处理；CraftEngineReloadEvent 会在 CE 物品加载完成后重试一次。
+        // Otherwise: silently defer; CraftEngineReloadEvent retries once after CE items finish loading.
     }
 
     public boolean isAdvancementsEnabled() {
@@ -240,15 +238,15 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         queueAdvancementDatapackRemoval(I18n.formatConsole("plugin.datapack_reason_remove_disabled_advancements"));
     }
 
-    // 仅在 CraftEngine 物品加载完成后才构建/刷新进度，否则 icon() 会回退到
-    // 原版 Material 图标，而不是使用 CE 物品。
+    // Only build/refresh advancements after CraftEngine items finish loading, otherwise icon() falls back to
+    // vanilla Material icons instead of CE items.
     private void refreshAdvancementSystemWhenReady(boolean reloading) {
         if (!advancementsEnabled || !getServer().getPluginManager().isPluginEnabled("UltimateAdvancementAPI")) {
             disableAdvancementSystem();
             return;
         }
         if (!areCraftEngineItemsReady()) {
-            return; // CraftEngineReloadEvent 会在 CE 物品加载完成后重试此操作。
+            return; // CraftEngineReloadEvent retries this after CE items finish loading.
         }
         refreshAdvancementSystem(reloading);
     }
@@ -267,7 +265,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                 advancementManager.reload();
             }
         } catch (Throwable t) {
-            // 运行时缺少 UltimateAdvancementAPI 或版本不兼容 —— 在不启用进度系统的情况下运行。
+            // UltimateAdvancementAPI missing at runtime or version incompatible -- run without the advancement system.
             advancementManager = null;
             I18n.logWarning("advancement.award_failed", "id", "init", "error", String.valueOf(t.getMessage()));
             return;
@@ -278,7 +276,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             getServer().getPluginManager().registerEvents(achievementListener, this);
         }
 
-        // 移除所有旧版进度数据包，避免其原版进度树与 UAA 标签页重复。
+        // Remove any legacy advancement datapacks to avoid their vanilla advancement tree duplicating the UAA tab.
         queueAdvancementDatapackRemoval(I18n.formatConsole("plugin.datapack_reason_remove_legacy_advancements"));
     }
 
@@ -308,8 +306,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             I18n.logInfo("plugin.folia_scheduler");
         }
 
-        legacyBlockStorageManager = createLegacyBlockStorageManager();
-
         loadConfigs();
         logStartupSummary();
 
@@ -338,7 +334,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         getServer().getPluginManager().registerEvents(new RicePlantListener(this), this);
         getServer().getPluginManager().registerEvents(new UpperHalfLootRelayListener(), this);
 
-        // 在食用 FD 菜肴时授予 master_chef 条件，并在配置启用时应用 comfort/nourishment 效果。
+        // Awards master_chef criteria when eating FD dishes, and applies comfort/nourishment effects when enabled in config.
         foodEatListener = new FoodEatListener(this);
         getServer().getPluginManager().registerEvents(foodEatListener, this);
 
@@ -425,8 +421,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         runDisableStep("plugin.disable_step_close_cooking_pot_guis", CookingPotGui::cleanupAll);
         runDisableStep("plugin.disable_step_close_recipe_view_guis", () -> {
             RecipeViewGui.cleanupAll();
-            // 编辑器监听器会在下方通过 HandlerList 取消注册；重置其标志位，以便软重启
-            // 重新注册一个全新的监听器。
+            // The editor listener is unregistered below via HandlerList; reset its flag so a soft restart
+            // re-registers a fresh listener.
             com.huidu.farmersdelight.gui.editor.RecipeEditorListener.reset();
         });
         runDisableStep("plugin.disable_step_save_block_data", this::saveAllBlockData);
@@ -465,12 +461,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             if (itemDisplayManager != null) {
                 itemDisplayManager.cleanup();
                 itemDisplayManager = null;
-            }
-        });
-
-        runDisableStep("plugin.disable_step_shutdown_legacy_block_storage", () -> {
-            if (legacyBlockStorageManager != null) {
-                legacyBlockStorageManager.shutdown();
             }
         });
 
@@ -521,7 +511,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         cookingPotExperienceRewardConfig = null;
         strawDropConfig = null;
 
-        legacyBlockStorageManager = null;
         if (advancementManager != null) {
             advancementManager.dispose();
         }
@@ -597,15 +586,12 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         SkilletBlockBehavior.cleanupWorld(worldId);
         StoveCookingBlockBehavior.cleanupWorld(worldId);
 
-        if (legacyBlockStorageManager != null) {
-            legacyBlockStorageManager.cleanupWorld(worldId);
-        }
         if (trayManager != null) {
             trayManager.cleanupWorld(worldId);
         }
         if (itemDisplayManager != null) {
-            // 移除已卸载世界的所有代理显示实体，避免残留条目一直留在 displays 映射中，
-            // 直到某个可能永远不会触发的区块卸载事件才被清理。
+            // Remove all proxy display entities for the unloaded world, so stale entries don't linger in the displays map
+            // until a chunk unload event that may never fire.
             itemDisplayManager.cleanupWorld(worldId);
         }
     }
@@ -638,7 +624,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         if (primaryWorld == null || !primaryWorld.getUID().equals(event.getWorld().getUID())) {
             return;
         }
-        // 进度通过数据包发送；不进行按世界的数据包同步。
+        // Advancements are sent via datapack; no per-world datapack sync.
     }
 
     private void queueDatapackReload(String reason) {
@@ -758,7 +744,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             I18n.logInfo("plugin.craftengine_reload");
             refreshAfterCraftEngineReload();
             loadRecipeManagersWhenReady("plugin.refreshing_recipes_after_ce");
-            // CE 物品现已加载：（重新）构建进度，使图标使用 CE 物品。
+            // CE items are now loaded: (re)build advancements so icons use CE items.
             refreshAdvancementSystemWhenReady(true);
             CraftEngineStateUsageMonitor.logRealStateUsage(this, I18n.formatConsole("plugin.craftengine_reload_reason"));
         }, 1L);
@@ -770,6 +756,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     private void refreshAfterCraftEngineReload() {
         RecipeViewGui.clearConfigCache();
+        com.huidu.farmersdelight.gui.recipebook.RecipeBookGui.clearConfigCache();
         StoveCookingBlockBehavior.clearRecipeCache();
         clearLegacySkilletRecipeCache();
 
@@ -802,6 +789,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         loadConfigs();
         I18n.reload();
         RecipeViewGui.clearConfigCache();
+        com.huidu.farmersdelight.gui.recipebook.RecipeBookGui.clearConfigCache();
         StoveCookingBlockBehavior.clearRecipeCache();
         clearLegacySkilletRecipeCache();
 
@@ -849,6 +837,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         boolean previousAdvancementsEnabled = advancementsEnabled;
         loadConfigs();
         RecipeViewGui.clearConfigCache();
+        com.huidu.farmersdelight.gui.recipebook.RecipeBookGui.clearConfigCache();
         StoveCookingBlockBehavior.clearRecipeCache();
         clearLegacySkilletRecipeCache();
 
@@ -895,6 +884,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         customCookingPotGuiConfigs = loadCustomCookingPotGuiConfigs(guiConfig);
         recipeEditorGuiConfig = RecipeEditorGuiConfig.fromConfig(guiConfig);
         RecipeViewGui.clearConfigCache();
+        com.huidu.farmersdelight.gui.recipebook.RecipeBookGui.clearConfigCache();
         CookingPotGui.closeAllOpenGuis();
         RecipeViewGui.closeAllOpenGuis();
         I18n.logInfo("plugin.gui_configuration_reloaded", "file", "gui.yml");
@@ -902,9 +892,10 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     public void reloadLanguageFiles() {
         I18n.reload();
-        // GUI 物品名称/lore 来源于语言文件并被缓存，因此需使这些缓存失效，
-        // 并关闭已打开的 GUI，以强制用新语言重新构建。
+        // GUI item names/lore come from language files and are cached, so invalidate those caches
+        // and close open GUIs to force a rebuild in the new language.
         RecipeViewGui.clearConfigCache();
+        com.huidu.farmersdelight.gui.recipebook.RecipeBookGui.clearConfigCache();
         CookingPotGui.closeAllOpenGuis();
         RecipeViewGui.closeAllOpenGuis();
         I18n.logInfo("plugin.language_files_reloaded");
@@ -1120,6 +1111,11 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     public String getCuttingBoardInteractionMode() {
         return cuttingBoardInteractionMode;
+    }
+
+    /** When true, only items with a cutting-board recipe (or tools) may be placed on the board. */
+    public boolean isCuttingBoardRecipeOnlyPlacement() {
+        return getConfig().getBoolean("cutting-board.recipe-only-placement", false);
     }
 
     public boolean isCookingPotHopperInteractionsEnabled() {
@@ -1410,7 +1406,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         try {
             int copiedFiles;
             if (Files.exists(targetRoot)) {
-                // 首次释放是无条件进行的；该开关仅控制在后续启动时是否重新补全缺失的文件。
+                // The initial release is unconditional; this toggle only controls whether missing files are re-completed on later startups.
                 if (!getConfig().getBoolean("craftengine-resources.auto-completion", true)) {
                     return;
                 }
@@ -1517,17 +1513,17 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     }
 
     private List<String> listBundledResourceFiles(String resourceRoot) throws IOException {
-        // 主要策略：直接扫描插件 jar 的条目。jar 中不保证一定存在目录条目 ——
-        // 经 ProGuard 混淆的 Folia jar（obfuscateFoliaJar）会删除它们 ——
-        // 因此 getClassLoader().getResource(<directory>) 会返回 null，下方基于 URL 的遍历
-        // 也找不到任何内容（"No bundled CraftEngine resources found"）。按前缀读取文件条目
-        // 不受缺失目录条目以及各平台类加载器差异的影响。
+        // Primary strategy: scan the plugin jar's entries directly. Directory entries are not guaranteed to exist in the jar --
+        // the ProGuard-obfuscated Folia jar (obfuscateFoliaJar) strips them --
+        // so getClassLoader().getResource(<directory>) returns null and the URL-based walk below
+        // finds nothing ("No bundled CraftEngine resources found"). Reading file entries by prefix
+        // is unaffected by missing directory entries and per-platform classloader differences.
         List<String> fromJar = listJarFileResourceFiles(resourceRoot);
         if (fromJar != null) {
             return fromJar;
         }
 
-        // 针对解压目录/IDE/测试运行场景的回退方案，此时插件未被打包为 jar 文件。
+        // Fallback for exploded directory/IDE/test-run scenarios, where the plugin is not packaged as a jar file.
         URL resourceUrl = getClass().getClassLoader().getResource(resourceRoot);
         if (resourceUrl == null) {
             return List.of();
@@ -1548,9 +1544,9 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     }
 
     /**
-     * 通过扫描插件 jar 的条目，列出 resourceRoot 下的内置资源文件。
-     * 当插件不是从可读的 jar 文件运行时（例如解压的 IDE/测试运行），返回 null
-     * （而非空列表），以便调用方回退到基于类加载器的发现方式。
+     * Lists bundled resource files under resourceRoot by scanning the plugin jar's entries.
+     * Returns null (not an empty list) when the plugin is not run from a readable jar file
+     * (e.g. an exploded IDE/test run), so the caller can fall back to classloader-based discovery.
      */
     private List<String> listJarFileResourceFiles(String resourceRoot) throws IOException {
         File pluginJar = getFile();
@@ -1661,7 +1657,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         registerBehavior(Constants.BEHAVIOR_SKILLET, SkilletBlockBehavior.FACTORY);
         registerBehavior(Constants.BEHAVIOR_STOVE, StoveCookingBlockBehavior.FACTORY);
         registerBehavior(Constants.BEHAVIOR_TALL_CROP, TallCropBlockBehavior.FACTORY);
-        // 暂时搁置的开发中功能（tatami 配对）—— 在完成之前不注册该 behavior。
+        // Shelved work-in-progress feature (tatami pairing) -- don't register this behavior until it's finished.
         // registerBehavior(Constants.BEHAVIOR_TATAMI, TatamiPairingBehavior.FACTORY);
         registerBehavior(Constants.BEHAVIOR_UPPER_HALF_LOOT_RELAY, UpperHalfLootRelayBehavior.FACTORY);
         registerBehavior(Constants.BEHAVIOR_WILD_RICE, WildRiceBlockBehavior.FACTORY);
@@ -1690,15 +1686,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         return scheduler;
     }
 
-    private LegacyBlockStorageManager createLegacyBlockStorageManager() {
-        Path legacyStoragePath = getDataFolder().toPath().resolve("block_storage.yml");
-        if (Files.notExists(legacyStoragePath)) {
-            return null;
-        }
-        I18n.logInfo("plugin.legacy_storage_found");
-        return new LegacyBlockStorageManager(this);
-    }
-
     public boolean isDebugEnabled() {
         return debugEnabled;
     }
@@ -1715,10 +1702,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         return debugCategories.contains("*")
                 || debugCategories.contains("all")
                 || debugCategories.contains(normalized);
-    }
-
-    public LegacyBlockStorageManager getLegacyBlockStorageManager() {
-        return legacyBlockStorageManager;
     }
 
     public KnifeDropHandler getKnifeDrops() {
@@ -1792,6 +1775,13 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             guiConfig = loadGuiConfig();
         }
         return guiConfig.getConfigurationSection("recipe-view-gui");
+    }
+
+    public ConfigurationSection getRecipeBookGuiSection() {
+        if (guiConfig == null) {
+            guiConfig = loadGuiConfig();
+        }
+        return guiConfig.getConfigurationSection("recipe-book-gui");
     }
 
     private Map<String, GuiConfig> loadCustomCookingPotGuiConfigs(YamlConfiguration config) {
@@ -1973,7 +1963,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     }
 
     private String getConfiguredPrimaryLevelName() {
-        // 已缓存：最多只读取一次 server.properties。
+        // Cached: reads server.properties at most once.
         if (primaryLevelNameResolved) {
             return cachedPrimaryLevelName;
         }

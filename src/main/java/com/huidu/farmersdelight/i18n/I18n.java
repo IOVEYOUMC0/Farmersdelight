@@ -33,10 +33,10 @@ public class I18n {
     private static volatile LocaleState state = new LocaleState(Map.of(), null, FALLBACK_LOCALE);
 
     /**
-     * 语言查找状态的不可变快照：locales、currentLocale、defaultLocale 三者始终一致。
-     * 重载时只整体替换 state 这一个 volatile 引用，读取方要么看到完整的旧快照、
-     * 要么看到完整的新快照，避免在 region 线程读取时撞上 clear()/put() 破坏底层 HashMap
-     * （可能导致错误结果、NPE，甚至 region 线程在损坏的桶链上死循环）。
+     * Immutable snapshot of the locale lookup state: locales, currentLocale, and defaultLocale are always consistent.
+     * Reload replaces only the single volatile state reference wholesale, so readers see either the complete old
+     * snapshot or the complete new one, avoiding clear()/put() corrupting the underlying HashMap while a region thread reads it
+     * (which could cause wrong results, NPEs, or a region thread spinning forever on a corrupted bucket chain).
      */
     private record LocaleState(Map<String, YamlConfiguration> locales,
                                YamlConfiguration currentLocale,
@@ -56,7 +56,7 @@ public class I18n {
 
         saveDefaultLanguages();
 
-        // 全部构建在局部 map 里，完成后再一次性原子发布，期间不触碰正在被读取的旧快照。
+        // Build everything in a local map, then publish atomically all at once, never touching the old snapshot being read.
         Map<String, YamlConfiguration> loaded = new HashMap<>();
         File[] langFiles = langFolder.listFiles((dir, name) -> name.endsWith(".yml"));
         if (langFiles != null) {
@@ -351,8 +351,8 @@ public class I18n {
 
         YamlConfiguration lang = locales.get(locale.toLowerCase(Locale.ROOT));
         if (lang == null) {
-            // 在彻底回退到服务器语言之前，先尝试按语言前缀匹配（例如玩家语言 en_gb -> 已安装的 en_us），
-            // 这样客户端仍能获得其所用的语言。
+            // Before fully falling back to the server language, try matching by language prefix (e.g. player en_gb -> installed en_us),
+            // so the client still gets its own language.
             String matched = matchInstalledLocale(locales, locale);
             if (matched != null) {
                 lang = locales.get(matched);

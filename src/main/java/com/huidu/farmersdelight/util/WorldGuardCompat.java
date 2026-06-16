@@ -15,8 +15,8 @@ public final class WorldGuardCompat {
     private static volatile Boolean available;
     private static volatile Object buildFlag;
     private static volatile Object useFlag;
-    // 反射句柄只解析一次并复用，因此每次交互的 canUse/canBuild 查询都
-    // 不会重复执行 Class.forName + getMethod 以及完整的 getMethods() 扫描。
+    // Reflection handles are resolved once and reused, so per-interaction canUse/canBuild queries
+    // don't repeat Class.forName + getMethod and the full getMethods() scan.
     private static volatile Object cachedRegionContainer;
     private static volatile Method createQueryMethod;
     private static volatile Method adaptLocationMethod;

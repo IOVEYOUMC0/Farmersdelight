@@ -116,7 +116,7 @@ public final class CuttingBoardDisplayConfig {
         return resolveDisplayItem(storedItem, getOverride(storedItem));
     }
 
-    /** 复用已解析的 override 的变体，以避免重复调用 getOverride 两次。 */
+    /** Variant that reuses an already-resolved override, to avoid calling getOverride twice. */
     public ItemStack resolveDisplayItem(ItemStack storedItem, DisplayOverride override) {
         if (storedItem == null || storedItem.getType().isAir()) {
             return null;

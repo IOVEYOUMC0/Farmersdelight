@@ -1,7 +1,5 @@
 package com.huidu.farmersdelight.util;
 
-import com.huidu.farmersdelight.FarmersDelightPlugin;
-import com.huidu.farmersdelight.storage.LegacyBlockStorageManager;
 import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.World;
@@ -36,17 +34,6 @@ public final class ManagerSupport {
 
     public static boolean isInWorld(Location location, UUID worldId) {
         return location != null && location.getWorld() != null && location.getWorld().getUID().equals(worldId);
-    }
-
-    public static void removeStoredData(FarmersDelightPlugin plugin, Location location) {
-        if (plugin == null || location == null || location.getWorld() == null) {
-            return;
-        }
-
-        LegacyBlockStorageManager storage = plugin.getLegacyBlockStorageManager();
-        if (storage != null) {
-            storage.removeBlockData(normalize(location));
-        }
     }
 
     public static <T> void saveAllData(Map<Location, T> entries, BiConsumer<Location, T> saver) {

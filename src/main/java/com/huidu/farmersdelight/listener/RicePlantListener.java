@@ -43,8 +43,8 @@ public class RicePlantListener implements Listener {
     private static final Key WILD_RICE_BLOCK_KEY = Key.of(WILD_RICE_BLOCK_ID);
 
     private final FarmersDelightPlugin plugin;
-    // 会在区域线程的 runLaterAt 回调中被修改（在 Folia 上不同区域对应不同线程），
-    // 所以它必须是一个并发集合。
+    // Mutated inside runLaterAt callbacks on region threads (different regions map to different threads on Folia),
+    // so it must be a concurrent set.
     private final Set<String> pendingRiceStabilizations = ConcurrentHashMap.newKeySet();
 
     public RicePlantListener(FarmersDelightPlugin plugin) {
@@ -99,9 +99,9 @@ public class RicePlantListener implements Listener {
         }
     }
 
-    // 合并原来的 onPlantRice / onPlantWildRice 两个监听器:右键方块是高频动作,这里只解析一次手持物,
-    // 再按作物类型分派,避免每次右键都重复做一遍 NBT/自定义 ID 解析。各分支逻辑与原来逐字一致
-    // (水稻有进度奖励、与野生稻的判定顺序/无效提示条件不同),仅去掉了重复解析。
+    // Merges the former onPlantRice / onPlantWildRice listeners: right-clicking a block is a high-frequency action, so the
+    // held item is resolved once here and then dispatched by crop type, avoiding repeating NBT/custom-id parsing per click.
+    // Each branch's logic is verbatim as before (rice has an advancement reward, with different ordering/invalid-hint conditions vs wild rice); only the duplicate parsing was removed.
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onPlantRiceCrops(PlayerInteractEvent event) {
         EquipmentSlot hand = event.getHand();
@@ -764,9 +764,9 @@ public class RicePlantListener implements Listener {
         if (scheduleStabilization) {
             scheduleRiceStabilization(location.clone(), 3);
         }
-        // 即使放置本身已经成功，CraftEngine 也可能不会在同一 tick 内暴露出自定义状态。
-        // 将一次成功的 place 调用视为成功，
-        // 并交由稳定化流程在后续若干 tick 内修正承载方块。
+        // Even when the placement itself succeeded, CraftEngine may not expose the custom state within the same tick.
+        // Treat a successful place call as success,
+        // and let the stabilization routine fix up the carrier block over the next few ticks.
         return placementSucceeded || placedNow;
     }
 
@@ -780,9 +780,9 @@ public class RicePlantListener implements Listener {
             return;
         }
 
-        // CraftEngine 可能会在放置之后短暂地重写承载方块。
-        // 每个位置只保留一条稳定化链，
-        // 并在下一 tick 自定义状态仍未稳定时重试一次。
+        // CraftEngine may briefly overwrite the carrier block after placement.
+        // Keep only one stabilization chain per position,
+        // and retry once on the next tick if the custom state is still unstable.
         plugin.scheduler().runLaterAt(location, () -> {
             pendingRiceStabilizations.remove(key);
             ensureRiceStable(location, attemptsRemaining);
@@ -848,8 +848,8 @@ public class RicePlantListener implements Listener {
             player.swingMainHand();
         }
 
-        // 复用所种植方块自身的音效组，让稻谷的放置听起来像是
-        // 自然的方块放置，而不是写死的自定义音效。
+        // Reuse the planted block's own sound group so rice placement sounds like
+        // a natural block placement rather than a hardcoded custom sound.
         SoundGroup soundGroup = plantLocation.getBlock().getBlockData().getSoundGroup();
         if (soundGroup != null) {
             player.playSound(

@@ -37,9 +37,9 @@ final class RecipeFileLoader {
             }
         }
 
-        // 显式以 UTF-8 读取（与 config.yml / 语言文件一致），而不是使用已弃用的、
-        // 采用平台默认字符集的 loadConfiguration(File)，这样在默认字符集不是 UTF-8 的服务器
-        // （在 Windows 上很常见）上，非 ASCII 的配方内容才不会被损坏。
+        // Read explicitly as UTF-8 (consistent with config.yml / language files), rather than the deprecated
+        // loadConfiguration(File) that uses the platform default charset, so non-ASCII recipe content is not
+        // corrupted on servers whose default charset is not UTF-8 (common on Windows).
         try (Reader reader = new InputStreamReader(Files.newInputStream(recipesFile.toPath()), StandardCharsets.UTF_8)) {
             YamlConfiguration yaml = new YamlConfiguration();
             yaml.load(reader);

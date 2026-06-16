@@ -532,7 +532,7 @@ public class RecipeViewGuiConfig {
             return arrowSlot;
         }
 
-        // 进度条槽位（layout 中 "progress" 类型的首个槽位），解析时缓存，避免每次 GUI tick 重新扫描布局。
+        // Progress bar slot (first "progress" slot in the layout), cached at parse time to avoid rescanning the layout each GUI tick.
         public int getProgressSlot() {
             return progressSlot;
         }
@@ -615,7 +615,7 @@ public class RecipeViewGuiConfig {
             );
 
             List<Integer> ingredientSlots = List.of(19, 20, 21, 28, 29, 30);
-            // progress 槽位对应 layout 中 'G'（第 3 行第 6 列 = 23），与 getFirstSlotByType("progress") 一致。
+            // The progress slot maps to 'G' in the layout (row 3, col 6 = 23), matching getFirstSlotByType("progress").
             return new RecipeDetailConfig("Recipe Details", 6, layout, legend, items,
                     ingredientSlots, -1, List.of(43), 43, 41, -1, 14, 23, 0, -1, -1, 7);
         }
@@ -642,7 +642,7 @@ public class RecipeViewGuiConfig {
             );
 
             List<Integer> resultSlots = List.of(32, 33, 41, 42);
-            // 切菜板布局没有 progress 类型，progressSlot 为 -1，与 getFirstSlotByType("progress") 一致。
+            // The cutting board layout has no progress type, so progressSlot is -1, matching getFirstSlotByType("progress").
             return new RecipeDetailConfig("Recipe Details", 6, layout, legend, items,
                     List.of(), 28, resultSlots, 32, -1, 30, -1, -1, 0, -1, -1, -1);
         }

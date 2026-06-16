@@ -4,7 +4,6 @@ import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.block.behavior.StoveCookingBlockBehavior;
 import com.huidu.farmersdelight.config.CuttingBoardDisplayConfig;
 import com.huidu.farmersdelight.i18n.I18n;
-import com.huidu.farmersdelight.storage.LegacyBlockStorageManager;
 import com.huidu.farmersdelight.util.*;
 import com.huidu.farmersdelight.util.scheduler.PluginTask;
 import com.huidu.farmersdelight.visual.ItemDisplayManager;
@@ -274,10 +273,8 @@ public class StoveManager {
                 }
             }
         }
-        // 只有确实有炉灶(内存中)或有持久化数据时才清理,避免每次破坏普通方块都白白获取一次全局写锁
-        // + CEWorld 脏标记。
-        LegacyBlockStorageManager storage = plugin.getLegacyBlockStorageManager();
-        if (stove != null || (storage != null && storage.hasBlockData(normalized))) {
+        // Only clean up when a stove actually exists (in memory), to avoid a wasted CEWorld dirty mark on every normal block break.
+        if (stove != null) {
             removeStoredData(normalized);
         }
     }
@@ -405,20 +402,6 @@ public class StoveManager {
         if (stove != null) {
             ensureTaskRunning();
             return stove;
-        }
-
-        LegacyBlockStorageManager storage = plugin.getLegacyBlockStorageManager();
-        if (storage != null) {
-            Map<String, Object> data = storage.loadBlockData(normalized, BLOCK_TYPE);
-            if (data != null) {
-                loadStove(normalized.getWorld(), new BlockPosKey(normalized), data);
-                storage.removeBlockData(normalized);
-                stove = stoves.get(normalized);
-                if (stove != null) {
-                    markStoveDirty(normalized);
-                    return stove;
-                }
-            }
         }
 
         return getOrCreateStove(normalized);
@@ -662,10 +645,10 @@ public class StoveManager {
 
         boolean isLit = isStoveLit(state);
         BlockFace facing = CustomBlockUtils.getFacing(state).getOppositeFace();
-        // 缓存 debug 标志，这样仅在开启 debug 时才会分配每个槽位的 debug lambda。
+        // Cache the debug flag so per-slot debug lambdas are only allocated when debug is enabled.
         boolean debugStove = plugin.isDebugEnabled("stove");
-        // 以惰性方式解析 crackle 声音（一次 CE block-state 查询），每个 tick 最多解析一次，
-        // 而不是每个发出噼啪声的槽位都解析一次。
+        // Lazily resolve the crackle sound (one CE block-state lookup), at most once per tick
+        // instead of once per crackling slot.
         String crackleSound = null;
         boolean crackleResolved = false;
         ThreadLocalRandom random = ThreadLocalRandom.current();
@@ -1172,10 +1155,6 @@ public class StoveManager {
 
     private void removeStoredData(Location location) {
         markStoveDirty(location);
-        LegacyBlockStorageManager storage = plugin.getLegacyBlockStorageManager();
-        if (storage != null) {
-            storage.removeBlockData(ManagerSupport.normalize(location));
-        }
     }
 
 }

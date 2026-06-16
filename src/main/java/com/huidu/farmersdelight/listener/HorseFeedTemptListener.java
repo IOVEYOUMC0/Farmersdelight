@@ -40,9 +40,10 @@ public class HorseFeedTemptListener implements Listener {
     private int tickBudget;
     private int tickCursor;
     private PluginTask task;
-    // activeTempterPlayers 的结构变更代数。tickTemptGoals 据此缓存可索引快照,成员不变(常态)时
-    // 不再每周期 List.copyOf。代数由多线程(各 region 线程)修改,用 AtomicLong;快照缓存只在单线程的
-    // tickTemptGoals 中读写,故为普通字段。
+    // Structural-change generation of activeTempterPlayers. tickTemptGoals caches an indexable snapshot from it,
+    // skipping a per-cycle List.copyOf when membership is unchanged (the common case). The generation is mutated by
+    // multiple threads (region threads), hence AtomicLong; the snapshot cache is read/written only in the single-threaded
+    // tickTemptGoals, hence a plain field.
     private final java.util.concurrent.atomic.AtomicLong tempterGeneration = new java.util.concurrent.atomic.AtomicLong();
     private java.util.List<Map.Entry<UUID, Player>> cachedTempterSnapshot = java.util.List.of();
     private long cachedTempterSnapshotGeneration = -1L;
@@ -126,8 +127,9 @@ public class HorseFeedTemptListener implements Listener {
         }
     }
 
-    // 以下三个方法集中维护 activeTempters / activeTempterPlayers / activeTemptDefinitions 三个并行集合,
-    // 既避免散落各处的三处一致改动出错,也是 tickTemptGoals 快照缓存的唯一代数变更点。
+    // The following three methods centrally maintain the parallel collections activeTempters / activeTempterPlayers /
+    // activeTemptDefinitions, both avoiding scattered consistency errors and being the sole generation-change point for the
+    // tickTemptGoals snapshot cache.
     private void addTempter(UUID playerId, Player player, PetFoodConfig.PetFoodDefinition definition) {
         activeTempters.add(playerId);
         activeTempterPlayers.put(playerId, player);
@@ -175,7 +177,7 @@ public class HorseFeedTemptListener implements Listener {
         if (!enabled) return;
         if (activeTempterPlayers.isEmpty()) return;
 
-        // 仅在成员发生结构变更(代数改变)时才重建可索引快照,常态下复用缓存,避免每周期 List.copyOf。
+        // Rebuild the indexable snapshot only on structural membership change (generation change); otherwise reuse the cache to avoid a per-cycle List.copyOf.
         long generation = tempterGeneration.get();
         if (cachedTempterSnapshotGeneration != generation) {
             cachedTempterSnapshot = java.util.List.copyOf(activeTempterPlayers.entrySet());
@@ -244,8 +246,8 @@ public class HorseFeedTemptListener implements Listener {
             return;
         }
 
-        // player.getLocation() 已经返回一个全新的副本，且计划任务只会读取它，因此
-        // 共享单个快照是安全的——无需为每个附近的生物分别克隆。
+        // player.getLocation() already returns a fresh copy and the scheduled task only reads it, so
+        // sharing a single snapshot is safe; no need to clone per nearby mob.
         Location targetLocation = player.getLocation();
         for (Entity nearby : player.getNearbyEntities(definition.temptRange, definition.temptRange, definition.temptRange)) {
             if (nearby instanceof Mob mob) {

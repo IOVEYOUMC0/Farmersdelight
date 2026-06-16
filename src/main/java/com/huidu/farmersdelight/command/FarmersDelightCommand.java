@@ -223,6 +223,12 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
             }
         }
 
+        // Notify addons so they reload in sync. "all" already fires this inside reloadAll().
+        if (!target.equals("all")) {
+            org.bukkit.Bukkit.getPluginManager().callEvent(
+                    new com.huidu.farmersdelight.api.event.FarmersDelightReloadEvent(target));
+        }
+
         sender.sendMessage(I18n.getComponent("general.config_reloaded"));
         if (sender instanceof Player player) {
             sender.sendMessage(I18n.getComponent("general.hot_reload_warning", player));

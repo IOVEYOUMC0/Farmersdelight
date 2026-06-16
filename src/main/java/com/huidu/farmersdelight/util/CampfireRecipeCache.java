@@ -18,8 +18,8 @@ public final class CampfireRecipeCache {
     private final String debugName;
     private final Consumer<Supplier<String>> debug;
     private final AtomicReference<List<CampfireRecipe>> cache = new AtomicReference<>(List.of());
-    // 记录是否已构建过缓存，与“缓存是否为空”分开：当服务器本身没有任何营火配方时，
-    // 缓存为空但仍算已构建，避免每次查找都重新遍历整个配方表。
+    // Tracks whether the cache has been built, separate from "is the cache empty": when the server
+    // has no campfire recipes, the cache is empty but still counts as built, avoiding a full recipe-table rescan per lookup.
     private final AtomicBoolean built = new AtomicBoolean(false);
 
     public CampfireRecipeCache(String debugName, Consumer<Supplier<String>> debug) {

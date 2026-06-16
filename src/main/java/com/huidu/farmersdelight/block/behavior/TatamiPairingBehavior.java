@@ -92,7 +92,7 @@ public class TatamiPairingBehavior extends BlockBehavior {
             }
 
             if (pairWithNeighbor(world, pos, state)) {
-                // 将刚放置的方块以 paired=true 重新放置，使两个半块在视觉上保持同步。
+                // Replace the just-placed block with paired=true so both halves stay visually in sync.
                 CraftEngineBlocks.place(block.getLocation(), state.with(pairedProperty, true), false);
             }
         }

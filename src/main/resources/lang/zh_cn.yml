@@ -131,7 +131,6 @@ console:
     auraskills_skill_missing: "AuraSkills 找不到技能：{skill}"
     auraskills_xp_failed: "给玩家 {player} 添加 AuraSkills 技能 {skill} 经验失败：{error}"
     registered_block_behaviors: "已注册自定义方块行为"
-    legacy_storage_found: "发现旧版 block_storage.yml，将迁移到 CraftEngine 方块实体数据。"
     custom_cooking_pot_gui_load_failed: "加载自定义厨锅 GUI '{id}' 失败：{error}"
     invalid_cutting_board_mode: "cutting-board.interaction-mode '{value}' 无效，已回退到 stacking。"
     startup_config: "启动配置"
@@ -158,7 +157,6 @@ console:
     disable_step_cleanup_stoves: "清理炉灶"
     disable_step_cleanup_skillets: "清理煎锅"
     disable_step_cleanup_item_displays: "清理物品展示"
-    disable_step_shutdown_legacy_block_storage: "关闭旧版方块存储"
     disable_step_cleanup_cooking_pot_block_entities: "清理厨锅方块实体"
     disable_step_cleanup_cutting_board_block_entities: "清理砧板方块实体"
     disable_step_cleanup_stove_block_entities: "清理炉灶方块实体"
@@ -195,19 +193,6 @@ console:
     editor_missing_custom_pot_gui: "自定义厨锅 '{id}' 没有对应的 recipe-editor-cooking-pot-guis 配置,改用默认编辑器布局。"
     invalid_count: "配方中的 count 无效：{error}"
     invalid_chance: "配方中的 chance 无效：{error}"
-  legacy_storage:
-    save_data_failed: "保存数据 {key} 失败：{error}"
-    delete_old_backup_failed: "删除旧备份文件失败"
-    save_failed: "保存旧版方块存储失败：{error}"
-    restored_backup: "已从备份恢复旧版方块存储"
-    restore_backup_failed: "从备份恢复旧版方块存储失败。"
-    preserve_temp: "将保留临时文件供手动恢复：{path}"
-    delete_file_failed: "删除旧版存储文件失败：{file}"
-    save_world_cleanup_failed: "世界清理期间保存旧版方块存储失败：{error}"
-    save_success: "旧版方块存储已成功保存"
-    deserialize_item_failed: "反序列化 ItemStack 失败：{error}"
-    merge_existing_missing: "没有可合并的现有配置：{error}"
-    invalid_position: "方块数据中的位置格式无效：{pos}"
   visual:
     proxy_spawn_failed: "为玩家 {player} 生成 CE 代理 ItemDisplay {entity} 失败：{error}"
     proxy_destroy_failed: "为玩家 {player} 销毁 CE 代理 ItemDisplay {entity} 失败：{error}"
@@ -231,8 +216,6 @@ console:
     unregister_tick_failed: "注销 GUI tick 回调失败：{error}"
     sync_inventory_failed: "同步背包到方块实体失败：{error}"
     tick_callback_failed: "GUI tick 回调出错：{error}"
-  chunk_load:
-    unknown_block_type: "区块加载时发现未知方块类型：{type} at {x},{y},{z}"
   pet_food:
     tempt_loaded: "已加载宠物食物吸引配置：enabled={enabled}, foods={foods}, interval={interval}"
   craftengine_state:
