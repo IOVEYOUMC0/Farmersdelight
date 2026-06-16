@@ -12,14 +12,14 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 存储并更新在线玩家的自定义食物效果状态。
+ * Stores and updates custom food effect state for online players.
  */
 public final class EffectManager {
 
     private static final int DEFAULT_EFFECT_FADE_WARNING_TICKS = 200;
     private static final int DEFAULT_COMFORT_HEAL_INTERVAL_TICKS = 80;
-    // 必须与效果任务（EffectListener）的执行周期保持一致。持续时间以真实 tick 数存储，
-    // 因此每次调用之间必须按经过的真实 tick 数进行递减。
+    // Must match the effect task (EffectListener) run period. Durations are stored in real ticks,
+    // so they must be decremented by the elapsed real ticks between calls.
     private static final int TICK_INTERVAL = (int) EffectListener.TICK_INTERVAL;
     private static final Map<UUID, Integer> comfortDurations = new ConcurrentHashMap<>();
     private static final Map<UUID, Integer> nourishmentDurations = new ConcurrentHashMap<>();
@@ -43,10 +43,10 @@ public final class EffectManager {
     }
 
     /**
-     * 施加或刷新滋养（nourishment）效果。
+     * Applies or refreshes the nourishment effect.
      *
-     * @param player 目标玩家
-     * @param durationSeconds 持续时间（单位：秒）
+     * @param player the target player
+     * @param durationSeconds duration in seconds
      */
     public static void applyNourishment(Player player, int durationSeconds) {
         UUID playerId = player.getUniqueId();
@@ -64,7 +64,7 @@ public final class EffectManager {
     }
 
     /**
-     * 返回该玩家当前是否拥有滋养（nourishment）效果。
+     * Returns whether the player currently has the nourishment effect.
      */
     public static boolean hasNourishment(Player player) {
         return getNourishmentDuration(player) > 0;
@@ -83,7 +83,7 @@ public final class EffectManager {
     }
 
     /**
-     * 从该玩家身上移除滋养（nourishment）效果。
+     * Removes the nourishment effect from the player.
      */
     public static void removeNourishment(Player player) {
         nourishmentDurations.remove(player.getUniqueId());
@@ -94,7 +94,7 @@ public final class EffectManager {
     }
 
     /**
-     * 停止追踪不再拥有任何激活中自定义效果的玩家。
+     * Stops tracking a player that no longer has any active custom effect.
      */
     private static void checkAndUntrack(Player player) {
         if (!hasComfort(player) && !hasNourishment(player)) {
@@ -103,7 +103,7 @@ public final class EffectManager {
     }
 
     /**
-     * 更新剩余持续时间，并应用游戏内的滋养（nourishment）行为。
+     * Updates remaining durations and applies in-game nourishment behavior.
      */
     public static void tick(Player player) {
         if (player == null || !player.isValid() || !player.isOnline() || player.isDead()) {
@@ -195,7 +195,7 @@ public final class EffectManager {
     }
 
     /**
-     * 滋养（nourishment）会降低疲劳值，除非基于饥饿度的自然回血（natural regeneration）正在生效。
+     * Nourishment reduces exhaustion unless hunger-based natural regeneration is active.
      */
     private static void tickNourishment(Player player) {
         if (player.isDead()) {

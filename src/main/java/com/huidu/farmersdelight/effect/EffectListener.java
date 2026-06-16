@@ -16,8 +16,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 跟踪当前拥有自定义食物效果的在线玩家。
- * 每个 tick 仅处理被跟踪的玩家，以保持调度任务的轻量。
+ * Tracks online players that currently have custom food effects.
+ * Only tracked players are processed each tick, keeping the scheduled task lightweight.
  */
 public class EffectListener implements Listener {
 

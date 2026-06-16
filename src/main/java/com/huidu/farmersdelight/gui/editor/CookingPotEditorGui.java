@@ -29,10 +29,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 用于编辑单个 cooking-pot 配方的游戏内编辑器。布局、槽位位置和按钮文本来自
- * gui.yml 中的 {@code recipe-editor-gui}（或针对每个自定义锅的 {@code recipe-editor-cooking-pot-guis.<id>}）部分；
- * 聊天反馈来自 {@code gui.editor.*} 语言键。原料容量会
- * 根据解析后的布局自适应，因此自定义（大型）锅可以暴露更多的原料槽位。
+ * In-game editor for editing a single cooking-pot recipe. Layout, slot positions, and button text come from
+ * the {@code recipe-editor-gui} section of gui.yml (or {@code recipe-editor-cooking-pot-guis.<id>} per custom pot);
+ * chat feedback comes from the {@code gui.editor.*} language keys. Ingredient capacity adapts
+ * to the parsed layout, so custom (large) pots can expose more ingredient slots.
  */
 public final class CookingPotEditorGui implements EditorGui {
 

@@ -49,9 +49,9 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
     }
 
     private static final Map<UUID, Map<BlockPosKey, CuttingBoardBlockEntity>> worldBlockEntities = new ConcurrentHashMap<>();
-    // 按区块索引权威 map 中的方块实体位置：worldId -> (chunkKey -> posKey 集合)。
-    // 该索引必须与 worldBlockEntities 的结构性写入紧耦合维护，否则区块卸载时
-    // 漏掉的实体将不会被保存，导致砧板内容丢失。
+    // Index of block entity positions in the authoritative map by chunk: worldId -> (chunkKey -> posKey set).
+    // This index must be maintained in lockstep with structural writes to worldBlockEntities, otherwise
+    // missed entities won't be saved on chunk unload, losing cutting board contents.
     private static final Map<UUID, Map<Long, Set<BlockPosKey>>> chunkIndex = new ConcurrentHashMap<>();
     private static final Map<UUID, Map<BlockPosKey, Long>> recentManualInsertions = new ConcurrentHashMap<>();
     private static final long MANUAL_INSERT_GUARD_MILLIS = 250L;
@@ -121,19 +121,19 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         return Set.of();
     }
 
-    /** 由方块坐标计算区块键(高 32 位为 chunkX,低 32 位为 chunkZ)。 */
+    /** Computes the chunk key from block coordinates (high 32 bits = chunkX, low 32 bits = chunkZ). */
     private static long chunkKey(int blockX, int blockZ) {
         return (((long) (blockX >> 4)) << 32) | ((blockZ >> 4) & 0xFFFFFFFFL);
     }
 
-    /** 把一个位置加入区块索引。必须与 worldEntities 的注册写入紧耦合调用。 */
+    /** Adds a position to the chunk index. Must be called in lockstep with registrations into worldEntities. */
     private static void indexAdd(UUID worldId, BlockPosKey posKey) {
         chunkIndex.computeIfAbsent(worldId, k -> new ConcurrentHashMap<>())
                 .computeIfAbsent(chunkKey(posKey.x(), posKey.z()), k -> ConcurrentHashMap.newKeySet())
                 .add(posKey);
     }
 
-    /** 把一个位置从区块索引移除。必须与 worldEntities 的移除写入紧耦合调用。 */
+    /** Removes a position from the chunk index. Must be called in lockstep with removals from worldEntities. */
     private static void indexRemove(UUID worldId, BlockPosKey posKey) {
         Map<Long, Set<BlockPosKey>> worldChunks = chunkIndex.get(worldId);
         if (worldChunks == null) return;
@@ -146,8 +146,8 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
     }
 
     /**
-     * 仅返回指定区块内的砧板方块实体,避免对整世界做线性扫描。
-     * 以权威 map(worldBlockEntities)为准:索引里可能存在的陈旧多余项若在权威 map 中查不到则跳过。
+     * Returns only the cutting board block entities within the given chunk, avoiding a linear scan of the whole world.
+     * The authoritative map (worldBlockEntities) is the source of truth: stale extra entries in the index are skipped if not found there.
      */
     public static Map<BlockPosKey, CuttingBoardBlockEntity> getBlockEntitiesInChunk(World world, int chunkX, int chunkZ) {
         Map<BlockPosKey, CuttingBoardBlockEntity> result = new HashMap<>();
@@ -173,7 +173,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
                 world.getUID(), k -> new ConcurrentHashMap<>());
         entity.setWorld(world);
         worldEntities.put(posKey, entity);
-        // put 一定写入权威 map,故无条件维护索引。
+        // put always writes to the authoritative map, so update the index unconditionally.
         indexAdd(world.getUID(), posKey);
         return entity;
     }
@@ -192,7 +192,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         if (worldEntities != null) {
             CuttingBoardBlockEntity entity = worldEntities.remove(posKey);
             if (entity != null) {
-                // 仅在确实从权威 map 移除时才同步从索引移除,保持二者一致。
+                // Only remove from the index when actually removed from the authoritative map, keeping the two consistent.
                 indexRemove(world.getUID(), posKey);
                 entity.removeDisplayEntity();
             }
@@ -216,7 +216,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
             }
             worldEntities.clear();
         }
-        // 整世界移除时同步丢弃该世界的区块索引。
+        // When removing the whole world, also drop that world's chunk index.
         chunkIndex.remove(worldId);
     }
 
@@ -234,7 +234,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
             worldEntities.clear();
         }
         worldBlockEntities.clear();
-        // 清空权威 map 时同步清空区块索引。
+        // When clearing the authoritative map, also clear the chunk index.
         chunkIndex.clear();
         recentManualInsertions.clear();
     }
@@ -245,8 +245,8 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         }
         long now = System.currentTimeMillis();
         Map<BlockPosKey, Long> guarded = recentManualInsertions.computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>());
-        // 丢弃那些从未被后续事件消费的已过期防护条目，这样该 map 就不会
-        // 累积陈旧的位置数据。
+        // Drop expired guard entries that were never consumed by a later event, so the map doesn't
+        // accumulate stale position data.
         guarded.entrySet().removeIf(entry -> now - entry.getValue() > MANUAL_INSERT_GUARD_MILLIS);
         guarded.put(posKey, now);
     }
@@ -345,7 +345,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
 
     public static void loadBlockEntity(World world, BlockPosKey posKey) {
         if (world == null || posKey == null || !isCuttingBoardBlock(world, posKey)) return;
-        // 仅在确实新建了实体时才维护索引。
+        // Only update the index when an entity was actually newly created.
         boolean[] created = {false};
         CuttingBoardBlockEntity entity = worldBlockEntities.computeIfAbsent(world.getUID(), k -> new ConcurrentHashMap<>())
                 .computeIfAbsent(posKey, key -> {
@@ -356,18 +356,6 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
             indexAdd(world.getUID(), posKey);
         }
         entity.setWorld(world);
-    }
-
-    public static void migrateLegacyBlockData(World world, BlockPosKey posKey, Map<String, Object> data) {
-        if (world == null || posKey == null || data == null || !isCuttingBoardBlock(world, posKey)) return;
-
-        CuttingBoardBlockEntity entity = new CuttingBoardBlockEntity(posKey, world);
-        if (data.get("storedItem") instanceof ItemStack storedItem && storedItem != null && !storedItem.getType().isAir()) {
-            boolean itemCarved = data.get("itemCarved") instanceof Boolean carved && carved;
-            entity.setItem(storedItem, world, posKey, getStoredBlockFacing(world, posKey), itemCarved);
-        }
-        putBlockEntity(world, posKey, entity);
-        saveBlockEntityData(world, posKey);
     }
 
     public static boolean isCuttingBoardBlock(World world, BlockPosKey posKey) {
@@ -485,7 +473,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         if (blockEntity == null) {
             blockEntity = new CuttingBoardBlockEntity(posKey, world);
             worldEntities.put(posKey, blockEntity);
-            // put 一定写入权威 map,故无条件维护索引。
+            // put always writes to the authoritative map, so update the index unconditionally.
             indexAdd(world.getUID(), posKey);
         }
         blockEntity.setWorld(world);
@@ -606,11 +594,19 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
             return false;
         }
 
+        // Optional restriction: only recipe-input items (or tools) may be placed. Rejected items fall
+        // through to the existing "no recipe" feedback in useOnBlock. Real-time read so /fd reload applies.
+        if (FarmersDelightPlugin.getInstance().isCuttingBoardRecipeOnlyPlacement()
+                && !isTool(sourceItem)
+                && !FarmersDelightPlugin.getInstance().getCuttingBoardRecipes().hasAnyRecipeFor(sourceItem)) {
+            return false;
+        }
+
         ItemStack itemToPlace = sourceItem.clone();
         int stackLimit = getBoardStackLimit(sourceItem);
         int amountToMove = itemToPlace.getAmount();
-        // 实时读取堆叠开关，避免 /fd reload 切换 interaction-mode 后沿用过期的缓存值
-        // （与 useOnBlock 及漏斗控制器的判断保持一致）。
+        // Read the stacking switch in real time to avoid using a stale cached value after /fd reload switches interaction-mode
+        // (consistent with the checks in useOnBlock and the hopper controller).
         if (FarmersDelightPlugin.getInstance().isCuttingBoardStackingEnabled()) {
             amountToMove = Math.min(amountToMove, stackLimit);
         } else {
@@ -639,8 +635,8 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
 
     private boolean tryStackOntoBoard(CuttingBoardBlockEntity blockEntity, ItemStack mainHand, Player player,
                                       BlockFace facing, World world, BlockPosKey posKey) {
-        // 实时读取堆叠开关，避免 /fd reload 切换 interaction-mode 后沿用过期的缓存值
-        // （与 useOnBlock 及漏斗控制器的判断保持一致）。
+        // Read the stacking switch in real time to avoid using a stale cached value after /fd reload switches interaction-mode
+        // (consistent with the checks in useOnBlock and the hopper controller).
         if (!FarmersDelightPlugin.getInstance().isCuttingBoardStackingEnabled() || player.isSneaking() || isTool(mainHand)) {
             return false;
         }
@@ -685,7 +681,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
 
     @Override
     public void tick(Object thisBlock, Object[] args) {
-        // 由交互逻辑和方块实体状态进行管理。
+        // Managed by the interaction logic and block entity state.
     }
 
     @Override
@@ -878,8 +874,8 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
             ItemStack result = resultEntry.item().clone();
 
             if (fortuneLevel > 0 && resultEntry.chance() < 1.0d) {
-                // 时运（Fortune）会带来一定几率额外多产出一个次要的（基于几率的）产物。
-                // （此前的逻辑是掷骰子来减少一个产物，这会让时运变成一种负面效果。）
+                // Fortune gives a chance to produce one extra secondary (chance-based) result.
+                // (The previous logic rolled to remove a result, which made Fortune a downside.)
                 double bonusChance = Math.min(1.0d, 0.1d * fortuneLevel);
                 if (ThreadLocalRandom.current().nextDouble() < bonusChance) {
                     result.setAmount(result.getAmount() + 1);
@@ -922,9 +918,9 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
 
         if (player.getGameMode() != GameMode.CREATIVE) {
             if (tool.getItemMeta() instanceof Damageable damageable && !damageable.isUnbreakable()) {
-                // 使用物品的有效最大耐久（CraftEngine 自定义刀具会携带一个自定义的
-                // max_damage 组件）；仅当该组件缺失时才回退到原版材质的耐久值。跳过
-                // 不可损坏的物品（maxDamage <= 0），这样它们就不会在第一次切割时被销毁。
+                // Use the item's effective max durability (CraftEngine custom knives carry a custom
+                // max_damage component); fall back to the vanilla material durability only when that component
+                // is missing. Skip indestructible items (maxDamage <= 0) so they aren't destroyed on the first cut.
                 int maxDamage = damageable.hasMaxDamage() ? damageable.getMaxDamage() : tool.getType().getMaxDurability();
                 if (maxDamage > 0) {
                     int currentDamage = damageable.getDamage();

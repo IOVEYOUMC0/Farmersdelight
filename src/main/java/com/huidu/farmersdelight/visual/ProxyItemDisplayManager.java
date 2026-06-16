@@ -92,7 +92,7 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
                 "performance.proxy-item-display-sync-interval-ticks", DEFAULT_SYNC_INTERVAL_TICKS));
         syncBatchSize = Math.max(1, plugin.getConfig().getInt(
                 "performance.proxy-item-display-sync-batch-size", DEFAULT_SYNC_BATCH_SIZE));
-        // 重启同步任务，使新的间隔生效。
+        // Restart the sync task so the new interval takes effect.
         if (syncTask != null) {
             syncTask.cancel();
             syncTask = null;
@@ -322,8 +322,8 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
             return;
         }
         for (Player player : onlinePlayers.values()) {
-            // 廉价的预过滤：在为每个玩家承担调度开销之前，先跳过位于其他世界的玩家。
-            // syncDisplayForPlayer 仍会在玩家自己的线程上重新检查距离。
+            // Cheap pre-filter: skip players in other worlds before paying the per-player scheduling cost.
+            // syncDisplayForPlayer still rechecks distance on the player's own thread.
             if (player == null || !displayWorld.equals(player.getWorld())) {
                 continue;
             }
@@ -423,8 +423,8 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
             return false;
         }
 
-        // 手算平方距离，避免每次可见性判断都分配一个 Location 对象。
-        // 此处已确保同世界（见上方判断），因此不会出现跨世界异常，逻辑与 distanceSquared 等价。
+        // Compute squared distance by hand to avoid allocating a Location per visibility check.
+        // Same world is already guaranteed (see check above), so no cross-world exception; equivalent to distanceSquared.
         double dx = player.getX() - location.getX();
         double dy = player.getY() - location.getY();
         double dz = player.getZ() - location.getZ();
@@ -630,9 +630,9 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
     private static final class ProxyItemDisplay {
         private final int entityId;
         private final UUID entityUuid;
-        // 这些字段由方块所在 region 线程在 updateDisplay() 中写入，并由其他 region 线程（玩家/全局）
-        // 在 spawn/visibility 路径中读取；用 volatile 保证跨线程可见性，避免读到旧的物品/位置或撕裂状态。
-        // spawnPackets 始终最后赋值，且是一个一致的不可变 List，读取方只需读到完整的旧值或完整的新值。
+        // Written by the block's region thread in updateDisplay() and read by other region threads (player/global)
+        // on the spawn/visibility path; volatile ensures cross-thread visibility, avoiding stale item/position or torn state.
+        // spawnPackets is always assigned last and is a consistent immutable List, so readers see the full old or full new value.
         private volatile DisplaySpec spec;
         private final Set<UUID> viewers = ConcurrentHashMap.newKeySet();
         private volatile Object spawnPacket;

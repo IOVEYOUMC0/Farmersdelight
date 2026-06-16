@@ -463,6 +463,15 @@ items:
     template: farmersdelight:pie_slice_template
     data:
       item-name: <!i><l10n:block.farmersdelight.chocolate_pie_slice>
+  minecraft:pumpkin_pie:
+    material: pumpkin_pie
+    behavior:
+      type: ground_block_item
+      block: farmersdelight:pumpkin_pie
+  farmersdelight:pumpkin_pie_slice:
+    template: farmersdelight:pie_slice_template
+    data:
+      item-name: <!i><l10n:block.farmersdelight.pumpkin_pie_slice>
   farmersdelight:sweet_berry_cookie:
     template: farmersdelight:food_cut_template
     data:

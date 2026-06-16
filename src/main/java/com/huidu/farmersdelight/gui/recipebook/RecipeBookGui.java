@@ -1,14 +1,17 @@
 package com.huidu.farmersdelight.gui.recipebook;
 
+import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.api.FarmersDelightApi;
 import com.huidu.farmersdelight.api.recipe.RecipeFiller;
 import com.huidu.farmersdelight.api.recipe.RecipeType;
 import com.huidu.farmersdelight.api.recipe.ViewableRecipe;
+import com.huidu.farmersdelight.util.Text;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -23,16 +26,15 @@ import java.util.List;
  * Generic, registrable recipe book: a category menu over all registered {@link RecipeType}s, a paginated
  * recipe list per category, and a recipe detail view. Type-agnostic — it only consumes the api
  * abstractions, so it never touches FarmersDelight's own recipe types or the legacy RecipeViewGui.
+ *
+ * <p>Layout/title/buttons are config-driven via {@code gui.yml} -> {@code recipe-book-gui} (see
+ * {@link RecipeBookGuiConfig}); the list page size follows the number of {@code recipe} slots.
  */
 public final class RecipeBookGui implements InventoryHolder {
 
     enum View { MENU, LIST, DETAIL }
 
-    static final int PAGE_SIZE = 45;
-    private static final int SLOT_PREV = 45;
-    private static final int SLOT_BACK = 49;
-    private static final int SLOT_NEXT = 53;
-    private static final int SLOT_FILL = 52;
+    private static volatile RecipeBookGuiConfig cachedConfig;
 
     private View view = View.MENU;
     private RecipeType type;
@@ -40,17 +42,42 @@ public final class RecipeBookGui implements InventoryHolder {
     private int page;
     private RecipeFiller filler;
     private Inventory inventory;
+    // When only one recipe type is registered, skip the category chooser and open its list directly.
+    private boolean singleType;
 
     public static void openMenu(Player player, RecipeFiller filler) {
         RecipeBookListener.ensureRegistered();
         RecipeBookGui gui = new RecipeBookGui();
         gui.filler = filler;
-        gui.drawMenu();
+        List<RecipeType> types = FarmersDelightApi.get().recipeTypes();
+        if (types.size() == 1) {
+            gui.singleType = true;
+            gui.drawList(types.get(0), 0);
+        } else {
+            gui.drawMenu();
+        }
         player.openInventory(gui.inventory);
     }
 
     public static void openEditor(Player player, RecipeType type, String recipeId) {
         RecipeEditorView.open(player, type, recipeId);
+    }
+
+    /** Drops the cached config so the next open re-reads gui.yml (called on /fd reload gui). */
+    public static void clearConfigCache() {
+        cachedConfig = null;
+    }
+
+    private static RecipeBookGuiConfig config() {
+        RecipeBookGuiConfig cached = cachedConfig;
+        if (cached != null) {
+            return cached;
+        }
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        ConfigurationSection section = plugin != null ? plugin.getRecipeBookGuiSection() : null;
+        cached = RecipeBookGuiConfig.fromConfig(section);
+        cachedConfig = cached;
+        return cached;
     }
 
     View view() {
@@ -74,109 +101,133 @@ public final class RecipeBookGui implements InventoryHolder {
         view = View.MENU;
         type = null;
         recipeId = null;
-        inventory = Bukkit.createInventory(this, 54, Component.text("Recipes", NamedTextColor.DARK_GRAY));
-        int slot = 10;
-        for (RecipeType registered : FarmersDelightApi.get().recipeTypes()) {
-            if (slot >= 44) {
-                break;
-            }
+        RecipeBookGuiConfig.ViewConfig cfg = config().menu();
+        inventory = Bukkit.createInventory(this, cfg.size(), Text.title(cfg.title()));
+        cfg.renderChrome(inventory);
+        List<Integer> categorySlots = cfg.slotsByType("category");
+        List<RecipeType> types = FarmersDelightApi.get().recipeTypes();
+        for (int i = 0; i < categorySlots.size() && i < types.size(); i++) {
+            RecipeType registered = types.get(i);
             ItemStack icon = clone(registered.icon(), Material.BOOK);
             rename(icon, registered.title());
-            inventory.setItem(slot, icon);
-            slot += (slot % 9 == 7) ? 3 : 1;
+            inventory.setItem(categorySlots.get(i), icon);
         }
-        inventory.setItem(SLOT_BACK, button(Material.BARRIER, Component.text("Close", NamedTextColor.RED)));
     }
 
     void drawList(RecipeType target, int targetPage) {
         view = View.LIST;
         type = target;
         recipeId = null;
+        RecipeBookGuiConfig.ViewConfig cfg = config().list();
+        List<Integer> recipeSlots = cfg.slotsByType("recipe");
+        int pageSize = Math.max(1, recipeSlots.size());
         List<ViewableRecipe> recipes = target.recipes();
-        int pages = Math.max(1, (recipes.size() + PAGE_SIZE - 1) / PAGE_SIZE);
+        int pages = Math.max(1, (recipes.size() + pageSize - 1) / pageSize);
         page = Math.max(0, Math.min(targetPage, pages - 1));
-        inventory = Bukkit.createInventory(this, 54, target.title());
-        int start = page * PAGE_SIZE;
-        for (int i = 0; i < PAGE_SIZE && start + i < recipes.size(); i++) {
-            ViewableRecipe recipe = recipes.get(start + i);
-            ItemStack icon = clone(recipe.icon(), Material.PAPER);
-            inventory.setItem(i, icon);
+        inventory = Bukkit.createInventory(this, cfg.size(), target.title());
+        cfg.renderChrome(inventory);
+        int start = page * pageSize;
+        for (int i = 0; i < recipeSlots.size() && start + i < recipes.size(); i++) {
+            inventory.setItem(recipeSlots.get(i), clone(recipes.get(start + i).icon(), Material.PAPER));
         }
         if (page > 0) {
-            inventory.setItem(SLOT_PREV, button(Material.ARROW, Component.text("Previous", NamedTextColor.YELLOW)));
+            placeButton(cfg, "prev_page");
         }
         if (page < pages - 1) {
-            inventory.setItem(SLOT_NEXT, button(Material.ARROW, Component.text("Next", NamedTextColor.YELLOW)));
+            placeButton(cfg, "next_page");
         }
-        inventory.setItem(SLOT_BACK, button(Material.BARRIER, Component.text("Back", NamedTextColor.RED)));
     }
 
     void drawDetail(RecipeType target, String id, Player viewer) {
         view = View.DETAIL;
         type = target;
         recipeId = id;
+        RecipeBookGuiConfig.ViewConfig cfg = config().detail();
         ViewableRecipe recipe = target.recipe(id);
-        inventory = Bukkit.createInventory(this, 54, target.title());
+        inventory = Bukkit.createInventory(this, cfg.size(), target.title());
+        cfg.renderChrome(inventory);
         if (recipe != null) {
+            List<Integer> ingredientSlots = cfg.slotsByType("ingredient");
             List<ItemStack> inputs = recipe.inputs();
-            for (int i = 0; i < inputs.size() && i < 6; i++) {
-                inventory.setItem(10 + i, clone(inputs.get(i), Material.AIR));
+            for (int i = 0; i < ingredientSlots.size() && i < inputs.size(); i++) {
+                inventory.setItem(ingredientSlots.get(i), clone(inputs.get(i), Material.AIR));
             }
-            ItemStack result = clone(recipe.result(), Material.PAPER);
-            List<Component> lore = new ArrayList<>(recipe.infoLines(viewer));
-            if (!lore.isEmpty()) {
-                applyLore(result, lore);
+            int resultSlot = cfg.firstSlotByType("result");
+            if (resultSlot >= 0) {
+                ItemStack result = clone(recipe.result(), Material.PAPER);
+                List<Component> lore = new ArrayList<>(recipe.infoLines(viewer));
+                if (!lore.isEmpty()) {
+                    applyLore(result, lore);
+                }
+                inventory.setItem(resultSlot, result);
             }
-            inventory.setItem(16, result);
             if (filler != null) {
-                inventory.setItem(SLOT_FILL, button(Material.HOPPER,
-                        Component.text("Fill ingredients", NamedTextColor.GREEN)));
+                placeButton(cfg, "fill");
             }
         }
-        inventory.setItem(SLOT_BACK, button(Material.ARROW, Component.text("Back", NamedTextColor.RED)));
+    }
+
+    private void placeButton(RecipeBookGuiConfig.ViewConfig cfg, String type) {
+        int slot = cfg.firstSlotByType(type);
+        var item = cfg.item(type);
+        if (slot >= 0 && item != null) {
+            inventory.setItem(slot, item.createItem());
+        }
     }
 
     void handleClick(Player player, int rawSlot) {
+        RecipeBookGuiConfig config = config();
         switch (view) {
             case MENU -> {
-                if (rawSlot == SLOT_BACK) {
+                RecipeBookGuiConfig.ViewConfig cfg = config.menu();
+                if (rawSlot == cfg.firstSlotByType("back")) {
                     player.closeInventory();
                     return;
                 }
-                ItemStack clicked = inventory.getItem(rawSlot);
-                if (clicked == null || clicked.getType().isAir()) {
+                int index = cfg.slotsByType("category").indexOf(rawSlot);
+                if (index < 0) {
                     return;
                 }
-                RecipeType target = typeAtMenuSlot(rawSlot);
-                if (target != null) {
-                    drawList(target, 0);
+                List<RecipeType> types = FarmersDelightApi.get().recipeTypes();
+                if (index < types.size()) {
+                    drawList(types.get(index), 0);
                     player.openInventory(inventory);
                 }
             }
             case LIST -> {
-                if (rawSlot == SLOT_BACK) {
-                    drawMenu();
-                    player.openInventory(inventory);
-                } else if (rawSlot == SLOT_PREV) {
+                RecipeBookGuiConfig.ViewConfig cfg = config.list();
+                if (rawSlot == cfg.firstSlotByType("back")) {
+                    if (singleType) {
+                        player.closeInventory();
+                    } else {
+                        drawMenu();
+                        player.openInventory(inventory);
+                    }
+                } else if (rawSlot == cfg.firstSlotByType("prev_page")) {
                     drawList(type, page - 1);
                     player.openInventory(inventory);
-                } else if (rawSlot == SLOT_NEXT) {
+                } else if (rawSlot == cfg.firstSlotByType("next_page")) {
                     drawList(type, page + 1);
                     player.openInventory(inventory);
-                } else if (rawSlot >= 0 && rawSlot < PAGE_SIZE) {
-                    int index = page * PAGE_SIZE + rawSlot;
-                    List<ViewableRecipe> recipes = type.recipes();
-                    if (index < recipes.size()) {
-                        drawDetail(type, recipes.get(index).id(), player);
-                        player.openInventory(inventory);
+                } else {
+                    List<Integer> recipeSlots = cfg.slotsByType("recipe");
+                    int slotIndex = recipeSlots.indexOf(rawSlot);
+                    if (slotIndex >= 0) {
+                        int index = page * Math.max(1, recipeSlots.size()) + slotIndex;
+                        List<ViewableRecipe> recipes = type.recipes();
+                        if (index < recipes.size()) {
+                            drawDetail(type, recipes.get(index).id(), player);
+                            player.openInventory(inventory);
+                        }
                     }
                 }
             }
             case DETAIL -> {
-                if (rawSlot == SLOT_BACK) {
+                RecipeBookGuiConfig.ViewConfig cfg = config.detail();
+                if (rawSlot == cfg.firstSlotByType("back")) {
                     drawList(type, page);
                     player.openInventory(inventory);
-                } else if (rawSlot == SLOT_FILL && filler != null) {
+                } else if (rawSlot == cfg.firstSlotByType("fill") && filler != null) {
                     ViewableRecipe recipe = type.recipe(recipeId);
                     if (recipe != null && !filler.fill(player, recipe)) {
                         player.sendMessage(Component.text("Missing ingredients to fill.", NamedTextColor.RED));
@@ -186,31 +237,11 @@ public final class RecipeBookGui implements InventoryHolder {
         }
     }
 
-    private RecipeType typeAtMenuSlot(int slot) {
-        int cursor = 10;
-        for (RecipeType registered : FarmersDelightApi.get().recipeTypes()) {
-            if (cursor >= 44) {
-                break;
-            }
-            if (cursor == slot) {
-                return registered;
-            }
-            cursor += (cursor % 9 == 7) ? 3 : 1;
-        }
-        return null;
-    }
-
     static ItemStack clone(ItemStack source, Material fallback) {
         if (source != null && !source.getType().isAir()) {
             return source.clone();
         }
         return new ItemStack(fallback);
-    }
-
-    static ItemStack button(Material material, Component name) {
-        ItemStack item = new ItemStack(material);
-        rename(item, name);
-        return item;
     }
 
     static void rename(ItemStack item, Component name) {

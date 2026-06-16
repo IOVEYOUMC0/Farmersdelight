@@ -151,8 +151,8 @@ public class SkilletBlockBehavior extends BlockBehavior implements EntityBlock, 
             return InteractionResult.FAIL;
         }
 
-        // 这个 CraftEngine 行为和 SkilletInteractListener 都可能接收到同一次
-        // 右键点击；共享一个防抖令牌，使 handleInteract 对 skillet 最多只改动一次。
+        // Both this CraftEngine behavior and SkilletInteractListener may receive the same
+        // right-click; share a debounce token so handleInteract changes the skillet at most once.
         if (!InteractionDebouncer.tryAcquire(player.getUniqueId(), block.getLocation())) {
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
@@ -166,7 +166,7 @@ public class SkilletBlockBehavior extends BlockBehavior implements EntityBlock, 
 
     @Override
     public void tick(Object thisBlock, Object[] args) {
-        // 由 SkilletManager 管理。
+        // Managed by SkilletManager.
     }
 
     @Override

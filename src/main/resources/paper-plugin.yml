@@ -18,7 +18,7 @@ dependencies:
       load: BEFORE
       required: false
 
-# 存在本文件时 Paper 会忽略 plugin.yml，因此权限也必须在这里声明。
+# When this file exists, Paper ignores plugin.yml, so permissions must be declared here too.
 permissions:
   farmersdelight.command:
     description: 允许使用主命令

@@ -66,8 +66,8 @@ public class AchievementListener implements Listener {
     public void onEntityPickupItem(EntityPickupItemEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
 
-        // 只有刚刚拾取的物品才会改变这些进度，因此避免在每次拾取时扫描整个
-        // 背包。
+        // Only the just-picked-up item can change these advancements, so avoid
+        // scanning the whole inventory on every pickup.
         String pickedId = ItemUtils.getCustomItemId(event.getItem().getItemStack());
         if (pickedId == null) {
             return;
@@ -81,8 +81,8 @@ public class AchievementListener implements Listener {
         }
         if (Constants.BLOCK_BROWN_MUSHROOM_COLONY.equals(pickedId)
                 || Constants.BLOCK_RED_MUSHROOM_COLONY.equals(pickedId)) {
-            // 需要同时拥有两种颜色，因此仍需进行一次扫描——但仅在确实拾取到
-            // 相关物品时才执行。
+            // Both colors are required, so a scan is still needed, but only
+            // when a relevant item is actually picked up.
             checkMushroomColonyAdvancement(player);
         }
     }

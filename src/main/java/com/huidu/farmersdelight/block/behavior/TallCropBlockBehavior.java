@@ -476,10 +476,10 @@ public class TallCropBlockBehavior extends BlockBehavior {
             placeMatureLowerHalf(bukkitBlock, state);
             Block upperBlock = world.getBlockAt(pos.x(), pos.y() + 1, pos.z());
             if (upperBlock.getType().isAir()) {
-                // 匹配预期的水稻生长过渡：将下半部分推入其 supporting 阶段的
-                // 第一次骨粉操作只会在 age 为 0 时生成一个全新的上半部分，
-                // 而不会立即把溢出的生长量带入稻穗（panicles）
-                // 之中。
+                // Match expected rice growth transition: the first bone meal
+                // that pushes the lower half into its supporting stage only
+                // spawns a fresh upper half at age 0, without immediately
+                // carrying overflow growth into the panicles.
                 placeUpperHalfWithAge(upperBlock, 0);
             }
             return true;

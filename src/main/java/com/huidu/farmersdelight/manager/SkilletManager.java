@@ -6,7 +6,6 @@ import com.huidu.farmersdelight.advancement.AdvancementManager;
 import com.huidu.farmersdelight.block.behavior.SkilletBlockBehavior;
 import com.huidu.farmersdelight.config.CuttingBoardDisplayConfig;
 import com.huidu.farmersdelight.i18n.I18n;
-import com.huidu.farmersdelight.storage.LegacyBlockStorageManager;
 import com.huidu.farmersdelight.util.scheduler.PluginTask;
 import com.huidu.farmersdelight.visual.ItemDisplayManager;
 import com.huidu.farmersdelight.api.event.ProfessionCookingExperienceEvent;
@@ -83,8 +82,8 @@ public class SkilletManager {
         ItemStack displayedItem;
         BlockFace displayedFacing;
         CuttingBoardDisplayConfig.DisplayOverride displayedOverride;
-        // 上次构建视觉时所用的原始 storedItem 快照,作为 ensureVisualsExist 的廉价前置判断,
-        // 避免每 tick 重复做 facing/override/resolveDisplayItem 等昂贵的 CraftEngine 查找与分配。
+        // Snapshot of storedItem at last visual build; cheap precheck for ensureVisualsExist
+        // to avoid repeating costly facing/override/resolveDisplayItem CraftEngine lookups each tick.
         ItemStack lastVisualStoredItem;
         int cookingProgress = 0;
         int cookingDuration;
@@ -540,10 +539,8 @@ public class SkilletManager {
                 }
             }
         }
-        // 只有确实有煎锅(内存中)或有持久化数据时才清理,避免每次破坏普通方块都白白获取一次全局写锁
-        // + CEWorld 脏标记(普通方块该位置既无煎锅也无存储数据,清理是纯无用功)。
-        LegacyBlockStorageManager storage = plugin.getLegacyBlockStorageManager();
-        if (skillet != null || (storage != null && storage.hasBlockData(normalized))) {
+        // Only clean up when a skillet actually exists (in memory), to avoid a wasted CEWorld dirty mark on every normal block break.
+        if (skillet != null) {
             removeStoredData(normalized);
         }
         TrayManager trayManager = plugin.getTrayManager();
@@ -672,20 +669,6 @@ public class SkilletManager {
             return skillet;
         }
 
-        LegacyBlockStorageManager storage = plugin.getLegacyBlockStorageManager();
-        if (storage != null) {
-            Map<String, Object> data = storage.loadBlockData(normalized, BLOCK_TYPE);
-            if (data != null) {
-                loadSkillet(normalized.getWorld(), new BlockPosKey(normalized), data);
-                storage.removeBlockData(normalized);
-                skillet = skillets.get(normalized);
-                if (skillet != null) {
-                    markSkilletDirty(normalized);
-                    return skillet;
-                }
-            }
-        }
-
         return getOrCreateSkillet(normalized);
     }
 
@@ -732,7 +715,7 @@ public class SkilletManager {
         return result;
     }
 
-    /** 是否存在任何被跟踪的煎锅(廉价判断,不分配位置列表)。 */
+    /** Whether any tracked skillets exist (cheap check, no location list allocation). */
     public boolean hasTrackedSkillets() {
         return !skillets.isEmpty();
     }
@@ -936,8 +919,8 @@ public class SkilletManager {
 
         ensureVisualsExist(location, skillet);
 
-        // 没有匹配配方的煎锅永远不可能烹饪,直接冷却并返回,省去每 tick 的热源探测
-        // (热源判定常常要做 CraftEngine 自定义方块状态查找)。
+        // A skillet with no matching recipe can never cook, so just cool down and return, skipping the per-tick heat-source probe
+        // (heat detection often does a CraftEngine custom block-state lookup).
         if (skillet.currentRecipe == null) {
             skillet.cookingProgress = Math.max(0, skillet.cookingProgress - coolingDecrement);
             return;
@@ -1288,10 +1271,10 @@ public class SkilletManager {
         }
 
         int expectedCount = getModelCount(skillet.storedItem);
-        // 廉价前置判断:显示实体数量正确、且 storedItem 自上次构建以来未变化时直接返回,跳过下面昂贵的
-        // facing/override/resolveDisplayItem 解析。storedItem 变化(放入/烹饪)与配置变化都会各自走重建路径
-        // (createVisual / refreshVisualsAfterConfigReload),而方块朝向放置后不会改变。数量不符(视觉丢失等)
-        // 会让此判断不成立,从而走慢路径重建,作为兜底。
+        // Cheap precheck: return early when the display entity count is correct and storedItem is unchanged since last build,
+        // skipping the costly facing/override/resolveDisplayItem resolution below. storedItem changes (insert/cook) and config
+        // changes each take their own rebuild path (createVisual / refreshVisualsAfterConfigReload), and block facing never changes
+        // after placement. A count mismatch (lost visuals, etc.) fails this check and falls through to the slow rebuild path.
         if (skillet.displayEntityIds.size() == expectedCount
                 && skillet.lastVisualStoredItem != null
                 && skillet.lastVisualStoredItem.isSimilar(skillet.storedItem)) {
@@ -1385,10 +1368,6 @@ public class SkilletManager {
 
     private void removeStoredData(Location location) {
         markSkilletDirty(location);
-        LegacyBlockStorageManager storage = plugin.getLegacyBlockStorageManager();
-        if (storage != null) {
-            storage.removeBlockData(ManagerSupport.normalize(location));
-        }
     }
 
     private void awardUseSkillet(Player player) {

@@ -1,8 +1,8 @@
-# FarmersDelight GUI 配置
-# 界面布局、按钮、标题和贴图在此文件中配置。
-# 每个 GUI 的 layout 用字符表示槽位，legend 把字符映射到槽位类型。
-# items 下的每个按钮都可以使用 material（原版材质）或 item（CraftEngine 物品）。
-# 可选字段：name、lore、name-key、lore-keys、custom-model-data、item-model/item_model、hide-tooltip/hide_tooltip。
+# FarmersDelight GUI configuration
+# Interface layout, buttons, titles and textures are configured in this file.
+# Each GUI's layout uses characters for slots, and legend maps characters to slot types.
+# Each button under items can use material (vanilla material) or item (CraftEngine item).
+# Optional fields: name, lore, name-key, lore-keys, custom-model-data, item-model/item_model, hide-tooltip/hide_tooltip.
 
 cooking-pot-gui:
   title: "<white><offset><icon><shift:-1600>烹饪锅"
@@ -72,11 +72,11 @@ cooking-pot-gui:
     - item: farmersdelight:19
     - item: farmersdelight:20
 
-# 自定义厨锅 GUI。键名对应 CE 方块行为里的 behavior.custom.id。
-# 不写对应 id 时自动使用上面的 cooking-pot-gui。
+# Custom cooking pot GUIs. Key names match behavior.custom.id in the CE block behavior.
+# When an id has no entry, the cooking-pot-gui above is used automatically.
 cooking-pot-guis: {}
 
-# 例：
+# Example:
 # cooking-pot-guis:
 #   custom:
 #     title: "<white><offset><icon><shift:-1600>自定义厨锅"
@@ -260,11 +260,11 @@ recipe-view-gui:
         material: ARROW
         item_model: "air"
         name: "返回"
-      # 配方详情页的填入按钮。
-      # 普通点击：每个配方材料最多填入 1 个匹配物品。
-      # Shift 点击：循环匹配材料，尽量填满厨锅输入槽。
-      # 完全没有可匹配材料时不会移动锅内物品，按钮显示 fill-missing。
-      # 锅内原物品无法安全退回玩家背包时不会执行填入，按钮显示 fill-inventory-full。
+      # Fill button on the recipe detail page.
+      # Normal click: fill at most 1 matching item per recipe ingredient.
+      # Shift click: cycle through matching ingredients, filling the pot input slots as much as possible.
+      # When there is no matching ingredient at all, pot contents are not moved and the button shows fill-missing.
+      # When the original pot contents cannot be safely returned to the player inventory, no fill is performed and the button shows fill-inventory-full.
       fill:
         material: HOPPER
         name: "填入材料"
@@ -361,8 +361,95 @@ recipe-view-gui:
         item_model: "air"
         name: "返回"
 
-# 厨锅配方编辑器界面。/fd recipe edit pot <id> [组] 打开。
-# 槽位文本与材质均在此配置,代码不写死。动态数值用占位符:
+# Addon recipe book: the generic book that shows recipes registered by addons (e.g. Brewin' And Chewin'
+# kegs), opened via /fd recipe book or the recipe-menu button. When only one addon type is registered it
+# opens straight to that type's list. The list page size follows the number of `recipe` slots.
+# Layout slot types: category (menu, one per addon type), recipe (list), ingredient + result (detail),
+# prev_page, next_page, fill, back, background. List/detail titles come from the recipe type itself.
+recipe-book-gui:
+  menu:
+    title: "<white>配方"
+    rows: 6
+    layout:
+      - "XXXXXXXXX"
+      - "XCCCCCCCX"
+      - "XCCCCCCCX"
+      - "XCCCCCCCX"
+      - "XCCCCCCCX"
+      - "XXXXBXXXX"
+    legend:
+      C: category
+      B: back
+      X: background
+    items:
+      background:
+        material: GRAY_STAINED_GLASS_PANE
+        item_model: "air"
+        hide-tooltip: true
+        name: " "
+      back:
+        material: BARRIER
+        name: "关闭"
+  list:
+    rows: 6
+    layout:
+      - "RRRRRRRRR"
+      - "RRRRRRRRR"
+      - "RRRRRRRRR"
+      - "RRRRRRRRR"
+      - "RRRRRRRRR"
+      - "PXXXBXXXN"
+    legend:
+      R: recipe
+      P: prev_page
+      N: next_page
+      B: back
+      X: background
+    items:
+      background:
+        material: GRAY_STAINED_GLASS_PANE
+        item_model: "air"
+        hide-tooltip: true
+        name: " "
+      prev_page:
+        material: ARROW
+        name: "上一页"
+      next_page:
+        material: ARROW
+        name: "下一页"
+      back:
+        material: BARRIER
+        name: "返回"
+  detail:
+    rows: 6
+    layout:
+      - "XXXXXXXXX"
+      - "XIIIIIIRX"
+      - "XXXXXXXXX"
+      - "XXXXXXXXX"
+      - "XXXXXXXXX"
+      - "XXXXBXXFX"
+    legend:
+      I: ingredient
+      R: result
+      F: fill
+      B: back
+      X: background
+    items:
+      background:
+        material: GRAY_STAINED_GLASS_PANE
+        item_model: "air"
+        hide-tooltip: true
+        name: " "
+      fill:
+        material: HOPPER
+        name: "填入材料"
+      back:
+        material: ARROW
+        name: "返回"
+
+# Cooking pot recipe editor GUI. Opened with /fd recipe edit pot <id> [group].
+# Slot text and materials are configured here, not hardcoded. Dynamic values use placeholders:
 # info: {recipe_id} {type}; result-count: {count}; cook-time: {cook_time} {seconds};
 # experience: {experience}; priority: {priority}; category: {category}
 recipe-editor-gui:
@@ -463,12 +550,12 @@ recipe-editor-gui:
       lore:
         - "&7从配方文件中移除该配方。"
 
-# 自定义厨锅(大锅)编辑器界面覆盖。键名必须等于 behavior.custom.id。
-# 缺省时回退到 recipe-editor-gui,并在控制台告警一次。
-# 自定义锅可在此把 ingredient 槽扩展到更多个,以容纳更多原料。
+# Custom cooking pot (large pot) editor GUI overrides. Key names must equal behavior.custom.id.
+# When missing, falls back to recipe-editor-gui and warns once in the console.
+# Custom pots can extend the ingredient slots to more entries here, to hold more ingredients.
 recipe-editor-cooking-pot-guis: {}
 
-# 删除配方确认页。点击编辑器的删除按钮时打开。
+# Delete recipe confirmation page. Opened when clicking the editor's delete button.
 # info: {recipe_id}
 recipe-editor-confirm-delete-gui:
   title: "<white>确认删除"
@@ -505,7 +592,7 @@ recipe-editor-confirm-delete-gui:
       lore:
         - "&7返回编辑器,不删除。"
 
-# 砧板配方编辑器界面。/fd recipe edit board <id> 打开。
+# Cutting board recipe editor GUI. Opened with /fd recipe edit board <id>.
 # info: {recipe_id}; result-count: {count}; result-chance: {chance}; priority: {priority}
 recipe-cutting-board-editor-gui:
   title: "<white>砧板配方编辑器"

@@ -208,8 +208,8 @@ public class MushroomColonyBehavior extends BlockBehavior {
         if (!(item.getItemMeta() instanceof Damageable damageable) || damageable.isUnbreakable()) {
             return;
         }
-        // 使用物品的有效最大损伤值（自定义物品携带自定义的 max_damage 组件），
-        // 并在达到最大值时真正消耗掉该工具，而不是让损伤值无限制地超过耐久度继续增长。
+        // Use the item's effective max damage (custom items carry a custom max_damage component),
+        // and actually consume the tool when reached instead of letting damage grow past durability.
         int maxDamage = damageable.hasMaxDamage() ? damageable.getMaxDamage() : item.getType().getMaxDurability();
         if (maxDamage <= 0) {
             return;

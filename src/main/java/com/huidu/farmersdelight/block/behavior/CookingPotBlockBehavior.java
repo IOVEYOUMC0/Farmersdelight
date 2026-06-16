@@ -70,14 +70,14 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     public static final int INVENTORY_SIZE = 9;
 
     private static final Map<UUID, Map<BlockPosKey, CookingPotBlockEntity>> worldBlockEntities = new ConcurrentHashMap<>();
-    // 按区块索引权威 map 中的方块实体位置：worldId -> (chunkKey -> posKey 集合)。
-    // 该索引必须与 worldBlockEntities 的结构性写入紧耦合维护，否则区块卸载时
-    // 漏掉的实体将不会被保存，导致锅内内容丢失。
+    // Per-chunk index of block entity positions in the authoritative map: worldId -> (chunkKey -> set of posKeys).
+    // Must be maintained in lockstep with structural writes to worldBlockEntities, otherwise on chunk unload
+    // missed entities won't be saved, losing pot contents.
     private static final Map<UUID, Map<Long, Set<BlockPosKey>>> chunkIndex = new ConcurrentHashMap<>();
     private static final Map<UUID, Map<BlockPosKey, TextDisplay>> worldProgressDisplays = new ConcurrentHashMap<>();
-    // 这些每个锅的显示缓存也必须以世界作为键：BlockPosKey 不包含世界信息，因此在不同世界中
-    // 位于相同 x,y,z 坐标的两个锅，否则会共享进度文本 / 可见性
-    // 节流 / 配方名称状态。
+    // These per-pot display caches must also be keyed by world: BlockPosKey carries no world info, so two pots
+    // at the same x,y,z in different worlds would otherwise share progress text / visibility
+    // throttling / recipe name state.
     private static final Map<DisplayStateKey, Set<UUID>> displayVisibleToPlayers = new ConcurrentHashMap<>();
     private static final Map<DisplayStateKey, Long> displayVisibilityLastCheckTick = new ConcurrentHashMap<>();
     private static final Map<DisplayStateKey, Long> progressDisplayCreateLastCheckTick = new ConcurrentHashMap<>();
@@ -87,7 +87,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     private static final Map<BlockPosKey, Long> recentPlacements = new ConcurrentHashMap<>();
     private static final long PLACE_INTERACTION_COOLDOWN_MS = 1000L;
 
-    /** 上述每个锅的显示缓存所用的世界范围键。 */
+    /** World-scoped key used by the per-pot display caches above. */
     private record DisplayStateKey(UUID worldId, BlockPosKey pos) {
     }
 
@@ -181,7 +181,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         Map<BlockPosKey, CookingPotBlockEntity> worldEntities = worldBlockEntities.computeIfAbsent(
                 world.getUID(), k -> new ConcurrentHashMap<>());
         CookingPotBlockBehavior behavior = getBlockBehavior(location);
-        // 仅在确实新建了实体时才维护索引:mapping 函数被调用即表示进行了一次结构性写入。
+        // Maintain the index only when a new entity is actually created: the mapping function running means a structural write happened.
         boolean[] created = {false};
         CookingPotBlockEntity entity = worldEntities.computeIfAbsent(posKey, key -> {
             created[0] = true;
@@ -229,19 +229,19 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         return Set.of();
     }
 
-    /** 由方块坐标计算区块键(高 32 位为 chunkX,低 32 位为 chunkZ)。 */
+    /** Compute the chunk key from block coordinates (high 32 bits = chunkX, low 32 bits = chunkZ). */
     private static long chunkKey(int blockX, int blockZ) {
         return (((long) (blockX >> 4)) << 32) | ((blockZ >> 4) & 0xFFFFFFFFL);
     }
 
-    /** 把一个位置加入区块索引。必须与 worldEntities 的注册写入紧耦合调用。 */
+    /** Add a position to the chunk index. Must be called in lockstep with the registration write to worldEntities. */
     private static void indexAdd(UUID worldId, BlockPosKey posKey) {
         chunkIndex.computeIfAbsent(worldId, k -> new ConcurrentHashMap<>())
                 .computeIfAbsent(chunkKey(posKey.x(), posKey.z()), k -> ConcurrentHashMap.newKeySet())
                 .add(posKey);
     }
 
-    /** 把一个位置从区块索引移除。必须与 worldEntities 的移除写入紧耦合调用。 */
+    /** Remove a position from the chunk index. Must be called in lockstep with the removal write to worldEntities. */
     private static void indexRemove(UUID worldId, BlockPosKey posKey) {
         Map<Long, Set<BlockPosKey>> worldChunks = chunkIndex.get(worldId);
         if (worldChunks == null) return;
@@ -254,8 +254,8 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     }
 
     /**
-     * 仅返回指定区块内的厨锅方块实体,避免对整世界做线性扫描。
-     * 以权威 map(worldBlockEntities)为准:索引里可能存在的陈旧多余项若在权威 map 中查不到则跳过。
+     * Returns only the cooking pot block entities within the given chunk, avoiding a linear scan of the whole world.
+     * The authoritative map (worldBlockEntities) wins: stale leftover entries in the index that aren't found there are skipped.
      */
     public static Map<BlockPosKey, CookingPotBlockEntity> getBlockEntitiesInChunk(World world, int chunkX, int chunkZ) {
         Map<BlockPosKey, CookingPotBlockEntity> result = new HashMap<>();
@@ -286,7 +286,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         return locations;
     }
 
-    /** 是否存在任何被跟踪的厨锅方块实体(廉价判断,只遍历世界数,不分配位置列表)。 */
+    /** Whether any tracked cooking pot block entity exists (cheap check, only iterates worlds, allocates no location list). */
     public static boolean hasAnyBlockEntities() {
         for (Map<BlockPosKey, CookingPotBlockEntity> worldEntities : worldBlockEntities.values()) {
             if (!worldEntities.isEmpty()) {
@@ -353,7 +353,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         removeProgressDisplay(world, posKey);
         Map<BlockPosKey, CookingPotBlockEntity> worldEntities = worldBlockEntities.get(world.getUID());
         if (worldEntities != null) {
-            // 仅在确实从权威 map 移除时才同步从索引移除,保持二者一致。
+            // Remove from the index only when actually removed from the authoritative map, keeping the two in sync.
             if (worldEntities.remove(posKey) != null) {
                 indexRemove(world.getUID(), posKey);
             }
@@ -381,7 +381,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         if (worldEntities != null) {
             worldEntities.clear();
         }
-        // 整世界移除时同步丢弃该世界的区块索引。
+        // On whole-world removal, also discard that world's chunk index.
         chunkIndex.remove(worldId);
         Map<BlockPosKey, TextDisplay> displays = worldProgressDisplays.remove(worldId);
         if (displays != null) {
@@ -411,7 +411,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             worldEntities.clear();
         }
         worldBlockEntities.clear();
-        // 清空权威 map 时同步清空区块索引。
+        // When clearing the authoritative map, also clear the chunk index.
         chunkIndex.clear();
         for (Map<BlockPosKey, TextDisplay> displays : worldProgressDisplays.values()) {
             for (TextDisplay display : displays.values()) {
@@ -435,8 +435,8 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             return;
         }
         long now = System.currentTimeMillis();
-        // 这里也要清除过期的条目：isRecentlyPlaced() 仅在查询时进行清理，因此一个被放置
-        // 但从未交互过的锅，否则会一直泄漏其条目，直到清理为止。
+        // Also evict expired entries here: isRecentlyPlaced() only cleans up on query, so a pot that is placed
+        // but never interacted with would otherwise leak its entry until cleanup.
         recentPlacements.entrySet().removeIf(entry -> now - entry.getValue() > PLACE_INTERACTION_COOLDOWN_MS);
         recentPlacements.put(new BlockPosKey(location), now);
     }
@@ -581,8 +581,8 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     }
 
     private static boolean shouldCreateProgressDisplay(World world, BlockPosKey posKey) {
-        // 使用真实的服务器 tick（而非系统时钟），以便节流间隔反映实际经过的 tick 数，
-        // 并在 TPS 卡顿时优雅地降级，而不是更频繁地重新检查。
+        // Use the real server tick (not the system clock), so the throttle interval reflects actual elapsed ticks
+        // and degrades gracefully under TPS lag instead of rechecking more often.
         long currentTick = Bukkit.getCurrentTick();
         DisplayStateKey stateKey = stateKey(world, posKey);
         Long lastCheckTick = progressDisplayCreateLastCheckTick.get(stateKey);
@@ -622,8 +622,8 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             return;
         }
 
-        // 使用真实的服务器 tick（而非系统时钟），以便节流间隔反映实际经过的 tick 数，
-        // 并在 TPS 卡顿时优雅地降级，而不是更频繁地重新检查。
+        // Use the real server tick (not the system clock), so the throttle interval reflects actual elapsed ticks
+        // and degrades gracefully under TPS lag instead of rechecking more often.
         long currentTick = Bukkit.getCurrentTick();
         Long lastCheckTick = displayVisibilityLastCheckTick.get(stateKey);
         if (lastCheckTick != null && currentTick - lastCheckTick < VISIBILITY_CHECK_INTERVAL_TICKS) {
@@ -760,41 +760,6 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     public static void loadBlockEntity(World world, BlockPosKey posKey) {
         if (world == null || posKey == null || !hasCookingPotBehavior(world, posKey)) return;
         getOrCreateBlockEntity(posKey.toLocation(world));
-    }
-
-    public static void migrateLegacyBlockData(World world, BlockPosKey posKey, Map<String, Object> data) {
-        if (world == null || posKey == null || data == null || !hasCookingPotBehavior(world, posKey)) return;
-
-        CookingPotBlockEntity entity = getOrCreateBlockEntity(posKey.toLocation(world));
-        if (entity == null) return;
-
-        for (int i = 0; i < entity.getInventorySize(); i++) {
-            Object item = data.get("slot_" + i);
-            if (item instanceof ItemStack itemStack) {
-                entity.setInventorySlot(i, itemStack);
-                Object experience = data.get("slot_" + i + "_experience");
-                if (experience instanceof Number number) {
-                    entity.setSlotExperience(i, number.doubleValue());
-                }
-            }
-        }
-        if (data.get("cookingProgress") instanceof Number progress) {
-            entity.setCookingProgress(progress.intValue());
-        }
-        if (data.get("cookingDuration") instanceof Number duration) {
-            entity.setCookingDuration(duration.intValue());
-        }
-        if (data.get("mealContainer") instanceof ItemStack container) {
-            entity.setMealContainer(container);
-        }
-
-        if (entity.hasStoredContents()) {
-            TickManager tickManager = FarmersDelightPlugin.getInstance().getTickManager();
-            if (tickManager != null) {
-                tickManager.markActive(world, posKey, TickManager.BlockType.COOKING_POT);
-            }
-        }
-        saveBlockEntityData(world, posKey);
     }
 
     public static boolean isCookingPotBlock(World world, BlockPosKey posKey) {
@@ -948,7 +913,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         Map<BlockPosKey, CookingPotBlockEntity> worldEntities = worldBlockEntities.computeIfAbsent(
                 world.getUID(), k -> new ConcurrentHashMap<>());
 
-        // 仅在确实新建了实体时才维护索引(同 getOrCreateBlockEntity)。
+        // Maintain the index only when a new entity is actually created (same as getOrCreateBlockEntity).
         boolean[] created = {false};
         CookingPotBlockEntity blockEntity = worldEntities.computeIfAbsent(posKey, key -> {
             created[0] = true;
@@ -1077,7 +1042,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
 
     @Override
     public void tick(Object thisBlock, Object[] args) {
-        // 由 TickManager 管理。
+        // Managed by TickManager.
     }
 
     @Override

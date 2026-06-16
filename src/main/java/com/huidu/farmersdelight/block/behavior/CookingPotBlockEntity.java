@@ -28,11 +28,11 @@ public class CookingPotBlockEntity {
     private volatile World world;
     private volatile CookingPotLayout layout;
     private volatile String recipeGroupId;
-    // volatile：布局变更时会在 inventoryLock 保护下整体替换这些数组，但区域线程会在锁外通过
-    // getInventoryInternal() 读取它们——以此安全地发布新的引用。
+    // volatile: layout changes replace these arrays wholesale under inventoryLock, but region threads
+    // read them outside the lock via getInventoryInternal() -- this safely publishes the new references.
     private volatile ItemStack[] inventory;
-    // 库存版本号：每次 inventory 数组发生写入时递增，供 GUI 廉价判断“锅内是否变化”，
-    // 从而在未变化时跳过整轮输入槽重扫。volatile 用于让 GUI 线程读到最新值。
+    // Inventory version: incremented on every write to the inventory array, lets the GUI cheaply detect
+    // "did the pot change" and skip a full input-slot rescan when unchanged. volatile so GUI threads see the latest value.
     private volatile long inventoryVersion;
     private volatile double[] slotExperience;
     private final AtomicInteger cookingProgress = new AtomicInteger(0);
@@ -117,7 +117,7 @@ public class CookingPotBlockEntity {
             double[] oldExperience = this.slotExperience;
             this.layout = newLayout;
             this.inventory = Arrays.copyOf(oldInventory, newLayout.size());
-            // 整体替换了数组，等同于一次库存变更，递增版本号让 GUI 重扫。
+            // Replacing the arrays wholesale counts as an inventory change; bump version so the GUI rescans.
             inventoryVersion++;
             this.slotExperience = Arrays.copyOf(oldExperience, newLayout.size());
         }
@@ -148,14 +148,14 @@ public class CookingPotBlockEntity {
         }
     }
 
-    // 必须在持有 inventoryLock 时调用：所有对 inventory 数组的写入都收口到这里，顺带递增版本号，
-    // 供 GUI 廉价判断“锅内是否变化”。version++ 在锁内执行，故非原子自增是安全的。
+    // Must be called while holding inventoryLock: all writes to the inventory array funnel through here,
+    // also bumping the version for the GUI to cheaply detect "did the pot change". version++ runs under the lock, so the non-atomic increment is safe.
     private void setSlot(int slot, ItemStack item) {
         inventory[slot] = item;
         inventoryVersion++;
     }
 
-    // 供 GUI 读取的库存版本号；版本未变化时 GUI 可跳过输入槽重扫。
+    // Inventory version for the GUI to read; the GUI can skip an input-slot rescan when the version is unchanged.
     public long getInventoryVersion() {
         return inventoryVersion;
     }
@@ -285,7 +285,7 @@ public class CookingPotBlockEntity {
         }
     }
 
-    /** 仅判断输出槽是否有成品，不克隆物品（供比较器信号等高频查询使用）。 */
+    /** Only checks whether the output slots hold a result, without cloning items (for high-frequency queries like comparator signals). */
     public boolean hasMealDisplayItem() {
         synchronized (inventoryLock) {
             return hasAnyItem(layout.outputSlots());
@@ -323,7 +323,7 @@ public class CookingPotBlockEntity {
         return false;
     }
 
-    /** 在不复制 inventory 的情况下统计已填充的输入槽数量（用于红石比较器信号）。 */
+    /** Counts filled input slots without copying the inventory (for redstone comparator signals). */
     public int countFilledInputSlots() {
         int count = 0;
         synchronized (inventoryLock) {
@@ -564,8 +564,8 @@ public class CookingPotBlockEntity {
                     recipe = currentRecipe.get();
                     if (recipe == null) return false;
                 } else {
-                    // 缓存的配方在 canCook 与 finishCooking 之间可能因输入被改动（如跨 region 的 GUI 同步、
-                    // 漏斗交互）而失配；产出前在锁内再次校验，避免用零/少量原料凭空产出成品（刷物品）。
+                    // The cached recipe may become invalid between canCook and finishCooking if inputs change (e.g. cross-region GUI sync,
+                    // hopper interaction); re-validate under the lock before producing, to avoid conjuring a result from zero/insufficient ingredients (item duping).
                     FarmersDelightPlugin instance = FarmersDelightPlugin.getInstance();
                     if (instance == null || !instance.getCookingPotRecipes()
                             .canCraft(recipe, getIngredientSlotsInternal(), getContainerItemInternal())) {
@@ -875,8 +875,8 @@ public class CookingPotBlockEntity {
     public void dropExperience(World world, double totalExp) {
         if (world == null || totalExp <= 0.0D) return;
 
-        // 采用概率性取整，使得小于 1.0 的经验值（例如一次取一份食物时，每份所占的份额 < 1）
-        // 不会每次都被向下取整为 0；在多次领取后，期望的总量仍然等于配置的经验值。
+        // Use probabilistic rounding so experience values below 1.0 (e.g. the per-portion share < 1 when taking one food at a time)
+        // are not always floored to 0; over many withdrawals the expected total still equals the configured experience.
         int expValue = (int) Math.floor(totalExp);
         double fraction = totalExp - expValue;
         if (fraction > 0.0D && java.util.concurrent.ThreadLocalRandom.current().nextDouble() < fraction) {
@@ -1093,7 +1093,7 @@ public class CookingPotBlockEntity {
 
         ItemStack existing = inventory[slot];
         if (existing != null && isSimilarIgnoringStoredExperience(existing, item)) {
-            // 将合并结果限制在最大堆叠数量内，使某个槽位永远不会持有超出堆叠上限的物品。
+            // Clamp the merged result to the max stack size so a slot never holds items beyond the stack limit.
             int maxStack = Math.max(1, existing.getMaxStackSize());
             int merged = Math.min(maxStack, existing.getAmount() + item.getAmount());
             existing.setAmount(merged);
@@ -1221,10 +1221,10 @@ public class CookingPotBlockEntity {
     }
 
     public void setCookingProgress(int progress) {
-        // progress 是一个每 tick 递增的临时计数器。在每次变化时都将该方块实体标记为脏，
-        // 会导致每个正在烹饪的锅在每 tick 都重新序列化所在区块
-        //（从而使“仅保存已变更的区块”失效）。实时数值仍会在区块保存/卸载时由 saveData()
-        // 持久化，而有意义的状态变化（原料/产出）才会标记为脏。
+        // progress is a transient counter incremented every tick. Marking this block entity dirty on every change
+        // would cause every cooking pot to re-serialize its chunk every tick
+        // (defeating "save only changed chunks"). The live value is still persisted by saveData()
+        // on chunk save/unload, while meaningful state changes (ingredients/output) are what mark it dirty.
         cookingProgress.set(progress);
     }
 

@@ -51,15 +51,15 @@ public class RecipeViewGui implements InventoryHolder {
     private static final Set<String> warnedMissingCustomCookingPotDetailConfigs = ConcurrentHashMap.newKeySet();
     private static final Set<String> warnedCookingPotDetailCapacityConfigs = ConcurrentHashMap.newKeySet();
     private static final Map<Key, ItemStack> itemCache = new ConcurrentHashMap<>();
-    // 解析后的 tag 类材料选项列表（构建开销为 O(items x excludedTags x items) 外加 CE 物品创建）对于
-    // 每个 tag 材料是固定的；缓存计算结果，并在重载时清空。调用方拿到的是克隆副本，因此可以随意修改
-    // 展示用的 meta。
+    // The resolved tag ingredient option list (build cost O(items x excludedTags x items) plus CE item creation) is
+    // fixed per tag ingredient; cache the result and clear on reload. Callers get clones, so they may freely modify
+    // the display meta.
     private static final Map<RecipeIngredient.Tag, List<ItemStack>> tagOptionsCache = new ConcurrentHashMap<>();
-    // Choice（任选其一）材料的展示选项同样固定，但此前每次都重建 LinkedHashMap 并重新排序；缓存计算
-    // 结果，重载时清空。Choice 是 record（值相等），可安全作 key。调用方拿到的是逐个克隆的副本。
+    // Choice ingredient display options are likewise fixed, but were previously rebuilt and re-sorted into a
+    // LinkedHashMap each time; cache the result and clear on reload. Choice is a record (value equality), safe as a key. Callers get per-item clones.
     private static final Map<RecipeIngredient.Choice, List<ItemStack>> choiceOptionsCache = new java.util.concurrent.ConcurrentHashMap<>();
-    // 工具预览选项（按工具 key）同样固定，但此前没有缓存，导致每次配方列表绘制/工具动画都要重新做
-    // CraftEngine 标签扫描；缓存计算结果，重载时清空，调用方拿到克隆副本。
+    // Tool preview options (by tool key) are likewise fixed but were previously uncached, forcing a CraftEngine tag
+    // scan on every recipe-list draw / tool animation; cache the result, clear on reload, callers get clones.
     private static final Map<Key, List<ItemStack>> toolPreviewCache = new ConcurrentHashMap<>();
     private static final ItemStack EMPTY_SLOT_BACKGROUND = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
     private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
@@ -69,8 +69,8 @@ public class RecipeViewGui implements InventoryHolder {
     private static final int MAX_COMPACT_INGREDIENT_LINE_LENGTH = 42;
     private static final int GUI_TICK_INTERVAL_TICKS = 4;
     private static final int COOKING_PROCESS_BAR_FRAMES = 20;
-    // 这 N+1 个不同的进度条帧物品在每一帧上都是相同的；缓存它们（在重载时清空），这样每次 GUI tick 的
-    // 动画就不会每 4 个 tick 就重新创建一次 CraftEngine 物品。
+    // These N+1 distinct progress bar frame items are identical per frame; cache them (cleared on reload) so the
+    // GUI tick animation does not recreate a CraftEngine item every 4 ticks.
     private static final ItemStack[] processBarFrameCache = new ItemStack[COOKING_PROCESS_BAR_FRAMES + 1];
 
     static {
@@ -114,8 +114,8 @@ public class RecipeViewGui implements InventoryHolder {
     private final Location cookingPotLocation;
     private boolean backButtonCommandsEnabled = false;
     private boolean editMode = false;
-    // 只解析一次（惰性地，在初次打开期间，此时查看者就在锅旁 = 同一个 Folia region），并记忆化结果，
-    // 这样每 tick / 重绘的流程就永远不会重复进行跨 region 的方块读取。
+    // Resolve only once (lazily, during the first open, when the viewer is at the pot = same Folia region) and memoize the result,
+    // so the per-tick / redraw flow never repeats a cross-region block read.
     private boolean recipeGroupResolved;
     private String cachedRecipeGroupId;
     private final Consumer<Void> tickCallback;
@@ -183,8 +183,8 @@ public class RecipeViewGui implements InventoryHolder {
 
     public static void clearConfigCache() {
         cachedConfig = null;
-        // 已构建的展示物品缓存了解析后的名称/lore（来源于语言文件），所以也要把它们清空；否则
-        // /fd reload lang/gui 之后配方界面里会残留过时的物品名称。
+        // Built display items cache resolved names/lore (from the language files), so clear them too; otherwise
+        // stale item names would linger in the recipe GUI after /fd reload lang/gui.
         itemCache.clear();
         tagOptionsCache.clear();
         choiceOptionsCache.clear();
@@ -656,14 +656,14 @@ public class RecipeViewGui implements InventoryHolder {
     }
 
     private int getCookingPotProcessBarSlot(RecipeViewGuiConfig.RecipeDetailConfig detailConfig) {
-        // 优先使用解析时缓存的 progress 槽位，避免每次 GUI tick 重新扫描布局。
+        // Prefer the progress slot cached at parse time, avoiding a layout rescan each GUI tick.
         int configuredProgressSlot = detailConfig.getProgressSlot();
         if (configuredProgressSlot >= 0 && configuredProgressSlot < inventory.getSize()) {
             return configuredProgressSlot;
         }
 
-        // 兜底：配置了 arrow 槽但没有显式 progress 槽时，沿用原行为在 arrow 正下方一格放进度条
-        // （仅当该格为空/背景/装饰时才占用，避免覆盖功能槽）。
+        // Fallback: when an arrow slot is configured but no explicit progress slot, keep the original behavior of placing the bar one slot below the arrow
+        // (only occupying that slot if it is empty/background/decoration, to avoid overwriting functional slots).
         int arrowSlot = detailConfig.getArrowSlot();
         int fallbackSlot = arrowSlot + 9;
         if (arrowSlot < 0 || fallbackSlot < 0 || fallbackSlot >= inventory.getSize()) {
@@ -862,7 +862,7 @@ public class RecipeViewGui implements InventoryHolder {
                 }
             }
         } catch (Exception ignored) {
-            // 有些 action key 并不是 CE 物品 tag；回退到下面显式的工具预览。
+            // Some action keys are not CE item tags; fall back to the explicit tool preview below.
         }
 
         for (ItemStack item : ItemUtils.createVanillaTagDisplayItems(toolKey, Set.of(), Set.of())) {
@@ -1214,8 +1214,8 @@ public class RecipeViewGui implements InventoryHolder {
         return copy;
     }
 
-    // 紧凑预览只需要前 limit 个选项的克隆；这里直接从缓存列表（与 resolveTagIngredientOptions 同源、
-    // 同序）只克隆前 limit 个，避免为了显示 6 个名字而克隆全部。完整数量另用 resolveTagIngredientOptionsSize。
+    // The compact preview only needs clones of the first `limit` options; clone only the first `limit` directly from
+    // the cached list (same source and order as resolveTagIngredientOptions) instead of cloning all to show 6 names. Use resolveTagIngredientOptionsSize for the full count.
     private List<ItemStack> resolveTagIngredientOptionsPreview(RecipeIngredient.Tag tagIngredient, int limit) {
         List<ItemStack> cached = tagOptionsCache.computeIfAbsent(tagIngredient, this::computeTagIngredientOptions);
         int count = Math.min(limit, cached.size());
@@ -1226,7 +1226,7 @@ public class RecipeViewGui implements InventoryHolder {
         return copy;
     }
 
-    // 返回缓存中 tag 选项的完整数量（与预览同源），用于显示 "matches: N"，保证数量与原实现一致。
+    // Return the full count of cached tag options (same source as the preview), used to show "matches: N", keeping the count consistent with the original.
     private int resolveTagIngredientOptionsSize(RecipeIngredient.Tag tagIngredient) {
         return tagOptionsCache.computeIfAbsent(tagIngredient, this::computeTagIngredientOptions).size();
     }
@@ -1277,8 +1277,8 @@ public class RecipeViewGui implements InventoryHolder {
         }
 
         if (ingredient instanceof RecipeIngredient.Choice choiceIngredient) {
-            // 命中缓存（计算结果未克隆），逐个克隆后返回，语义与 resolveTagIngredientOptions 完全一致，
-            // 避免共享的 ItemStack 在放进 GUI 并设置 meta 时污染缓存。
+            // Hit the cache (the computed result is not cloned), clone each and return, with semantics identical to resolveTagIngredientOptions,
+            // avoiding shared ItemStacks polluting the cache when placed in the GUI and given meta.
             List<ItemStack> cached = choiceOptionsCache.computeIfAbsent(choiceIngredient, this::computeChoiceOptions);
             List<ItemStack> copy = new ArrayList<>(cached.size());
             for (ItemStack item : cached) {
@@ -1404,8 +1404,8 @@ public class RecipeViewGui implements InventoryHolder {
                 plugin.getLogger().fine(I18n.formatConsole("gui_runtime.create_item_failed", "key", key));
             }
         }
-        // 解析失败（CE 与原版注册表均未命中）时，把 BARRIER 哨兵也缓存起来，避免后续每次都重跑
-        // CraftEngine + 注册表查找。所有调用方都把 BARRIER 视作“未解析/跳过”，缓存清空时一并失效。
+        // On resolution failure (no hit in either CE or the vanilla registry), cache the BARRIER sentinel too, to avoid
+        // re-running the CraftEngine + registry lookup every time. All callers treat BARRIER as "unresolved/skip", and it is invalidated when the cache is cleared.
         ItemStack barrier = new ItemStack(Material.BARRIER);
         itemCache.put(key, barrier.clone());
         return barrier;
@@ -1443,7 +1443,7 @@ public class RecipeViewGui implements InventoryHolder {
             return formatCompactItemOptions(options, player);
         }
         if (ingredient instanceof RecipeIngredient.Tag tagIngredient) {
-            // 只克隆前 6 个用于显示名字，完整数量从缓存读取，显示结果与原实现完全一致。
+            // Clone only the first 6 for showing names; read the full count from the cache, with display identical to the original.
             int totalSize = resolveTagIngredientOptionsSize(tagIngredient);
             if (totalSize == 0) {
                 return List.of(colored("&7" + I18n.get("gui.recipe.no_matching_items", player)));
@@ -1954,7 +1954,7 @@ public class RecipeViewGui implements InventoryHolder {
         cookingPotMode = linkedRecipe.cookingPot();
         currentToolIndex = 0;
         fillButtonState = FillButtonState.READY;
-        // 保留 recipeBackState，这样关联配方的详情界面会返回到原始列表。
+        // Keep recipeBackState so the linked recipe's detail screen returns to the original list.
         navigateToState(player, GuiState.RECIPE_DETAIL);
     }
 
@@ -2771,8 +2771,8 @@ public class RecipeViewGui implements InventoryHolder {
         activeGuis.clear();
         cachedConfig = null;
         itemCache.clear();
-        // 重置该标志，这样软重新启用时会重新注册一个新的 EventDispatcher；否则在禁用移除了旧监听器之后，
-        // 配方界面的点击将不再被取消。
+        // Reset this flag so a new EventDispatcher is re-registered on soft re-enable; otherwise, after disable removes the old listener,
+        // recipe GUI clicks would no longer be cancelled.
         listenerRegistered = false;
     }
 
