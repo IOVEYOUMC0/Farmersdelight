@@ -7,7 +7,6 @@ import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.manager.SkilletManager;
 import com.huidu.farmersdelight.manager.StoveManager;
 import com.huidu.farmersdelight.manager.TickManager;
-import com.huidu.farmersdelight.storage.LegacyBlockStorageManager;
 import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
@@ -612,16 +611,11 @@ public final class DebugToolsCommand {
             return;
         }
         CookingPotBlockBehavior.saveBlockEntityData(location.getWorld(), posKey);
-
-        LegacyBlockStorageManager storage = plugin.getLegacyBlockStorageManager();
-        if (storage != null) {
-            storage.removeBlockData(posKey.toLocation(location.getWorld()));
-        }
     }
 
+    // Legacy block_storage.yml was removed; no legacy data exists anymore.
     private Map<String, Map<String, Object>> getLegacyBlockData(World world) {
-        LegacyBlockStorageManager storage = plugin.getLegacyBlockStorageManager();
-        return storage == null ? Map.of() : storage.getAllBlockDataInWorld(world);
+        return Map.of();
     }
 
     private void activateSkillet(Location location) {

@@ -43,7 +43,7 @@ public class FoodEatListener implements Listener {
                 comfortFoodDurations.put(foodId, duration);
             }
         } else {
-            // 兼容旧版插件配置结构：
+            // Compatible with the legacy plugin config structure:
             // comfort-foods-enabled: false
             // comfort-foods:
             //   item_id:
@@ -99,7 +99,7 @@ public class FoodEatListener implements Listener {
 
         AdvancementManager advancementManager = FarmersDelightPlugin.getInstance().getAdvancementManager();
 
-        // 每吃下一种不同的 FD 菜肴就完成一个 master_chef 子任务；非菜肴的 id 会被忽略。
+        // Each distinct FD dish eaten completes one master_chef criterion; non-dish ids are ignored.
         if (advancementManager != null && itemId.startsWith("farmersdelight:")) {
             advancementManager.awardCriteria(player, "master_chef", itemId.substring("farmersdelight:".length()));
         }

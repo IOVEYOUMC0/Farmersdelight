@@ -658,7 +658,7 @@ public class GuiConfig {
         }
 
         public ItemStack createItem() {
-            // 用不可变空 map，避免每次（每个槽位、每次重绘）都分配一个用不到的 HashMap。
+            // Use an immutable empty map to avoid allocating an unused HashMap every time (per slot, per redraw).
             return createItem(Map.of());
         }
 

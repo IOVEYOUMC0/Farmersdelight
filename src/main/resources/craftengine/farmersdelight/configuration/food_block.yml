@@ -4156,6 +4156,468 @@ blocks:
           - type: play_sound
             sound: minecraft:block.wool.break
           - type: cancel_event
+  farmersdelight:pumpkin_pie:
+    settings:
+      hardness: 0.5
+      template:
+        - default:hardness/none
+      sounds:
+        break: minecraft:block.wool.break
+        fall: minecraft:block.wool.fall
+        hit: minecraft:block.wool.hit
+        place: minecraft:block.wool.place
+        step: minecraft:block.wool.step
+    states:
+      properties:
+        bites:
+          type: int
+          default: 0
+          range: 0~3
+        facing:  
+          type: 4-direction
+          default: north
+      appearances:
+        count_0_east:
+          state: tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]
+          transparent: true
+          entity-renderer:
+            type: item_display
+            item: farmersdelight:pumpkin_pie_slice0
+            scale: 1.0
+            translation: 0,0,0
+            yaw: 90
+        count_0_north:
+          state: tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]
+          transparent: true
+          entity-renderer:
+            type: item_display
+            item: farmersdelight:pumpkin_pie_slice0
+            scale: 1.0
+            translation: 0,0,0
+        count_0_south:
+          state: tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]
+          transparent: true
+          entity-renderer:
+            type: item_display
+            item: farmersdelight:pumpkin_pie_slice0
+            scale: 1.0
+            translation: 0,0,0
+            yaw: 180
+        count_0_west:
+          state: tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]
+          transparent: true
+          entity-renderer:
+            type: item_display
+            item: farmersdelight:pumpkin_pie_slice0
+            scale: 1.0
+            translation: 0,0,0
+            yaw: 270
+        count_1_east:
+          state: tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]
+          transparent: true
+          entity-renderer:
+            type: item_display
+            item: farmersdelight:pumpkin_pie_slice1
+            scale: 1.0
+            translation: 0,0,0
+            yaw: 90
+        count_1_north:
+          state: tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]
+          transparent: true
+          entity-renderer:
+            type: item_display
+            item: farmersdelight:pumpkin_pie_slice1
+            scale: 1.0
+            translation: 0,0,0
+        count_1_south:
+          state: tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]
+          transparent: true
+          entity-renderer:
+            type: item_display
+            item: farmersdelight:pumpkin_pie_slice1
+            scale: 1.0
+            translation: 0,0,0
+            yaw: 180
+        count_1_west:
+          state: tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]
+          transparent: true
+          entity-renderer:
+            type: item_display
+            item: farmersdelight:pumpkin_pie_slice1
+            scale: 1.0
+            translation: 0,0,0
+            yaw: 270
+        count_2_east:
+          state: tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]
+          transparent: true
+          entity-renderer:
+            type: item_display
+            item: farmersdelight:pumpkin_pie_slice2
+            scale: 1.0
+            translation: 0,0,0
+            yaw: 90
+        count_2_north:
+          state: tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]
+          transparent: true
+          entity-renderer:
+            type: item_display
+            item: farmersdelight:pumpkin_pie_slice2
+            scale: 1.0
+            translation: 0,0,0
+        count_2_south:
+          state: tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]
+          transparent: true
+          entity-renderer:
+            type: item_display
+            item: farmersdelight:pumpkin_pie_slice2
+            scale: 1.0
+            translation: 0,0,0
+            yaw: 180
+        count_2_west:
+          state: tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]
+          transparent: true
+          entity-renderer:
+            type: item_display
+            item: farmersdelight:pumpkin_pie_slice2
+            scale: 1.0
+            translation: 0,0,0
+            yaw: 270
+        count_3_east:
+          state: tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]
+          transparent: true
+          entity-renderer:
+            type: item_display
+            item: farmersdelight:pumpkin_pie_slice3
+            scale: 1.0
+            translation: 0,0,0
+            yaw: 90
+        count_3_north:
+          state: tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]
+          transparent: true
+          entity-renderer:
+            type: item_display
+            item: farmersdelight:pumpkin_pie_slice3
+            scale: 1.0
+            translation: 0,0,0
+        count_3_south:
+          state: tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]
+          transparent: true
+          entity-renderer:
+            type: item_display
+            item: farmersdelight:pumpkin_pie_slice3
+            scale: 1.0
+            translation: 0,0,0
+            yaw: 180
+        count_3_west:
+          state: tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]
+          transparent: true
+          entity-renderer:
+            type: item_display
+            item: farmersdelight:pumpkin_pie_slice3
+            scale: 1.0
+            translation: 0,0,0
+            yaw: 270
+      variants:
+        bites=0,facing=east:
+          appearance: count_0_east
+        bites=0,facing=north:
+          appearance: count_0_north
+        bites=0,facing=south:
+          appearance: count_0_south
+        bites=0,facing=west:
+          appearance: count_0_west
+        bites=1,facing=east:
+          appearance: count_1_east
+        bites=1,facing=north:
+          appearance: count_1_north
+        bites=1,facing=south:
+          appearance: count_1_south
+        bites=1,facing=west:
+          appearance: count_1_west
+        bites=2,facing=east:
+          appearance: count_2_east
+        bites=2,facing=north:
+          appearance: count_2_north
+        bites=2,facing=south:
+          appearance: count_2_south
+        bites=2,facing=west:
+          appearance: count_2_west
+        bites=3,facing=east:
+          appearance: count_3_east
+        bites=3,facing=north:
+          appearance: count_3_north
+        bites=3,facing=south:
+          appearance: count_3_south
+        bites=3,facing=west:
+          appearance: count_3_west
+    events:
+      - on: break
+        conditions:
+          - type: match_block_property
+            properties:
+              bites: 0
+        functions:
+          - type: drop_loot
+            x: <arg:block.block_x> + 0.5
+            y: <arg:block.block_y> + 0.5
+            z: <arg:block.block_z> + 0.5
+            loot:
+              pools:
+                - rolls: 1
+                  entries:
+                    - type: item
+                      item: minecraft:pumpkin_pie
+                      count: 1
+      - on: right_click
+        conditions:
+          - type: match_item
+            item: "farmersdelight:.*_knife"
+            regex: true
+          - type: match_block_property
+            properties:
+              bites: 0
+        functions:
+          - type: update_interaction_tick
+          - type: drop_loot
+            x: <arg:block.block_x> + 0.5
+            y: <arg:block.block_y> + 0.3
+            z: <arg:block.block_z> + 0.5
+            loot:
+              pools:
+                - rolls: 1
+                  entries:
+                    - type: item
+                      item: farmersdelight:pumpkin_pie_slice
+                      count: 1
+          - type: update_block_property
+            properties:
+              bites: 1
+          - type: swing_hand
+          - type: play_sound
+            sound: farmersdelight:block.food.slice
+          - type: cancel_event
+      - on: right_click
+        conditions:
+          - type: match_item
+            item: "farmersdelight:.*_knife"
+            regex: true
+          - type: match_block_property
+            properties:
+              bites: 1
+        functions:
+          - type: update_interaction_tick
+          - type: drop_loot
+            x: <arg:block.block_x> + 0.5
+            y: <arg:block.block_y> + 0.3
+            z: <arg:block.block_z> + 0.5
+            loot:
+              pools:
+                - rolls: 1
+                  entries:
+                    - type: item
+                      item: farmersdelight:pumpkin_pie_slice
+                      count: 1
+          - type: update_block_property
+            properties:
+              bites: 2
+          - type: swing_hand
+          - type: play_sound
+            sound: farmersdelight:block.food.slice
+          - type: cancel_event
+      - on: right_click
+        conditions:
+          - type: match_item
+            item: "farmersdelight:.*_knife"
+            regex: true
+          - type: match_block_property
+            properties:
+              bites: 2
+        functions:
+          - type: update_interaction_tick
+          - type: drop_loot
+            x: <arg:block.block_x> + 0.5
+            y: <arg:block.block_y> + 0.3
+            z: <arg:block.block_z> + 0.5
+            loot:
+              pools:
+                - rolls: 1
+                  entries:
+                    - type: item
+                      item: farmersdelight:pumpkin_pie_slice
+                      count: 1
+          - type: update_block_property
+            properties:
+              bites: 3
+          - type: swing_hand
+          - type: play_sound
+            sound: farmersdelight:block.food.slice
+          - type: cancel_event
+      - on: right_click
+        conditions:
+          - type: match_item
+            item: "farmersdelight:.*_knife"
+            regex: true
+          - type: match_block_property
+            properties:
+              bites: 3
+        functions:
+          - type: update_interaction_tick
+          - type: drop_loot
+            x: <arg:block.block_x> + 0.5
+            y: <arg:block.block_y> + 0.3
+            z: <arg:block.block_z> + 0.5
+            loot:
+              pools:
+                - rolls: 1
+                  entries:
+                    - type: item
+                      item: farmersdelight:pumpkin_pie_slice
+                      count: 1
+          - type: break_block
+            x: <arg:block.block_x>
+            y: <arg:block.block_y>
+            z: <arg:block.block_z>
+          - type: swing_hand
+          - type: play_sound
+            sound: farmersdelight:block.food.slice
+          - type: cancel_event
+      - on: right_click
+        conditions:
+          - type: expression  
+            expression: "<arg:player.food> < 20"
+          - type: inverted
+            term:
+              type: match_item
+              item: "farmersdelight:.*_knife"
+              regex: true
+          - type: match_block_property
+            properties:
+              bites: 0
+        functions:
+          - type: update_interaction_tick
+          - type: set_food
+            target: self
+            food: 6
+            add: true
+          - type: set_saturation
+            target: self
+            saturation: 3
+            add: true
+          - type: update_block_property
+            properties:
+              bites: 1
+          - type: swing_hand
+          - type: play_sound
+            sound: minecraft:entity.generic.eat
+          - type: potion_effect
+            target: self
+            potion-effect: minecraft:speed
+            duration: 600
+            amplifier: 0
+            particles: false
+      - on: right_click
+        conditions:
+          - type: expression
+            expression: "<arg:player.food> < 20"
+          - type: inverted
+            term:
+              type: match_item
+              item: "farmersdelight:.*_knife"
+              regex: true
+          - type: match_block_property
+            properties:
+              bites: 1
+        functions:
+          - type: update_interaction_tick
+          - type: set_food
+            target: self
+            food: 6
+            add: true
+          - type: set_saturation
+            target: self
+            saturation: 3
+            add: true
+          - type: update_block_property
+            properties:
+              bites: 2
+          - type: swing_hand
+          - type: play_sound
+            sound: minecraft:entity.generic.eat
+          - type: potion_effect
+            target: self
+            potion-effect: minecraft:speed
+            duration: 600
+            amplifier: 0
+            particles: false
+      - on: right_click
+        conditions:
+          - type: expression
+            expression: "<arg:player.food> < 20"
+          - type: inverted
+            term:
+              type: match_item
+              item: "farmersdelight:.*_knife"
+              regex: true
+          - type: match_block_property
+            properties:
+              bites: 2
+        functions:
+          - type: update_interaction_tick
+          - type: set_food
+            target: self
+            food: 6
+            add: true
+          - type: set_saturation
+            target: self
+            saturation: 4
+            add: true
+          - type: update_block_property
+            properties:
+              bites: 3
+          - type: swing_hand
+          - type: play_sound
+            sound: minecraft:entity.generic.eat
+          - type: potion_effect
+            target: self
+            potion-effect: minecraft:speed
+            duration: 600
+            amplifier: 0
+            particles: false
+      - on: right_click  
+        conditions:
+          - type: expression
+            expression: "<arg:player.food> < 20"
+          - type: inverted
+            term:
+              type: match_item
+              item: "farmersdelight:.*_knife"
+              regex: true
+          - type: match_block_property
+            properties:
+              bites: 3
+        functions:
+          - type: update_interaction_tick
+          - type: set_food
+            target: self
+            food: 6
+            add: true
+          - type: set_saturation
+            target: self
+            saturation: 4
+            add: true
+          - type: break_block
+            x: <arg:block.block_x>
+            y: <arg:block.block_y>
+            z: <arg:block.block_z>
+          - type: swing_hand
+          - type: play_sound
+            sound: minecraft:entity.generic.eat
+          - type: potion_effect
+            target: self
+            potion-effect: minecraft:speed
+            duration: 600
+            amplifier: 0
+            particles: false
 items:
   farmersdelight:apple_pie_slice0:
     material: paper
@@ -4382,3 +4844,23 @@ items:
     data:
       item-name: <!i><l10n:block.farmersdelight.rice_roll_medley_block>
     model: farmersdelight:block/rice_roll_medley_block_leftovers
+  farmersdelight:pumpkin_pie_slice0:
+    material: paper
+    data:
+      item-name: <!i><l10n:block.farmersdelight.pumpkin_pie>
+    model: farmersdelight:block/pumpkin_pie
+  farmersdelight:pumpkin_pie_slice1:
+    material: paper
+    data:
+      item-name: <!i><l10n:block.farmersdelight.pumpkin_pie>
+    model: farmersdelight:block/pumpkin_pie_slice1
+  farmersdelight:pumpkin_pie_slice2:
+    material: paper
+    data:
+      item-name: <!i><l10n:block.farmersdelight.pumpkin_pie>
+    model: farmersdelight:block/pumpkin_pie_slice2
+  farmersdelight:pumpkin_pie_slice3:
+    material: paper
+    data:
+      item-name: <!i><l10n:block.farmersdelight.pumpkin_pie>
+    model: farmersdelight:block/pumpkin_pie_slice3

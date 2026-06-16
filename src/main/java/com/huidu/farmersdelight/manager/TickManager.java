@@ -74,11 +74,12 @@ public class TickManager {
     private static final int DEFAULT_ACTIVE_BLOCK_WARNING_THRESHOLD = 1000;
     private static final int CLEANUP_INTERVAL = 6000;
     private static final int DEFAULT_COOKING_POT_TICK_BUDGET = 512;
-    // 单次处理累加的最大补偿 tick 数。设得足够大,使被 tick 预算饿到(活跃方块数远超预算)的厨锅不会
-    // 丢失真实经过的烹饪时间。这里不会造成“重载瞬间烹饪一大批”:tickCookingPot 用 Math.min(duration, ...)
-    // 把进度封顶在配方时长,且每次处理最多 finishCooking 一次(单个 if、非循环),无论补偿值多大都只产出一批;
-    // 同时 previousTick 在(重新)激活时被重置、且每次被选中处理都会刷新,因此补偿值永远不包含未加载时段。
-    // 上限仍保留一个合理边界,避免冷却分支 elapsedTicks*2 处的 int 溢出。
+    // Max catch-up ticks applied in a single processing pass. Large enough that cooking pots starved by the tick budget
+    // (active blocks far exceeding the budget) don't lose real elapsed cooking time. This does not "cook a huge batch on reload":
+    // tickCookingPot uses Math.min(duration, ...) to cap progress at the recipe duration, and finishes cooking at most once per
+    // pass (a single if, not a loop), producing only one batch regardless of catch-up size; previousTick is also reset on
+    // (re)activation and refreshed every time the pot is selected, so catch-up never includes unloaded time.
+    // The cap still keeps a sane bound to avoid int overflow at elapsedTicks*2 in the cooldown branch.
     private static final int MAX_ELAPSED_TICKS = 72_000;
     public TickManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
@@ -217,8 +218,8 @@ public class TickManager {
     }
 
     private void pruneOldPerformanceWarnings() {
-        // warning-times 映射以 world/chunk 为键，否则会无限增长；移除
-        // 已超过冷却时间的条目（同一键的后续告警会重新添加它）。
+        // The warning-times map is keyed by world/chunk and would grow unbounded otherwise; remove
+        // entries past the cooldown (a later warning for the same key re-adds it).
         long cutoff = System.currentTimeMillis() - performanceWarningCooldownMillis;
         performanceWarningTimes.entrySet().removeIf(entry -> entry.getValue() < cutoff);
     }
@@ -583,8 +584,8 @@ public class TickManager {
             return;
         }
 
-        // 在锅的 tick 中保持 buffer -> output 的推进，以匹配旧插件的行为，
-        // 而不是仅依赖 GUI 刷新或手动拾取输出。
+        // Keep advancing buffer -> output during the pot tick to match the old plugin's behavior,
+        // rather than relying only on GUI refresh or manual output pickup.
         entity.tryMovePendingToOutput();
 
         if (!entity.hasStoredContents()) {
@@ -604,8 +605,8 @@ public class TickManager {
         }
 
         entity.setHasHeatSource(hasHeat);
-        // 从已获取的 block state 解析 behavior，而不是每个 tick 都在 emitCookingPotEffects 内部
-        // 重新读取该方块（及其 CE 自定义状态）。
+        // Resolve the behavior from the already-fetched block state, instead of re-reading the block
+        // (and its CE custom state) inside emitCookingPotEffects every tick.
         CookingPotBlockBehavior behavior = CustomBlockUtils.getBehavior(state, CookingPotBlockBehavior.class);
         emitCookingPotEffects(world, posKey, entity, hasHeat, behavior);
 
@@ -634,9 +635,9 @@ public class TickManager {
                     return;
                 }
                 if (entity.finishCooking(world, blockLoc)) {
-                    // 烹饪成功后保持锅处于活跃状态，使剩余的
-                    // 食材可以立即开始下一批，以匹配
-                    // 旧插件的行为。
+                    // Keep the pot active after a successful cook so remaining
+                    // ingredients can immediately start the next batch, to match
+                    // the old plugin's behavior.
                     recipe = entity.getCurrentRecipe();
                 }
             }

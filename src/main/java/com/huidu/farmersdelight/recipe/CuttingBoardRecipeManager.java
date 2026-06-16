@@ -14,8 +14,8 @@ import java.util.*;
 public class CuttingBoardRecipeManager {
 
     private final FarmersDelightPlugin plugin;
-    // 在重载时整体重建；通过 volatile 写操作整体发布，使得 Folia 区域/实体线程上的读取方
-    // 永远不会观察到一个被清空了一半的 map。发布之后绝不可原地修改。
+    // Rebuilt as a whole on reload; published as a whole via volatile writes so readers on Folia
+    // region/entity threads never observe a half-cleared map. Never mutate in place after publishing.
     private volatile Map<String, CuttingBoardRecipe> recipes = Map.of();
     private volatile List<CuttingBoardRecipe> sortedRecipes = List.of();
     // Recipes registered at runtime by addons via the public API; kept separate so they survive a
@@ -62,8 +62,8 @@ public class CuttingBoardRecipeManager {
             throw new IllegalArgumentException("Invalid input ingredient: " + inputStr);
         }
 
-        // 支持标量形式的 'tool:' 或复数形式的 'tools:' 列表（或两者同时存在）。'tools' 优先；
-        // 'tool' 作为兜底。只要求两者中至少存在一个。
+        // Support a scalar 'tool:' or a plural 'tools:' list (or both). 'tools' takes precedence;
+        // 'tool' is the fallback. Only requires at least one of the two.
         String toolStr = section.getString("tool");
         List<String> toolStrings = section.getStringList("tools");
         if (toolStrings.isEmpty() && toolStr != null && !toolStr.isBlank()) {
@@ -180,8 +180,8 @@ public class CuttingBoardRecipeManager {
 
     public CuttingBoardRecipe matchRecipe(ItemStack input, ItemStack tool) {
         String toolId = ItemUtils.getCustomItemId(tool);
-        // ToolContext 只取决于工具本身，与具体配方无关；在循环外构建一次，避免每个配方都重复
-        // 做 CraftEngine 标签/ID 查找和集合分配（切割是逐次点击的热路径）。
+        // ToolContext depends only on the tool itself, not on any recipe; build it once outside the loop to avoid
+        // repeating CraftEngine tag/ID lookups and set allocations per recipe (cutting is a per-click hot path).
         ToolContext toolContext = ToolContext.from(plugin, tool, toolId);
 
         for (CuttingBoardRecipe recipe : sortedRecipes) {

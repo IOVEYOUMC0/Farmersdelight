@@ -131,7 +131,6 @@ console:
     auraskills_skill_missing: "AuraSkills skill was not found: {skill}"
     auraskills_xp_failed: "Failed to add AuraSkills XP for skill {skill} to {player}: {error}"
     registered_block_behaviors: "Registered custom block behaviors"
-    legacy_storage_found: "Found legacy block_storage.yml; it will be migrated into CraftEngine block entity data."
     custom_cooking_pot_gui_load_failed: "Failed to load custom cooking pot GUI '{id}': {error}"
     invalid_cutting_board_mode: "Invalid cutting-board.interaction-mode '{value}', falling back to stacking."
     startup_config: "Startup config"
@@ -158,7 +157,6 @@ console:
     disable_step_cleanup_stoves: "cleanup stoves"
     disable_step_cleanup_skillets: "cleanup skillets"
     disable_step_cleanup_item_displays: "cleanup item displays"
-    disable_step_shutdown_legacy_block_storage: "shutdown legacy block storage"
     disable_step_cleanup_cooking_pot_block_entities: "cleanup cooking pot block entities"
     disable_step_cleanup_cutting_board_block_entities: "cleanup cutting board block entities"
     disable_step_cleanup_stove_block_entities: "cleanup stove block entities"
@@ -195,19 +193,6 @@ console:
     editor_missing_custom_pot_gui: "No recipe-editor-cooking-pot-guis entry for custom pot '{id}'; using the default editor layout."
     invalid_count: "Invalid count for recipe: {error}"
     invalid_chance: "Invalid chance for recipe: {error}"
-  legacy_storage:
-    save_data_failed: "Failed to save data {key}: {error}"
-    delete_old_backup_failed: "Failed to delete old backup file"
-    save_failed: "Failed to save legacy block storage: {error}"
-    restored_backup: "Restored legacy block storage from backup"
-    restore_backup_failed: "Failed to restore legacy block storage from backup."
-    preserve_temp: "Attempting to preserve temp file for manual recovery: {path}"
-    delete_file_failed: "Failed to delete legacy storage file: {file}"
-    save_world_cleanup_failed: "Failed to save legacy block storage during world cleanup: {error}"
-    save_success: "Legacy block storage saved successfully"
-    deserialize_item_failed: "Failed to deserialize ItemStack: {error}"
-    merge_existing_missing: "No existing config to merge: {error}"
-    invalid_position: "Invalid position format in block data: {pos}"
   visual:
     proxy_spawn_failed: "Failed to spawn CE proxy item display {entity} for {player}: {error}"
     proxy_destroy_failed: "Failed to destroy CE proxy item display {entity} for {player}: {error}"
@@ -231,8 +216,6 @@ console:
     unregister_tick_failed: "Error unregistering GUI tick callback: {error}"
     sync_inventory_failed: "Error syncing inventory to block entity: {error}"
     tick_callback_failed: "Error in GUI tick callback: {error}"
-  chunk_load:
-    unknown_block_type: "Unknown block type in chunk load: {type} at {x},{y},{z}"
   pet_food:
     tempt_loaded: "Loaded pet-food tempt config: enabled={enabled}, foods={foods}, interval={interval}"
   craftengine_state:

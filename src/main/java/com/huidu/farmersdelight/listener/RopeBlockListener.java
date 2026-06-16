@@ -31,9 +31,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RopeBlockListener implements Listener {
 
     private final FarmersDelightPlugin plugin;
-    // 已经为下一 tick 排队了绳索刷新的位置。用于合并高频的
-    // BlockPhysicsEvent 风暴（绳索附近的流水 / 红石 / 活塞），使每个位置
-    // 每 tick 最多只扫描和刷新一次，而不是每个物理事件都处理一次。
+    // Positions already queued for a rope refresh next tick. Used to coalesce high-frequency
+    // BlockPhysicsEvent storms (flowing water / redstone / pistons near ropes), so each position
+    // is scanned and refreshed at most once per tick rather than once per physics event.
     private final Set<String> pendingRopeRefreshes = ConcurrentHashMap.newKeySet();
 
     public RopeBlockListener(FarmersDelightPlugin plugin) {
@@ -118,8 +118,8 @@ public class RopeBlockListener implements Listener {
 
         World world = block.getWorld();
         String key = world.getUID() + ":" + block.getX() + ":" + block.getY() + ":" + block.getZ();
-        // 本 tick 已为该位置排队：跳过开销较大的附近绳索扫描以及
-        // 重新调度。
+        // Already queued for this position this tick: skip the costly nearby-rope scan and
+        // rescheduling.
         if (pendingRopeRefreshes.contains(key)) {
             return;
         }

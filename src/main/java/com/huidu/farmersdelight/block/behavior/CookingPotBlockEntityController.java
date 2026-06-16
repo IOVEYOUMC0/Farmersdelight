@@ -34,15 +34,16 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * 炼药锅（cooking pot）的 CraftEngine 容器/漏斗桥接器。权威库存存放于
- * {@link CookingPotBlockEntity}；该控制器维护一份影子副本，通过
- * {@link #refreshFromEntity}/{@link #writeToEntity} 配合脏槽位（dirty-slot）跟踪进行同步对账。
+ * CraftEngine container/hopper bridge for the cooking pot. The authoritative inventory lives in
+ * {@link CookingPotBlockEntity}; this controller keeps a shadow copy, reconciled via
+ * {@link #refreshFromEntity}/{@link #writeToEntity} with dirty-slot tracking.
  *
- * <p>{@link #getItem(int)} 必须返回实时的影子 {@code Item}，这样原版漏斗的原地
- * 合并（{@code getItem(slot).grow(n)} 后接 {@link #setChanged()}，而不调用 {@link #setItem}）
- * 才能被捕获；若返回脱离的副本则会丢弃每一个被合并的物品。任何修改者都必须 {@link #markDirty(int)}
- * 被改动的槽位并调用 {@link #setChanged()}，或者作为某个以 {@link #setChanged()} 结尾的更大操作的
- * 一部分；否则下一次 {@link #refreshFromEntity} 会将其还原。
+ * <p>{@link #getItem(int)} must return the live shadow {@code Item} so vanilla hopper in-place
+ * merges ({@code getItem(slot).grow(n)} followed by {@link #setChanged()}, without calling
+ * {@link #setItem}) are captured; returning a detached copy would drop every merged item. Any
+ * mutator must {@link #markDirty(int)} the changed slot and call {@link #setChanged()}, or be
+ * part of a larger operation that ends in {@link #setChanged()}; otherwise the next
+ * {@link #refreshFromEntity} reverts it.
  */
 public final class CookingPotBlockEntityController extends BlockEntityController implements BukkitContainer, WorldlyContainer, InventoryHolder {
 
@@ -68,8 +69,8 @@ public final class CookingPotBlockEntityController extends BlockEntityController
     private int maxStackSize = 99;
     private boolean allSlotsDirty;
     private CompoundTag pendingLoadData;
-    // 在该控制器的生命周期内方块坐标是固定的；缓存该 key，使 getItem/contents
-    // （在容器扫描时按槽位调用）不必在每次访问时重新分配它。
+    // The block pos is fixed for this controller's lifetime; cache the key so getItem/contents
+    // (called per slot during container scans) need not reallocate it on every access.
     private BlockPosKey cachedPosKey;
 
     public CookingPotBlockEntityController(BlockEntity blockEntity, CookingPotBlockBehavior behavior) {
@@ -428,8 +429,8 @@ public final class CookingPotBlockEntityController extends BlockEntityController
         if (!isValidSlot(slot)) {
             return Item.empty();
         }
-        // 实时影子，不做每次调用的刷新：重新拉取会在 setChanged() 持久化之前覆盖掉漏斗的原地 grow
-        // （导致物品丢失）。影子通过 getContainer + 炼药锅的 tick 保持最新。
+        // Live shadow, no per-call refresh: re-pulling would overwrite a hopper's in-place grow
+        // before setChanged() persists it (losing items). The shadow stays current via getContainer + the cooking pot tick.
         return this.items[slot];
     }
 
@@ -471,7 +472,7 @@ public final class CookingPotBlockEntityController extends BlockEntityController
 
         this.items[slot] = Item.empty();
         this.slotExperience[slot] = 0.0D;
-        // 持久化此次移除，使 refreshFromEntity 不会从 entity 把它还原回来。
+        // Persist this removal so refreshFromEntity won't restore it from the entity.
         markDirty(slot);
         this.setChanged();
         return item;
@@ -513,7 +514,7 @@ public final class CookingPotBlockEntityController extends BlockEntityController
 
     @Override
     public List<Item> contents() {
-        // 参见 getItem：影子由 getContainer / 炼药锅的 tick 保持最新，因此无需每次调用都刷新。
+        // See getItem: the shadow is kept current by getContainer / the cooking pot tick, so no per-call refresh is needed.
         return Arrays.asList(this.items);
     }
 

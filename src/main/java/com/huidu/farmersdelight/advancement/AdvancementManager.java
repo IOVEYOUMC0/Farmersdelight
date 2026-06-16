@@ -26,9 +26,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 基于 UltimateAdvancementAPI 的进度后端：通过代码构建的单个 {@code farmersdelight} 进度标签页。
- * {@link #award}/{@link #awardCriteria}/{@link #revoke}/{@link #hasAdvancement} 是事件监听器所调用的
- * 对外接口。标题/描述通过 {@link LocalizedAdvancementDisplay} 按每个客户端进行本地化。
+ * UltimateAdvancementAPI-based advancement backend: a single {@code farmersdelight} advancement tab built in code.
+ * {@link #award}/{@link #awardCriteria}/{@link #revoke}/{@link #hasAdvancement} are the public entry points called by
+ * event listeners. Titles/descriptions are localized per-client via {@link LocalizedAdvancementDisplay}.
  */
 public class AdvancementManager {
 
@@ -36,12 +36,12 @@ public class AdvancementManager {
     private static final String ROOT_BACKGROUND = "minecraft:textures/block/bricks.png";
     private static final String KEY_PREFIX = "farmersdelight.advancement.";
 
-    /** plant_all_crops 的子任务（由种植监听器发出的判定条件名称）。 */
+    /** Subtasks of plant_all_crops (criterion names emitted by the planting listener). */
     private static final List<String> CROPS = List.of(
             "wheat", "beetroot", "carrot", "potato", "cabbage", "tomato", "onion", "rice", "melon",
             "pumpkin", "sweet_berries", "sugar_cane", "kelp", "cocoa", "nether_wart", "chorus_flower",
             "brown_mushroom", "red_mushroom", "glow_berries");
-    /** master_chef 的子任务（已食用的 FD 菜肴 id，不含 {@code farmersdelight:} 前缀）。 */
+    /** Subtasks of master_chef (eaten FD dish ids, without the {@code farmersdelight:} prefix). */
     private static final List<String> DISHES = List.of(
             "mixed_salad", "cooked_rice", "bone_broth", "beef_stew", "vegetable_soup", "fish_stew",
             "chicken_soup", "fried_rice", "pumpkin_soup", "baked_cod_stew", "noodle_soup", "onion_soup",
@@ -70,14 +70,14 @@ public class AdvancementManager {
             buildTree();
             I18n.logInfo("advancement.loaded_keys", "count", byId.size());
         } catch (Exception e) {
-            // 丢弃构建到一半（未初始化）的标签页，避免它仍处于已注册状态。
+            // Discard the half-built (uninitialized) tab so it doesn't remain registered.
             try {
                 UltimateAdvancementAPI api = UltimateAdvancementAPI.getInstance(plugin);
                 if (api.isAdvancementTabRegistered(TAB)) {
                     api.unregisterAdvancementTab(TAB);
                 }
             } catch (Exception ignored) {
-                // 尽力而为
+                // best-effort
             }
             tab = null;
             byId.clear();
@@ -137,14 +137,14 @@ public class AdvancementManager {
         byId.put("plant_all_crops", plantAllCrops);
     }
 
-    /** 构建 {@code ceId} 对应的 CraftEngine 物品；若无法解析则使用原版的 {@code fallback}。 */
+    /** Builds the CraftEngine item for {@code ceId}; uses the vanilla {@code fallback} if it can't be resolved. */
     private static ItemStack icon(String ceId, Material fallback) {
         ItemStack item = ceId == null ? null : ItemUtils.createItem(ceId);
         return item != null && !item.getType().isAir() ? item : new ItemStack(fallback);
     }
 
     private LocalizedAdvancementDisplay display(String key, ItemStack icon, AdvancementFrameType frame, float x, float y) {
-        // 经过修补的 UltimateAdvancementAPI 会依据此 display 为每个客户端渲染弹窗提示 + 聊天消息。
+        // The patched UltimateAdvancementAPI uses this display to render the toast + chat message per client.
         return new LocalizedAdvancementDisplay(icon, KEY_PREFIX + key, KEY_PREFIX + key + ".desc",
                 frame, true, true, x, y);
     }
@@ -215,7 +215,7 @@ public class AdvancementManager {
         rootAwarded.add(player.getUniqueId());
     }
 
-    /** 清除某玩家已缓存的 root 进度授予状态（在玩家退出时调用），以保持该集合大小有界。 */
+    /** Clears a player's cached root-advancement grant state (called on quit) to keep the set bounded. */
     public void forgetPlayer(UUID playerId) {
         if (playerId != null) {
             rootAwarded.remove(playerId);
@@ -288,7 +288,7 @@ public class AdvancementManager {
                 api.unregisterAdvancementTab(TAB);
             }
         } catch (Exception ignored) {
-            // UAA 已经卸载 / 未启用 —— 无需释放任何资源。
+            // UAA already unloaded / not enabled -- nothing to dispose.
         }
         tab = null;
         byId.clear();
