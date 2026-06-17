@@ -116,7 +116,15 @@ public final class CuttingBoardBlockEntityController extends BlockEntityControll
         Tag itemTag = data.get(STORED_ITEM);
         if (itemTag == null) return true;
 
-        ItemStack storedItem = ItemStackUtils.parseBukkitItem(itemTag, Config.itemDataFixerUpperFallbackVersion());
+        ItemStack storedItem;
+        try {
+            storedItem = ItemStackUtils.parseBukkitItem(itemTag, Config.itemDataFixerUpperFallbackVersion());
+        } catch (RuntimeException e) {
+            // Corrupt/version-skewed stored item: drop it (return true so it isn't retried forever) and warn.
+            com.huidu.farmersdelight.FarmersDelightPlugin.getInstance().getLogger()
+                    .warning("Skipping unreadable cutting board item at " + posKey + ": " + e.getMessage());
+            return true;
+        }
         if (storedItem == null || storedItem.getType().isAir()) return true;
 
         CuttingBoardBlockEntity entity = new CuttingBoardBlockEntity(posKey, world);

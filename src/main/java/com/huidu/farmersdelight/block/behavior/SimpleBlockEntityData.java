@@ -67,7 +67,15 @@ final class SimpleBlockEntityData {
                 continue;
             }
             if (itemKeySet.contains(key)) {
-                ItemStack item = ItemStackUtils.parseBukkitItem(value, Config.itemDataFixerUpperFallbackVersion());
+                ItemStack item;
+                try {
+                    item = ItemStackUtils.parseBukkitItem(value, Config.itemDataFixerUpperFallbackVersion());
+                } catch (RuntimeException e) {
+                    // Corrupt/version-skewed item: skip this key rather than aborting the whole load.
+                    com.huidu.farmersdelight.FarmersDelightPlugin.getInstance().getLogger()
+                            .warning("Skipping unreadable block-entity item '" + key + "': " + e.getMessage());
+                    continue;
+                }
                 if (item != null && !item.getType().isAir()) {
                     data.put(key, item);
                 }

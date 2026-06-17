@@ -464,7 +464,8 @@ items:
     data:
       item-name: <!i><l10n:block.farmersdelight.chocolate_pie_slice>
   minecraft:pumpkin_pie:
-    material: pumpkin_pie
+    settings:
+      disable_vanilla_behavior: true
     behavior:
       type: ground_block_item
       block: farmersdelight:pumpkin_pie
