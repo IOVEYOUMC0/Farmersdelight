@@ -1949,6 +1949,12 @@ public class RecipeViewGui implements InventoryHolder {
         if (linkedRecipe == null) {
             return;
         }
+        // Already viewing this exact recipe (e.g. clicking the result of the recipe on screen): don't
+        // re-open it, which would needlessly rebuild and "refresh" the page.
+        if (linkedRecipe.cookingPot() == cookingPotMode
+                && java.util.Objects.equals(linkedRecipe.recipeId(), selectedRecipeId)) {
+            return;
+        }
 
         selectedRecipeId = linkedRecipe.recipeId();
         cookingPotMode = linkedRecipe.cookingPot();
