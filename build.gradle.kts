@@ -214,6 +214,19 @@ tasks.register("buildObfuscated") {
     dependsOn(obfuscateJar)
 }
 
+// api-only jar: just com.huidu.farmersdelight.api.** — for addons to compile against (compileOnly) WITHOUT
+// shipping FD's closed-source internals. Addons reference only api.**, so this is all they need; the real
+// FD plugin provides the implementation at runtime. Output: build/libs/<base>-<version>-api.jar.
+tasks.register<Jar>("apiJar") {
+    group = "build"
+    description = "Builds an api-only jar (com.huidu.farmersdelight.api.**) for addon development."
+    dependsOn(tasks.classes)
+    archiveClassifier.set("api")
+    from(sourceSets.main.get().output) {
+        include("com/huidu/farmersdelight/api/**")
+    }
+}
+
 tasks.build {
     dependsOn(tasks.shadowJar)
     if (obfuscateBuild.get()) {

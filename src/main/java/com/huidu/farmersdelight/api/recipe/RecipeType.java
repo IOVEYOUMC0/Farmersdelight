@@ -43,4 +43,19 @@ public interface RecipeType {
     default RecipeEditor editor() {
         return null;
     }
+
+    /**
+     * This type's own recipe-LIST page layout. When non-null, FarmersDelight renders this type as an
+     * independent book (its own title/grid/decorations) instead of the shared recipe-book-gui
+     * config — so it never piles into a shared menu with other addons. Null = use the shared book.
+     */
+    default RecipeBookLayout listLayout() {
+        return null;
+    }
+
+    /** This type's own recipe-DETAIL page layout (see listLayout()). Null = use the shared book.
+     * A custom detail layout can place ViewableRecipe#displaySlots() roles (fluid, return, …). */
+    default RecipeBookLayout detailLayout() {
+        return null;
+    }
 }

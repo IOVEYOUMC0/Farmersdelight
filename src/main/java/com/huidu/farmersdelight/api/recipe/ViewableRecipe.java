@@ -5,6 +5,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * A type-agnostic, displayable recipe shown in the generic recipe book. Addons adapt their own recipes
@@ -31,5 +32,16 @@ public interface ViewableRecipe {
     /** Icon shown in the recipe list; defaults to the result item. */
     default ItemStack icon() {
         return result();
+    }
+
+    /**
+     * Extra display items keyed by a custom role name, for a type that supplies its own detail layout
+     * (see RecipeType#detailLayout()). The detail view places each role's items into the layout
+     * slots whose legend maps to that role — e.g. {"fluid": [...], "return": [...]} for the keg.
+     * Roles ingredient/result are handled by inputs()/result() and need
+     * not be repeated here. Defaults to none.
+     */
+    default Map<String, List<ItemStack>> displaySlots() {
+        return Map.of();
     }
 }

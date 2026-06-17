@@ -134,6 +134,24 @@ public final class FarmersDelightApi {
         }
     }
 
+    /**
+     * Opens the book directly to a single registered type (typeId), as an independent book — never
+     * the shared category menu, so it won't pile in with other addons' types. If the type provides its own
+     * RecipeType#listLayout()/RecipeType#detailLayout(), those drive the look. Falls back to
+     * the shared book when typeId isn't registered.
+     */
+    public void openRecipeBook(Player player, String typeId, RecipeFiller filler) {
+        if (player == null) {
+            return;
+        }
+        RecipeType type = recipeType(typeId);
+        if (type == null) {
+            RecipeBookGui.openMenu(player, filler);
+        } else {
+            RecipeBookGui.openType(player, type, filler);
+        }
+    }
+
     /** Opens the generic recipe editor for recipeId of a registered type (null id = new recipe). */
     public void openRecipeEditor(Player player, String typeId, String recipeId) {
         RecipeType type = recipeType(typeId);
