@@ -111,9 +111,12 @@ public class HeatSourceConfig {
 
     public void addVanillaTag(String tagId) {
         vanillaTags.add(tagId);
-        if (tagId.contains("campfires") || tagId.contains("fire")) {
+        String normalizedTag = (tagId.startsWith("#") ? tagId.substring(1) : tagId).toLowerCase(java.util.Locale.ROOT);
+        if (normalizedTag.equals("minecraft:campfires") || normalizedTag.equals("campfires")) {
             // Campfires only count as heat sources when lit, so they are handled specially via vanillaLitBlocks below,
-            // rather than generic tag matching (which would ignore the lit state).
+            // rather than generic tag matching (which would ignore the lit state). Match the exact tag id — the old
+            // substring `contains("fire")` misrouted any tag whose id merely contained "fire"
+            // (e.g. minecraft:soul_fire_base_blocks) into campfire-only handling.
             vanillaLitBlocks.add(Material.CAMPFIRE);
             vanillaLitBlocks.add(Material.SOUL_CAMPFIRE);
             return;

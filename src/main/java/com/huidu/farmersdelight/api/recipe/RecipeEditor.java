@@ -7,7 +7,7 @@ import java.util.List;
  * persisted. The addon owns the actual storage (its yml files); the editor only drives the GUI and
  * hands back an {@link EditableRecipe} to save/delete.
  *
- * <p>Lives in the name-stable {@code api} package; uses only api / java types.
+ * Lives in the name-stable {@code api} package; uses only api / java types.
  */
 public interface RecipeEditor {
 

@@ -7,6 +7,7 @@ import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.manager.TickManager;
 import com.huidu.farmersdelight.recipe.CookingPotRecipe;
 import com.huidu.farmersdelight.recipe.CuttingBoardRecipe;
+import com.huidu.farmersdelight.recipe.RecipeDiscoveryManager;
 import com.huidu.farmersdelight.recipe.RecipeIngredient;
 import com.huidu.farmersdelight.util.ItemUtils;
 import com.huidu.farmersdelight.util.Text;
@@ -20,8 +21,6 @@ import net.momirealms.craftengine.core.util.UniqueKey;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
-import org.bukkit.Registry;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -37,7 +36,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.*;
-import java.text.Collator;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
@@ -50,14 +48,13 @@ public class RecipeViewGui implements InventoryHolder {
     private static volatile RecipeViewGuiConfig cachedConfig = null;
     private static final Set<String> warnedMissingCustomCookingPotDetailConfigs = ConcurrentHashMap.newKeySet();
     private static final Set<String> warnedCookingPotDetailCapacityConfigs = ConcurrentHashMap.newKeySet();
-    private static final Map<Key, ItemStack> itemCache = new ConcurrentHashMap<>();
-    // The resolved tag ingredient option list (build cost O(items x excludedTags x items) plus CE item creation) is
-    // fixed per tag ingredient; cache the result and clear on reload. Callers get clones, so they may freely modify
-    // the display meta.
-    private static final Map<RecipeIngredient.Tag, List<ItemStack>> tagOptionsCache = new ConcurrentHashMap<>();
-    // Choice ingredient display options are likewise fixed, but were previously rebuilt and re-sorted into a
-    // LinkedHashMap each time; cache the result and clear on reload. Choice is a record (value equality), safe as a key. Callers get per-item clones.
-    private static final Map<RecipeIngredient.Choice, List<ItemStack>> choiceOptionsCache = new java.util.concurrent.ConcurrentHashMap<>();
+    // Fully-built recipe-list display item (result icon + formatted ingredient/tool lore) keyed by
+    // type + group + preview-count + recipe id + locale. Rebuilding it per list draw runs the whole
+    // name-resolution + lore-format chain (the profile's formatCompactIngredientLoreLines/getDisplayName
+    // hot node); this collapses a warm open/page to one clone. Cleared on config reload and whenever a
+    // recipe manager republishes (loadRecipes). Values and returns are cloned like itemCache.
+    private static final Map<String, ItemStack> recipeListDisplayCache = new ConcurrentHashMap<>();
+    // Tag/choice ingredient option caches live in RecipeIngredientIcons (extracted with the resolvers).
     // Tool preview options (by tool key) are likewise fixed but were previously uncached, forcing a CraftEngine tag
     // scan on every recipe-list draw / tool animation; cache the result, clear on reload, callers get clones.
     private static final Map<Key, List<ItemStack>> toolPreviewCache = new ConcurrentHashMap<>();
@@ -65,7 +62,6 @@ public class RecipeViewGui implements InventoryHolder {
     private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
     private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
     private static final Pattern SHIFT_TAG_PATTERN = Pattern.compile("<shift:(-?\\d+)>");
-    private static final Collator DISPLAY_NAME_COLLATOR = Collator.getInstance(Locale.SIMPLIFIED_CHINESE);
     private static final int MAX_COMPACT_INGREDIENT_LINE_LENGTH = 42;
     private static final int GUI_TICK_INTERVAL_TICKS = 4;
     private static final int COOKING_PROCESS_BAR_FRAMES = 20;
@@ -185,13 +181,21 @@ public class RecipeViewGui implements InventoryHolder {
         cachedConfig = null;
         // Built display items cache resolved names/lore (from the language files), so clear them too; otherwise
         // stale item names would linger in the recipe GUI after /fd reload lang/gui.
-        itemCache.clear();
-        tagOptionsCache.clear();
-        choiceOptionsCache.clear();
+        RecipeIngredientIcons.clearCaches();
+        recipeListDisplayCache.clear();
         toolPreviewCache.clear();
         java.util.Arrays.fill(processBarFrameCache, null);
         warnedMissingCustomCookingPotDetailConfigs.clear();
         warnedCookingPotDetailCapacityConfigs.clear();
+    }
+
+    /**
+     * Invalidate cached recipe-list display items. Called by the recipe managers after they publish a
+     * fresh recipe set — covers the paths clearConfigCache misses: addon register/unregister
+     * republish, and the window in reloadAll between clearConfigCache and the recipe reload.
+     */
+    public static void clearRecipeDisplayCache() {
+        recipeListDisplayCache.clear();
     }
 
     private RecipeViewGuiConfig createDefaultConfig() {
@@ -399,6 +403,7 @@ public class RecipeViewGui implements InventoryHolder {
         if (craftableOnly) {
             recipes = filterCraftableCookingPotRecipes(recipes);
         }
+        recipes = applyDiscoveryFilter(recipes, true, player);
         drawRecipeList(player, listConfig, recipes, true);
     }
 
@@ -406,6 +411,7 @@ public class RecipeViewGui implements InventoryHolder {
         cookingPotMode = false;
         RecipeViewGuiConfig.RecipeListConfig listConfig = config.getRecipeList();
         List<CuttingBoardRecipe> recipes = plugin.getCuttingBoardRecipes().getSortedRecipes();
+        recipes = applyDiscoveryFilter(recipes, false, player);
         drawRecipeList(player, listConfig, recipes, false);
     }
 
@@ -430,7 +436,7 @@ public class RecipeViewGui implements InventoryHolder {
             ItemStack container = recipe.getContainer().clone();
             ItemMeta meta = container.getItemMeta();
             meta.displayName(itemNameComponent(container, player).colorIfAbsent(NamedTextColor.AQUA));
-            meta.lore(List.of(colored("&7" + I18n.get("gui.recipe.container", player))));
+            meta.lore(List.of(tr("gui.recipe.container", NamedTextColor.GRAY)));
             container.setItemMeta(meta);
             inventory.setItem(detailConfig.getContainerSlot(), container);
         }
@@ -455,21 +461,68 @@ public class RecipeViewGui implements InventoryHolder {
 
         fillBackground(listConfig);
 
+        // Locale + (for cooking pots) the per-instance preview-count and active group fully determine
+        // a non-locked display item's content, so cache the built item across opens/pages/players.
+        String locale = player == null ? "default" : player.locale().toString().toLowerCase(Locale.ROOT);
+        String cacheKeyPrefix = isCookingPot
+                ? "pot|" + getActiveCookingPotRecipeGroup() + '|' + config.getRecipeListMaxPreviewIngredients() + '|'
+                : "board|";
+
         int startIndex = currentPage * itemsPerPage;
         for (int i = 0; i < recipeSlots.size(); i++) {
             int recipeIndex = startIndex + i;
             if (recipeIndex < recipes.size()) {
+                Object recipe = recipes.get(recipeIndex);
                 ItemStack displayItem;
-                if (isCookingPot) {
-                    displayItem = createCookingPotRecipeDisplayItem((CookingPotRecipe) recipes.get(recipeIndex), player);
+                if (isRecipeLocked(recipe, isCookingPot, player)) {
+                    // Locked placeholder is per-player discovery state, never cached.
+                    displayItem = plugin.getRecipeDiscoveryManager().lockedPlaceholder(player);
+                } else if (isCookingPot) {
+                    CookingPotRecipe potRecipe = (CookingPotRecipe) recipe;
+                    displayItem = recipeListDisplayCache.computeIfAbsent(
+                            cacheKeyPrefix + potRecipe.getId() + '|' + locale,
+                            k -> createCookingPotRecipeDisplayItem(potRecipe, player)).clone();
                 } else {
-                    displayItem = createCuttingBoardRecipeDisplayItem((CuttingBoardRecipe) recipes.get(recipeIndex), player);
+                    CuttingBoardRecipe boardRecipe = (CuttingBoardRecipe) recipe;
+                    displayItem = recipeListDisplayCache.computeIfAbsent(
+                            cacheKeyPrefix + boardRecipe.getId() + '|' + locale,
+                            k -> createCuttingBoardRecipeDisplayItem(boardRecipe, player)).clone();
                 }
                 inventory.setItem(recipeSlots.get(i), displayItem);
             }
         }
 
         drawListNavigation(listConfig, totalPages);
+    }
+
+    /** In "hidden" discovery mode, drops recipes the player hasn't unlocked; otherwise returns the list as-is. */
+    private <T> List<T> applyDiscoveryFilter(List<T> recipes, boolean isCookingPot, Player player) {
+        RecipeDiscoveryManager discovery = plugin.getRecipeDiscoveryManager();
+        if (discovery == null || !discovery.isEnabled() || !discovery.hidesLocked() || player == null) {
+            return recipes;
+        }
+        List<T> shown = new ArrayList<>(recipes.size());
+        for (T recipe : recipes) {
+            if (!isRecipeLocked(recipe, isCookingPot, player)) {
+                shown.add(recipe);
+            }
+        }
+        return shown;
+    }
+
+    /** True if discovery is on and {@code player} has not unlocked this FarmersDelight recipe. */
+    private boolean isRecipeLocked(Object recipe, boolean isCookingPot, Player player) {
+        RecipeDiscoveryManager discovery = plugin.getRecipeDiscoveryManager();
+        if (discovery == null || !discovery.isEnabled() || player == null) {
+            return false;
+        }
+        String typeId = isCookingPot
+                ? RecipeDiscoveryManager.TYPE_COOKING_POT
+                : RecipeDiscoveryManager.TYPE_CUTTING_BOARD;
+        String id = isCookingPot
+                ? ((CookingPotRecipe) recipe).getId()
+                : ((CuttingBoardRecipe) recipe).getId();
+        return !discovery.isUnlocked(player.getUniqueId(), typeId, id);
     }
 
     private void drawListNavigation(RecipeViewGuiConfig.RecipeListConfig listConfig, int totalPages) {
@@ -560,10 +613,10 @@ public class RecipeViewGui implements InventoryHolder {
         }
         ItemStack item = new ItemStack(craftableOnly ? Material.LIME_DYE : Material.GRAY_DYE);
         ItemMeta meta = item.getItemMeta();
-        meta.displayName(colored(craftableOnly
-                ? "&a" + I18n.get("gui.recipe.filter_craftable_on", player)
-                : "&7" + I18n.get("gui.recipe.filter_craftable_off", player)));
-        meta.lore(List.of(colored("&e" + I18n.get("gui.recipe.click_to_toggle", player))));
+        meta.displayName(craftableOnly
+                ? tr("gui.recipe.filter_craftable_on", NamedTextColor.GREEN)
+                : tr("gui.recipe.filter_craftable_off", NamedTextColor.GRAY));
+        meta.lore(List.of(tr("gui.recipe.click_to_toggle", NamedTextColor.YELLOW)));
         item.setItemMeta(meta);
         inventory.setItem(slot, item);
     }
@@ -609,7 +662,7 @@ public class RecipeViewGui implements InventoryHolder {
             ItemStack containerItem = recipe.getContainer().clone();
             ItemMeta containerMeta = containerItem.getItemMeta();
             containerMeta.displayName(itemNameComponent(recipe.getContainer(), player).colorIfAbsent(NamedTextColor.AQUA));
-            containerMeta.lore(List.of(colored("&7" + I18n.get("gui.recipe.container", player))));
+            containerMeta.lore(List.of(tr("gui.recipe.container", NamedTextColor.GRAY)));
             containerItem.setItemMeta(containerMeta);
             inventory.setItem(detailConfig.getContainerSlot(), containerItem);
         }
@@ -631,12 +684,14 @@ public class RecipeViewGui implements InventoryHolder {
         ItemMeta meta = processItem.getItemMeta();
         if (meta != null) {
             if (configured == null) {
-                meta.displayName(colored("&e" + I18n.get("gui.recipe.cook_time", player)));
+                meta.displayName(tr("gui.recipe.cook_time", NamedTextColor.YELLOW));
             }
             if (meta.lore() == null || meta.lore().isEmpty()) {
                 meta.lore(List.of(
-                        colored("&7" + I18n.get("gui.recipe.cook_time", player) + ": &b" + placeholders.get("cook_time")),
-                        colored("&7" + I18n.get("gui.recipe.experience", player) + ": &a" + placeholders.get("experience"))
+                        tr("gui.recipe.cook_time_line", NamedTextColor.GRAY,
+                                Component.text(placeholders.get("cook_time")).color(NamedTextColor.AQUA)),
+                        tr("gui.recipe.experience_line", NamedTextColor.GRAY,
+                                Component.text(placeholders.get("experience")).color(NamedTextColor.GREEN))
                 ));
             }
             processItem.setItemMeta(meta);
@@ -662,8 +717,9 @@ public class RecipeViewGui implements InventoryHolder {
             return configuredProgressSlot;
         }
 
-        // Fallback: when an arrow slot is configured but no explicit progress slot, keep the original behavior of placing the bar one slot below the arrow
-        // (only occupying that slot if it is empty/background/decoration, to avoid overwriting functional slots).
+        // Fallback: when an arrow slot is configured but no explicit progress slot, place the bar one slot
+        // below the arrow (only occupying that slot if it is empty/background/decoration, to avoid
+        // overwriting functional slots).
         int arrowSlot = detailConfig.getArrowSlot();
         int fallbackSlot = arrowSlot + 9;
         if (arrowSlot < 0 || fallbackSlot < 0 || fallbackSlot >= inventory.getSize()) {
@@ -745,7 +801,8 @@ public class RecipeViewGui implements InventoryHolder {
             ItemStack inputItem = recipe.getInputDisplay().clone();
             ItemMeta inputMeta = inputItem.getItemMeta();
             inputMeta.displayName(itemNameComponent(inputItem, player).colorIfAbsent(NamedTextColor.RED));
-            inputMeta.lore(formatIngredientDetailLoreLines(recipe.getInput(), player, I18n.get("gui.recipe.input", player)));
+            inputMeta.lore(formatIngredientDetailLoreLines(recipe.getInput(), player,
+                    tr("gui.recipe.input", NamedTextColor.GRAY)));
             inputItem.setItemMeta(inputMeta);
             inventory.setItem(detailConfig.getInputSlot(), inputItem);
         }
@@ -778,17 +835,17 @@ public class RecipeViewGui implements InventoryHolder {
         }
         
         ItemMeta toolMeta = toolItem.getItemMeta();
-        toolMeta.displayName(colored("&e" + I18n.get("gui.recipe.tool", player)));
-        
+        toolMeta.displayName(tr("gui.recipe.tool", NamedTextColor.YELLOW));
+
         List<Component> lore = new ArrayList<>();
         lore.add(itemNameComponent(toolItem, player).colorIfAbsent(NamedTextColor.WHITE));
         if (totalTools > 1) {
-            lore.add(colored("&7" + I18n.get("gui.recipe.auto_cycle", player)
-                    .replace("{current}", String.valueOf(currentIndex + 1))
-                    .replace("{total}", String.valueOf(totalTools))));
+            lore.add(tr("gui.recipe.auto_cycle", NamedTextColor.GRAY,
+                    currentIndex + 1, totalTools));
         }
         if (previewOptions.size() > 1) {
-            lore.add(colored("&7" + I18n.get("gui.recipe.matches", player) + ": &e" + previewOptions.size()));
+            lore.add(tr("gui.recipe.matches_line", NamedTextColor.GRAY,
+                    Component.text(previewOptions.size()).color(NamedTextColor.YELLOW)));
         }
         toolMeta.lore(lore);
         toolItem.setItemMeta(toolMeta);
@@ -817,7 +874,7 @@ public class RecipeViewGui implements InventoryHolder {
     private List<ItemStack> computeToolPreviewOptions(Key toolKey) {
         List<ItemStack> previewOptions = new ArrayList<>();
 
-        ItemStack directItem = createItemFromKey(toolKey);
+        ItemStack directItem = RecipeIngredientIcons.createItemFromKey(toolKey);
         if (isDisplayableItem(directItem)) {
             previewOptions.add(directItem);
             return previewOptions;
@@ -834,7 +891,7 @@ public class RecipeViewGui implements InventoryHolder {
             case "farmersdelight:pickaxe_dig" -> new ItemStack(Material.IRON_PICKAXE);
             case "farmersdelight:shovel_dig", "minecraft:shovels" -> new ItemStack(Material.IRON_SHOVEL);
             case "minecraft:shears" -> new ItemStack(Material.SHEARS);
-            default -> createItemFromKey(toolKey);
+            default -> RecipeIngredientIcons.createItemFromKey(toolKey);
         };
         if (isDisplayableItem(fallback)) {
             previewOptions.add(fallback);
@@ -844,7 +901,7 @@ public class RecipeViewGui implements InventoryHolder {
 
     private ItemStack createKnifePreviewItem() {
         for (String knifeId : plugin.getConfig().getStringList("knife-config.items")) {
-            ItemStack knife = createItemFromKey(Key.of(knifeId));
+            ItemStack knife = RecipeIngredientIcons.createItemFromKey(Key.of(knifeId));
             if (knife != null && knife.getType() != Material.BARRIER && !knife.getType().isAir()) {
                 return knife;
             }
@@ -856,7 +913,7 @@ public class RecipeViewGui implements InventoryHolder {
         List<ItemStack> previewItems = new ArrayList<>();
         try {
             for (UniqueKey uniqueKey : plugin.getCraftEngine().itemManager().itemIdsByTag(toolKey)) {
-                ItemStack item = createItemFromKey(uniqueKey.key());
+                ItemStack item = RecipeIngredientIcons.createItemFromKey(uniqueKey.key());
                 if (isDisplayableItem(item)) {
                     previewItems.add(item);
                 }
@@ -900,13 +957,11 @@ public class RecipeViewGui implements InventoryHolder {
         if (resultMeta.hasLore()) {
             lore = new ArrayList<>(resultMeta.lore());
         }
-                lore.add(0, colored("&a" + I18n.get("gui.recipe.result", player)));
+                lore.add(0, tr("gui.recipe.result", NamedTextColor.GREEN));
                 if (resultEntry.chance() < 1.0d) {
-                    lore.add(1, colored(I18n.formatNamed(
-                            "gui.recipe.chance",
-                            player,
-                            Map.of("value", String.valueOf((int) Math.round(resultEntry.chance() * 100)))
-                    )));
+                    lore.add(1, tr("gui.recipe.chance_line", NamedTextColor.GRAY,
+                            Component.text((int) Math.round(resultEntry.chance() * 100))
+                                    .color(NamedTextColor.YELLOW)));
                 }
                 resultMeta.lore(lore);
                 resultDisplay.setItemMeta(resultMeta);
@@ -1035,7 +1090,7 @@ public class RecipeViewGui implements InventoryHolder {
         ItemMeta meta = result.getItemMeta();
 
         List<Component> lore = new ArrayList<>();
-        lore.add(colored("&7" + I18n.get("gui.recipe.ingredients", player) + ":"));
+        lore.add(tr("gui.recipe.ingredients_label", NamedTextColor.GRAY));
         List<RecipeIngredient> ingredients = recipe.getIngredients();
         int displayedIngredients = Math.min(ingredients.size(), config.getRecipeListMaxPreviewIngredients());
         for (int i = 0; i < displayedIngredients; i++) {
@@ -1043,15 +1098,19 @@ public class RecipeViewGui implements InventoryHolder {
         }
         appendMoreIngredientsLine(lore, ingredients.size() - displayedIngredients, player);
         if (recipe.needsContainer() && recipe.getContainer() != null) {
-            lore.add(colored("&7" + I18n.get("gui.recipe.container", player) + ": ")
-                    .append(itemNameComponent(recipe.getContainer(), player).colorIfAbsent(NamedTextColor.AQUA)));
+            lore.add(tr("gui.recipe.container_line", NamedTextColor.GRAY,
+                    itemNameComponent(recipe.getContainer(), player).colorIfAbsent(NamedTextColor.AQUA)));
         }
         if (recipe.getExperience() > 0.0D || recipe.getCookTime() > 0) {
-            lore.add(colored("&7" + I18n.get("gui.recipe.cook_time", player) + ": &b"
-                    + (recipe.getCookTime() / 20) + i18nOrDefault("gui.recipe.seconds_suffix", player, "s")));
+            // Use the shared cookTimeSeconds() (ceil, min 1s) so the list preview matches the detail
+            // screen; raw integer /20 shows a misleading "0s" for sub-20-tick recipes.
+            String cookTimeStr = cookTimeSeconds(recipe)
+                    + i18nOrDefault("gui.recipe.seconds_suffix", player, "s");
+            lore.add(tr("gui.recipe.cook_time_line", NamedTextColor.GRAY,
+                    Component.text(cookTimeStr).color(NamedTextColor.AQUA)));
         }
         lore.add(Component.text(""));
-        lore.add(colored("&e" + I18n.get("gui.recipe.click_to_view", player)));
+        lore.add(tr("gui.recipe.click_to_view", NamedTextColor.YELLOW));
 
         meta.lore(lore);
         result.setItemMeta(meta);
@@ -1063,9 +1122,9 @@ public class RecipeViewGui implements InventoryHolder {
         ItemMeta meta = input.getItemMeta();
 
         List<Component> lore = new ArrayList<>();
-        lore.add(colored("&7" + I18n.get("gui.recipe.tool", player) + ": ")
-                .append(formatToolListComponent(recipe.getTools(), player).colorIfAbsent(NamedTextColor.YELLOW)));
-        lore.add(colored("&7" + I18n.get("gui.recipe.results", player) + ":"));
+        lore.add(tr("gui.recipe.tool_line", NamedTextColor.GRAY,
+                formatToolListComponent(recipe.getTools(), player).colorIfAbsent(NamedTextColor.YELLOW)));
+        lore.add(tr("gui.recipe.results_label", NamedTextColor.GRAY));
         for (CuttingBoardRecipe.ResultEntry result : recipe.getResults()) {
             Component line = itemNameComponent(result.item(), player).colorIfAbsent(NamedTextColor.WHITE);
             if (result.chance() < 1.0d) {
@@ -1074,7 +1133,7 @@ public class RecipeViewGui implements InventoryHolder {
             lore.add(colored("&8- ").append(line));
         }
         lore.add(Component.text(""));
-        lore.add(colored("&e" + I18n.get("gui.recipe.click_to_view", player)));
+        lore.add(tr("gui.recipe.click_to_view", NamedTextColor.YELLOW));
 
         meta.lore(lore);
         input.setItemMeta(meta);
@@ -1096,12 +1155,8 @@ public class RecipeViewGui implements InventoryHolder {
         if (remainingCount <= 0) {
             return;
         }
-        lore.add(colored(I18n.formatNamed(
-                "gui.recipe.more_ingredients",
-                player,
-                Map.of("count", String.valueOf(remainingCount))
-        )));
-        lore.add(colored("&e" + I18n.get("gui.recipe.click_to_view_materials", player)));
+        lore.add(tr("gui.recipe.more_ingredients", NamedTextColor.GRAY, remainingCount));
+        lore.add(tr("gui.recipe.click_to_view_materials", NamedTextColor.YELLOW));
     }
 
     private void appendIndentedIngredientLore(List<Component> lore, RecipeIngredient ingredient, Player player) {
@@ -1119,8 +1174,8 @@ public class RecipeViewGui implements InventoryHolder {
     private ItemStack createIngredientDisplay(RecipeIngredient ingredient, Player player, int slot) {
         if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
             List<Component> lore = new ArrayList<>();
-            ItemStack display = createItemFromKey(itemIngredient.key());
-            lore.add(colored("&7" + I18n.get("gui.recipe.ingredient", player)));
+            ItemStack display = RecipeIngredientIcons.createItemFromKey(itemIngredient.key());
+            lore.add(tr("gui.recipe.ingredient", NamedTextColor.GRAY));
             if (config.isShowIngredientIds()) {
                 lore.add(colored("&7" + itemIngredient.key()));
             }
@@ -1128,11 +1183,11 @@ public class RecipeViewGui implements InventoryHolder {
         }
 
         if (ingredient instanceof RecipeIngredient.Tag tagIngredient) {
-            return createAnimatedOrStaticIngredientDisplay(slot, tagIngredient, resolveTagIngredientOptions(tagIngredient), player);
+            return createAnimatedOrStaticIngredientDisplay(slot, tagIngredient, RecipeIngredientIcons.resolveTagIngredientOptions(tagIngredient), player);
         }
 
         if (ingredient instanceof RecipeIngredient.Choice choiceIngredient) {
-            return createAnimatedOrStaticIngredientDisplay(slot, choiceIngredient, resolveIngredientOptions(choiceIngredient), player);
+            return createAnimatedOrStaticIngredientDisplay(slot, choiceIngredient, RecipeIngredientIcons.resolveIngredientOptions(choiceIngredient), player);
         }
 
         return createUnknownIngredientDisplay(player);
@@ -1149,7 +1204,7 @@ public class RecipeViewGui implements InventoryHolder {
         ItemStack display = currentDisplay.clone();
         return createLabeledIngredientDisplay(
                 display,
-                List.of(colored("&7" + I18n.get("gui.recipe.ingredient", player))),
+                List.of(tr("gui.recipe.ingredient", NamedTextColor.GRAY)),
                 player,
                 itemNameComponent(currentDisplay, player)
         );
@@ -1160,11 +1215,13 @@ public class RecipeViewGui implements InventoryHolder {
         ItemMeta meta = display.getItemMeta();
 
         List<Component> lore = new ArrayList<>();
-        lore.add(colored("&7" + I18n.get("gui.recipe.ingredient", player)));
-        lore.add(colored("&7" + I18n.get("gui.recipe.matches", player) + ": &e" + options.size()));
+        lore.add(tr("gui.recipe.ingredient", NamedTextColor.GRAY));
+        lore.add(tr("gui.recipe.matches_line", NamedTextColor.GRAY,
+                Component.text(options.size()).color(NamedTextColor.YELLOW)));
         appendCyclePosition(lore, currentDisplay, options, player);
         if (config.isShowIngredientIds()) {
-            lore.add(colored("&7" + I18n.get("gui.recipe.tag", player) + ": &f#" + tagIngredient.key()));
+            lore.add(tr("gui.recipe.tag_line", NamedTextColor.GRAY,
+                    Component.text("#" + tagIngredient.key()).color(NamedTextColor.WHITE)));
             appendTagExclusions(lore, tagIngredient, player);
         }
 
@@ -1181,9 +1238,11 @@ public class RecipeViewGui implements InventoryHolder {
         ItemMeta meta = display.getItemMeta();
 
         List<Component> lore = new ArrayList<>();
-        lore.add(colored("&7" + I18n.get("gui.recipe.ingredient", player)));
-        lore.add(colored("&7" + I18n.get("gui.recipe.any_of", player) + ": &e" + choiceIngredient.options().size()));
-        lore.add(colored("&7" + I18n.get("gui.recipe.matches", player) + ": &e" + options.size()));
+        lore.add(tr("gui.recipe.ingredient", NamedTextColor.GRAY));
+        lore.add(tr("gui.recipe.any_of_line", NamedTextColor.GRAY,
+                Component.text(choiceIngredient.options().size()).color(NamedTextColor.YELLOW)));
+        lore.add(tr("gui.recipe.matches_line", NamedTextColor.GRAY,
+                Component.text(options.size()).color(NamedTextColor.YELLOW)));
         appendCyclePosition(lore, currentDisplay, options, player);
         appendIngredientPreviewLore(lore, choiceIngredient.options(), choiceIngredient.options().size(), player, currentDisplay);
 
@@ -1198,106 +1257,11 @@ public class RecipeViewGui implements InventoryHolder {
             return;
         }
         for (Key excludedItem : tagIngredient.excludedItems()) {
-            lore.add(colored("&c- ").append(itemNameComponent(createItemFromKey(excludedItem), player).colorIfAbsent(NamedTextColor.RED)));
+            lore.add(colored("&c- ").append(itemNameComponent(RecipeIngredientIcons.createItemFromKey(excludedItem), player).colorIfAbsent(NamedTextColor.RED)));
         }
         for (Key excludedTag : tagIngredient.excludedTags()) {
             lore.add(colored("&c- #" + excludedTag));
         }
-    }
-
-    private List<ItemStack> resolveTagIngredientOptions(RecipeIngredient.Tag tagIngredient) {
-        List<ItemStack> cached = tagOptionsCache.computeIfAbsent(tagIngredient, this::computeTagIngredientOptions);
-        List<ItemStack> copy = new ArrayList<>(cached.size());
-        for (ItemStack item : cached) {
-            copy.add(item.clone());
-        }
-        return copy;
-    }
-
-    // The compact preview only needs clones of the first `limit` options; clone only the first `limit` directly from
-    // the cached list (same source and order as resolveTagIngredientOptions) instead of cloning all to show 6 names. Use resolveTagIngredientOptionsSize for the full count.
-    private List<ItemStack> resolveTagIngredientOptionsPreview(RecipeIngredient.Tag tagIngredient, int limit) {
-        List<ItemStack> cached = tagOptionsCache.computeIfAbsent(tagIngredient, this::computeTagIngredientOptions);
-        int count = Math.min(limit, cached.size());
-        List<ItemStack> copy = new ArrayList<>(count);
-        for (int i = 0; i < count; i++) {
-            copy.add(cached.get(i).clone());
-        }
-        return copy;
-    }
-
-    // Return the full count of cached tag options (same source as the preview), used to show "matches: N", keeping the count consistent with the original.
-    private int resolveTagIngredientOptionsSize(RecipeIngredient.Tag tagIngredient) {
-        return tagOptionsCache.computeIfAbsent(tagIngredient, this::computeTagIngredientOptions).size();
-    }
-
-    private List<ItemStack> computeTagIngredientOptions(RecipeIngredient.Tag tagIngredient) {
-        Map<String, ItemStack> uniqueDisplays = new LinkedHashMap<>();
-        for (UniqueKey uniqueKey : plugin.getCraftEngine().itemManager().itemIdsByTag(tagIngredient.key())) {
-            if (tagIngredient.excludedItems().contains(uniqueKey.key())) {
-                continue;
-            }
-            boolean blockedByTag = false;
-            for (Key excludedTag : tagIngredient.excludedTags()) {
-                if (plugin.getCraftEngine().itemManager().itemIdsByTag(excludedTag).stream()
-                        .anyMatch(candidate -> candidate.key().equals(uniqueKey.key()))) {
-                    blockedByTag = true;
-                    break;
-                }
-            }
-            if (blockedByTag) {
-                continue;
-            }
-            ItemStack item = createItemFromKey(uniqueKey.key());
-            if (item == null || item.getType().isAir() || item.getType() == Material.BARRIER) {
-                continue;
-            }
-            uniqueDisplays.putIfAbsent(uniqueKey.toString(), item);
-        }
-        for (ItemStack item : ItemUtils.createVanillaTagDisplayItems(
-                tagIngredient.key(),
-                tagIngredient.excludedItems(),
-                tagIngredient.excludedTags())) {
-            uniqueDisplays.putIfAbsent(buildIngredientDisplayKey(item), item);
-        }
-        return sortIngredientDisplayItems(uniqueDisplays.values());
-    }
-
-    private List<ItemStack> resolveIngredientOptions(RecipeIngredient ingredient) {
-        if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
-            ItemStack item = createItemFromKey(itemIngredient.key());
-            if (item == null || item.getType().isAir() || item.getType() == Material.BARRIER) {
-                return List.of();
-            }
-            return List.of(item);
-        }
-
-        if (ingredient instanceof RecipeIngredient.Tag tagIngredient) {
-            return resolveTagIngredientOptions(tagIngredient);
-        }
-
-        if (ingredient instanceof RecipeIngredient.Choice choiceIngredient) {
-            // Hit the cache (the computed result is not cloned), clone each and return, with semantics identical to resolveTagIngredientOptions,
-            // avoiding shared ItemStacks polluting the cache when placed in the GUI and given meta.
-            List<ItemStack> cached = choiceOptionsCache.computeIfAbsent(choiceIngredient, this::computeChoiceOptions);
-            List<ItemStack> copy = new ArrayList<>(cached.size());
-            for (ItemStack item : cached) {
-                copy.add(item.clone());
-            }
-            return copy;
-        }
-
-        return List.of();
-    }
-
-    private List<ItemStack> computeChoiceOptions(RecipeIngredient.Choice choiceIngredient) {
-        Map<String, ItemStack> uniqueDisplays = new LinkedHashMap<>();
-        for (RecipeIngredient option : choiceIngredient.options()) {
-            for (ItemStack display : resolveIngredientOptions(option)) {
-                uniqueDisplays.putIfAbsent(buildIngredientDisplayKey(display), display);
-            }
-        }
-        return sortIngredientDisplayItems(uniqueDisplays.values());
     }
 
     private ItemStack createAnimatedOrStaticIngredientDisplay(
@@ -1321,16 +1285,16 @@ public class RecipeViewGui implements InventoryHolder {
                 new ItemStack(Material.NAME_TAG),
                 formatIngredientLoreLines(ingredient, player),
                 player,
-                colored("&b" + I18n.get("gui.recipe.ingredient", player))
+                tr("gui.recipe.ingredient", NamedTextColor.AQUA)
         );
     }
 
     private ItemStack createUnknownIngredientDisplay(Player player) {
         return createLabeledIngredientDisplay(
                 new ItemStack(Material.BARRIER),
-                List.of(colored("&f" + I18n.get("gui.recipe.unknown", player))),
+                List.of(tr("gui.recipe.unknown", NamedTextColor.WHITE)),
                 player,
-                colored("&b" + I18n.get("gui.recipe.ingredient", player))
+                tr("gui.recipe.ingredient", NamedTextColor.AQUA)
         );
     }
 
@@ -1343,9 +1307,9 @@ public class RecipeViewGui implements InventoryHolder {
         return display;
     }
 
-    private List<Component> formatIngredientDetailLoreLines(RecipeIngredient ingredient, Player player, String category) {
+    private List<Component> formatIngredientDetailLoreLines(RecipeIngredient ingredient, Player player, Component category) {
         List<Component> lines = new ArrayList<>();
-        lines.add(colored("&7" + category));
+        lines.add(category);
         if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
             if (config.isShowIngredientIds()) {
                 lines.add(colored("&7" + itemIngredient.key()));
@@ -1372,48 +1336,11 @@ public class RecipeViewGui implements InventoryHolder {
         return result;
     }
 
-    private String buildIngredientDisplayKey(ItemStack item) {
-        String customId = ItemUtils.getCustomItemId(item);
-        if (customId != null) {
-            return customId;
-        }
-        return "minecraft:" + item.getType().name().toLowerCase(java.util.Locale.ROOT);
-    }
 
-    private ItemStack createItemFromKey(Key key) {
-        ItemStack cached = itemCache.get(key);
-        if (cached != null) return cached.clone();
-        try {
-            ItemStack customItem = ItemUtils.createItem(key);
-            if (customItem != null) {
-                itemCache.put(key, customItem.clone());
-                return customItem;
-            }
-
-            NamespacedKey materialKey = NamespacedKey.fromString(key.toString());
-            if (materialKey != null) {
-                Material material = Registry.MATERIAL.get(materialKey);
-                if (material != null) {
-                    ItemStack item = new ItemStack(material);
-                    itemCache.put(key, item.clone());
-                    return item;
-                }
-            }
-        } catch (Exception e) {
-            if (plugin.isDebugEnabled("gui")) {
-                plugin.getLogger().fine(I18n.formatConsole("gui_runtime.create_item_failed", "key", key));
-            }
-        }
-        // On resolution failure (no hit in either CE or the vanilla registry), cache the BARRIER sentinel too, to avoid
-        // re-running the CraftEngine + registry lookup every time. All callers treat BARRIER as "unresolved/skip", and it is invalidated when the cache is cleared.
-        ItemStack barrier = new ItemStack(Material.BARRIER);
-        itemCache.put(key, barrier.clone());
-        return barrier;
-    }
 
     private String formatIngredient(RecipeIngredient ingredient, Player player) {
         if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
-            return getItemDisplayName(createItemFromKey(itemIngredient.key()), player);
+            return getItemDisplayName(RecipeIngredientIcons.createItemFromKey(itemIngredient.key()), player);
         }
         if (ingredient instanceof RecipeIngredient.Choice choiceIngredient) {
             return summarizeLabels(formatChoiceIngredientLabels(choiceIngredient, player), 4);
@@ -1426,41 +1353,38 @@ public class RecipeViewGui implements InventoryHolder {
 
     private Component formatIngredientComponent(RecipeIngredient ingredient, Player player) {
         if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
-            return itemNameComponent(createItemFromKey(itemIngredient.key()), player);
+            return itemNameComponent(RecipeIngredientIcons.createItemFromKey(itemIngredient.key()), player);
         }
         return Component.text(formatIngredient(ingredient, player));
     }
 
     private List<Component> formatCompactIngredientLoreLines(RecipeIngredient ingredient, Player player) {
         if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
-            return List.of(itemNameComponent(createItemFromKey(itemIngredient.key()), player));
+            return List.of(itemNameComponent(RecipeIngredientIcons.createItemFromKey(itemIngredient.key()), player));
         }
         if (ingredient instanceof RecipeIngredient.Choice choiceIngredient) {
-            List<ItemStack> options = resolveIngredientOptions(choiceIngredient);
+            List<ItemStack> options = RecipeIngredientIcons.resolveIngredientOptions(choiceIngredient);
             if (options.isEmpty()) {
-                return List.of(colored("&7" + I18n.get("gui.recipe.no_matching_items", player)));
+                return List.of(tr("gui.recipe.no_matching_items", NamedTextColor.GRAY));
             }
             return formatCompactItemOptions(options, player);
         }
         if (ingredient instanceof RecipeIngredient.Tag tagIngredient) {
-            // Clone only the first 6 for showing names; read the full count from the cache, with display identical to the original.
-            int totalSize = resolveTagIngredientOptionsSize(tagIngredient);
+            // Clone only the first 6 for showing names; read the full count from the cache.
+            int totalSize = RecipeIngredientIcons.resolveTagIngredientOptionsSize(tagIngredient);
             if (totalSize == 0) {
-                return List.of(colored("&7" + I18n.get("gui.recipe.no_matching_items", player)));
+                return List.of(tr("gui.recipe.no_matching_items", NamedTextColor.GRAY));
             }
-            List<ItemStack> previewOptions = resolveTagIngredientOptionsPreview(tagIngredient, 6);
+            List<ItemStack> previewOptions = RecipeIngredientIcons.resolveTagIngredientOptionsPreview(tagIngredient, 6);
             int previewCount = previewOptions.size();
             List<Component> lines = formatCompactItemOptions(previewOptions, player);
             if (totalSize > previewCount) {
-                lines.add(colored(I18n.formatNamed(
-                        "gui.recipe.more_items",
-                        player,
-                        Map.of("count", String.valueOf(totalSize - previewCount))
-                )));
+                lines.add(tr("gui.recipe.more_items", NamedTextColor.GRAY,
+                        totalSize - previewCount));
             }
             return lines;
         }
-        return List.of(Component.text(I18n.get("gui.recipe.unknown", player)));
+        return List.of(tr("gui.recipe.unknown", NamedTextColor.WHITE));
     }
 
     private List<Component> formatCompactItemOptions(List<ItemStack> options, Player player) {
@@ -1497,13 +1421,13 @@ public class RecipeViewGui implements InventoryHolder {
     private List<Component> formatIngredientLoreLines(RecipeIngredient ingredient, Player player) {
         List<Component> lines = new ArrayList<>();
         if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
-            lines.add(itemNameComponent(createItemFromKey(itemIngredient.key()), player).colorIfAbsent(NamedTextColor.WHITE));
+            lines.add(itemNameComponent(RecipeIngredientIcons.createItemFromKey(itemIngredient.key()), player).colorIfAbsent(NamedTextColor.WHITE));
             return lines;
         }
         if (ingredient instanceof RecipeIngredient.Tag tagIngredient) {
-            List<ItemStack> options = resolveTagIngredientOptions(tagIngredient);
+            List<ItemStack> options = RecipeIngredientIcons.resolveTagIngredientOptions(tagIngredient);
             if (options.isEmpty()) {
-                lines.add(colored("&7" + I18n.get("gui.recipe.no_matching_items", player)));
+                lines.add(tr("gui.recipe.no_matching_items", NamedTextColor.GRAY));
                 if (config.isShowIngredientIds()) {
                     lines.add(colored("&8#" + tagIngredient.key()));
                 }
@@ -1517,15 +1441,15 @@ public class RecipeViewGui implements InventoryHolder {
             return lines;
         }
         if (ingredient instanceof RecipeIngredient.Choice choiceIngredient) {
-            List<ItemStack> options = resolveIngredientOptions(choiceIngredient);
+            List<ItemStack> options = RecipeIngredientIcons.resolveIngredientOptions(choiceIngredient);
             if (options.isEmpty()) {
-                lines.add(colored("&7" + I18n.get("gui.recipe.no_matching_items", player)));
+                lines.add(tr("gui.recipe.no_matching_items", NamedTextColor.GRAY));
                 return lines;
             }
             appendItemPreviewLore(lines, options, 5, player);
             return lines;
         }
-        lines.add(Component.text(I18n.get("gui.recipe.unknown", player)));
+        lines.add(tr("gui.recipe.unknown", NamedTextColor.WHITE));
         return lines;
     }
 
@@ -1614,10 +1538,10 @@ public class RecipeViewGui implements InventoryHolder {
         if (currentDisplay == null) {
             return options;
         }
-        String currentKey = buildIngredientDisplayKey(currentDisplay);
+        String currentKey = RecipeIngredientIcons.buildIngredientDisplayKey(currentDisplay);
         List<ItemStack> filtered = new ArrayList<>();
         for (ItemStack option : options) {
-            if (!buildIngredientDisplayKey(option).equals(currentKey)) {
+            if (!RecipeIngredientIcons.buildIngredientDisplayKey(option).equals(currentKey)) {
                 filtered.add(option);
             }
         }
@@ -1633,16 +1557,16 @@ public class RecipeViewGui implements InventoryHolder {
     ) {
         LinkedHashMap<String, ItemStack> displayOptions = new LinkedHashMap<>();
         for (RecipeIngredient option : options) {
-            for (ItemStack display : resolveIngredientOptions(option)) {
+            for (ItemStack display : RecipeIngredientIcons.resolveIngredientOptions(option)) {
                 if (!isDisplayableItem(display)) {
                     continue;
                 }
-                displayOptions.putIfAbsent(buildIngredientDisplayKey(display), display);
+                displayOptions.putIfAbsent(RecipeIngredientIcons.buildIngredientDisplayKey(display), display);
             }
         }
 
         if (displayOptions.isEmpty()) {
-            lore.add(colored("&7" + I18n.get("gui.recipe.no_matching_items", player)));
+            lore.add(tr("gui.recipe.no_matching_items", NamedTextColor.GRAY));
             return;
         }
 
@@ -1653,33 +1577,23 @@ public class RecipeViewGui implements InventoryHolder {
         if (options.size() <= 1) {
             return;
         }
-        String currentKey = buildIngredientDisplayKey(currentDisplay);
+        String currentKey = RecipeIngredientIcons.buildIngredientDisplayKey(currentDisplay);
         int currentIndex = 0;
         for (int i = 0; i < options.size(); i++) {
-            if (buildIngredientDisplayKey(options.get(i)).equals(currentKey)) {
+            if (RecipeIngredientIcons.buildIngredientDisplayKey(options.get(i)).equals(currentKey)) {
                 currentIndex = i + 1;
                 break;
             }
         }
-        lore.add(colored(I18n.formatNamed(
-                "gui.recipe.auto_cycle",
-                player,
-                Map.of(
-                        "current", String.valueOf(Math.max(1, currentIndex)),
-                        "total", String.valueOf(options.size())
-                )
-        )));
+        lore.add(tr("gui.recipe.auto_cycle", NamedTextColor.GRAY,
+                Math.max(1, currentIndex), options.size()));
     }
 
     private void appendMoreItemsLine(List<Component> lore, int remainingCount, Player player) {
         if (remainingCount <= 0) {
             return;
         }
-        lore.add(colored(I18n.formatNamed(
-                "gui.recipe.more_items",
-                player,
-                Map.of("count", String.valueOf(remainingCount))
-        )));
+        lore.add(tr("gui.recipe.more_items", NamedTextColor.GRAY, remainingCount));
     }
 
     private List<String> formatChoiceIngredientLabels(RecipeIngredient.Choice choiceIngredient, Player player) {
@@ -1691,7 +1605,7 @@ public class RecipeViewGui implements InventoryHolder {
     }
 
     private String formatTagIngredientSummary(RecipeIngredient.Tag tagIngredient, Player player) {
-        List<ItemStack> options = resolveTagIngredientOptions(tagIngredient);
+        List<ItemStack> options = RecipeIngredientIcons.resolveTagIngredientOptions(tagIngredient);
         if (options.isEmpty()) {
             return noMatchingItemsText(player);
         }
@@ -1712,28 +1626,6 @@ public class RecipeViewGui implements InventoryHolder {
         return I18n.get("gui.recipe.unknown", player);
     }
 
-    private List<ItemStack> sortIngredientDisplayItems(Collection<ItemStack> items) {
-        List<ItemStack> sorted = new ArrayList<>(items);
-        sorted.sort((left, right) -> {
-            String leftName = ItemUtils.getDisplayName(left, (String) null);
-            String rightName = ItemUtils.getDisplayName(right, (String) null);
-            int displayCompare = DISPLAY_NAME_COLLATOR.compare(leftName, rightName);
-            if (displayCompare != 0) {
-                return displayCompare;
-            }
-
-            String leftId = buildIngredientDisplayKey(left);
-            String rightId = buildIngredientDisplayKey(right);
-            int keyCompare = leftId.compareTo(rightId);
-            if (keyCompare != 0) {
-                return keyCompare;
-            }
-
-            return left.getType().name().compareTo(right.getType().name());
-        });
-        return sorted;
-    }
-
     private String getItemDisplayName(ItemStack item, Player player) {
         if (item == null) {
             return unknownRecipeText(player);
@@ -1752,6 +1644,28 @@ public class RecipeViewGui implements InventoryHolder {
             return fallback;
         }
         return value;
+    }
+
+    /** Client-side translatable lore line: {@code Component.translatable(key)} with a color and italic-off,
+     * so each player's client renders the key from its own resource-pack lang file. The key must exist in
+     * {@code assets/farmersdelight/lang/<locale>.json}. */
+    private Component tr(String key, NamedTextColor color) {
+        return Component.translatable(key)
+                .color(color)
+                .decoration(TextDecoration.ITALIC, false);
+    }
+
+    /** Translatable with positional {@code %s} args; each arg is wrapped in {@code Component.text(...)}
+     * unless already a Component, so colored sub-components pass through unchanged. */
+    private Component tr(String key, NamedTextColor color, Object... args) {
+        Component[] components = new Component[args.length];
+        for (int i = 0; i < args.length; i++) {
+            Object a = args[i];
+            components[i] = a instanceof Component c ? c : Component.text(String.valueOf(a));
+        }
+        return Component.translatable(key, components)
+                .color(color)
+                .decoration(TextDecoration.ITALIC, false);
     }
 
     private Component colored(String text) {
@@ -1844,7 +1758,8 @@ public class RecipeViewGui implements InventoryHolder {
         if (craftableOnly) {
             recipes = filterCraftableCookingPotRecipes(recipes);
         }
-        
+        recipes = applyDiscoveryFilter(recipes, true, player);
+
         handleRecipeListClick(player, slot, listConfig, recipes, true);
     }
 
@@ -1861,7 +1776,8 @@ public class RecipeViewGui implements InventoryHolder {
     private void handleCuttingBoardListClick(Player player, int slot) {
         RecipeViewGuiConfig.RecipeListConfig listConfig = config.getRecipeList();
         List<CuttingBoardRecipe> recipes = plugin.getCuttingBoardRecipes().getSortedRecipes();
-        
+        recipes = applyDiscoveryFilter(recipes, false, player);
+
         handleRecipeListClick(player, slot, listConfig, recipes, false);
     }
 
@@ -1893,11 +1809,16 @@ public class RecipeViewGui implements InventoryHolder {
             int slotIndex = recipeSlots.indexOf(slot);
             int recipeIndex = currentPage * itemsPerPage + slotIndex;
         if (recipeIndex < recipes.size()) {
+                Object clickedRecipe = recipes.get(recipeIndex);
+                if (isRecipeLocked(clickedRecipe, isCookingPot, player)) {
+                    player.sendMessage(Component.translatable("recipe-discovery.locked-click").color(NamedTextColor.RED));
+                    return;
+                }
                 String recipeId;
                 if (isCookingPot) {
-                    recipeId = ((CookingPotRecipe) recipes.get(recipeIndex)).getId();
+                    recipeId = ((CookingPotRecipe) clickedRecipe).getId();
                 } else {
-                    recipeId = ((CuttingBoardRecipe) recipes.get(recipeIndex)).getId();
+                    recipeId = ((CuttingBoardRecipe) clickedRecipe).getId();
                 }
                 if (editMode) {
                     closeGui(player);
@@ -1953,6 +1874,15 @@ public class RecipeViewGui implements InventoryHolder {
         // re-open it, which would needlessly rebuild and "refresh" the page.
         if (linkedRecipe.cookingPot() == cookingPotMode
                 && java.util.Objects.equals(linkedRecipe.recipeId(), selectedRecipeId)) {
+            return;
+        }
+
+        // Block navigation to a locked linked recipe.
+        Object linkedTarget = linkedRecipe.cookingPot()
+                ? plugin.getCookingPotRecipes().getRecipe(getActiveCookingPotRecipeGroup(), linkedRecipe.recipeId())
+                : plugin.getCuttingBoardRecipes().getRecipe(linkedRecipe.recipeId());
+        if (linkedTarget != null && isRecipeLocked(linkedTarget, linkedRecipe.cookingPot(), player)) {
+            player.sendMessage(Component.translatable("recipe-discovery.locked-click").color(NamedTextColor.RED));
             return;
         }
 
@@ -2107,6 +2037,14 @@ public class RecipeViewGui implements InventoryHolder {
 
     private FillResult fillCookingPotFromInventory(Player player, boolean fillAll) {
         if (!fromCookingPot || cookingPotLocation == null || selectedRecipeId == null) {
+            return FillResult.stay(FillButtonState.MISSING_INGREDIENTS);
+        }
+        // This runs on the player's Folia region thread (inventory click). All the pot-side work below
+        // (getBlockEntity, hopper inserts, markActive/checkHeatSource/saveBlockEntityData) touches the
+        // cooking-pot block entity, which must happen on the pot's own region. If the pot is in a
+        // different region (player teleported while the GUI stayed open), touching it here is a
+        // cross-region access — skip safely rather than throw. Always owned on Paper.
+        if (!plugin.scheduler().isOwnedByCurrentRegion(cookingPotLocation)) {
             return FillResult.stay(FillButtonState.MISSING_INGREDIENTS);
         }
         CookingPotRecipe recipe = plugin.getCookingPotRecipes().getRecipe(getActiveCookingPotRecipeGroup(), selectedRecipeId);
@@ -2776,7 +2714,7 @@ public class RecipeViewGui implements InventoryHolder {
         }
         activeGuis.clear();
         cachedConfig = null;
-        itemCache.clear();
+        RecipeIngredientIcons.clearItemCache();
         // Reset this flag so a new EventDispatcher is re-registered on soft re-enable; otherwise, after disable removes the old listener,
         // recipe GUI clicks would no longer be cancelled.
         listenerRegistered = false;

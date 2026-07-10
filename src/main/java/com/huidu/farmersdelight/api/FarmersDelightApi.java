@@ -32,6 +32,10 @@ public final class FarmersDelightApi {
     private static final FarmersDelightApi INSTANCE = new FarmersDelightApi();
 
     private final Map<String, RecipeType> recipeTypes = Collections.synchronizedMap(new LinkedHashMap<>());
+    // Block namespaces of registered addons (e.g. "brewinandchewin"), so the CraftEngine block-state usage
+    // report attributes addon blocks alongside FarmersDelight's own.
+    private final java.util.Set<String> addonBlockNamespaces =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     private FarmersDelightApi() {
     }
@@ -40,10 +44,31 @@ public final class FarmersDelightApi {
         return INSTANCE;
     }
 
+    /** Registers an addon's block namespace (e.g. {@code "brewinandchewin"}) so its CraftEngine blocks are
+     * counted in FarmersDelight's block-state usage report. Idempotent; a trailing ':' is tolerated. */
+    public void registerAddonBlockNamespace(String namespace) {
+        if (namespace == null) {
+            return;
+        }
+        String trimmed = namespace.trim().toLowerCase(java.util.Locale.ROOT);
+        if (trimmed.endsWith(":")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        if (!trimmed.isEmpty()) {
+            addonBlockNamespaces.add(trimmed);
+        }
+    }
+
+    /** The registered addon block namespaces (without trailing ':'). For the block-state usage monitor. */
+    public java.util.Set<String> addonBlockNamespaces() {
+        return java.util.Set.copyOf(addonBlockNamespaces);
+    }
+
     /** Registers an addon recipe type so it appears in the generic recipe book (and editor, if provided). */
     public void registerRecipeType(RecipeType type) {
         if (type != null && type.id() != null) {
             recipeTypes.put(type.id(), type);
+            invalidateRecipeDiscoveryIndex();
         }
     }
 
@@ -51,6 +76,15 @@ public final class FarmersDelightApi {
     public void unregisterRecipeType(String typeId) {
         if (typeId != null) {
             recipeTypes.remove(typeId);
+            invalidateRecipeDiscoveryIndex();
+        }
+    }
+
+    /** Keeps the recipe-discovery obtain-trigger index in sync when the set of recipe types changes. */
+    private void invalidateRecipeDiscoveryIndex() {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        if (plugin != null && plugin.getRecipeDiscoveryManager() != null) {
+            plugin.getRecipeDiscoveryManager().invalidateIndex();
         }
     }
 
@@ -168,6 +202,27 @@ public final class FarmersDelightApi {
     public boolean isFolia() {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         return plugin != null && plugin.scheduler().isFolia();
+    }
+
+    /**
+     * Resolves translation tags ({@code <l10n:key>} / {@code <lang:key>} / {@code <i18n:key>}) in {@code text}
+     * to {@code player}'s locale (falling back to the default/en locale, then the raw key), leaving other
+     * content — including MiniMessage markup — untouched. Keys resolve through FarmersDelight's lang files and
+     * CraftEngine's translations, so addons can put localized placeholders in their own GUI config strings.
+     * {@code player} may be null (uses the default locale).
+     */
+    public String resolveTranslations(String text, Player player) {
+        return com.huidu.farmersdelight.util.ItemUtils.resolveTranslationTags(text, player);
+    }
+
+    /**
+     * Formats a server-console log line from FarmersDelight's lang files: {@code key} is resolved under the
+     * {@code console.} prefix in the active console locale, with {@code args} substituted as name/value pairs
+     * ("count", 3, "file", name, ...); an unknown key returns itself. Lets addons emit console logs through the
+     * same shared lang system rather than hardcoding English. Callers still choose the log level/logger.
+     */
+    public static String consoleMessage(String key, Object... args) {
+        return com.huidu.farmersdelight.i18n.I18n.formatConsole(key, args);
     }
 
     /** True if {@code block} is a configured heat source (cooking-pot heating). */

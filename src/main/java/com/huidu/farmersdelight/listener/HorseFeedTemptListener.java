@@ -16,7 +16,6 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -34,12 +33,12 @@ public class HorseFeedTemptListener implements Listener {
     private final Set<UUID> scheduledTempterTicks = ConcurrentHashMap.newKeySet();
     private final Map<UUID, Player> activeTempterPlayers = new ConcurrentHashMap<>();
     private final Map<UUID, PetFoodConfig.PetFoodDefinition> activeTemptDefinitions = new ConcurrentHashMap<>();
-    private final Map<String, PetFoodConfig.PetFoodDefinition> temptFoods = new HashMap<>();
+    private final Map<String, PetFoodConfig.PetFoodDefinition> temptFoods = new ConcurrentHashMap<>();
     private boolean enabled;
     private long tickInterval;
     private int tickBudget;
     private int tickCursor;
-    private PluginTask task;
+    private volatile PluginTask task;
     // Structural-change generation of activeTempterPlayers. tickTemptGoals caches an indexable snapshot from it,
     // skipping a per-cycle List.copyOf when membership is unchanged (the common case). The generation is mutated by
     // multiple threads (region threads), hence AtomicLong; the snapshot cache is read/written only in the single-threaded
@@ -249,8 +248,13 @@ public class HorseFeedTemptListener implements Listener {
         // player.getLocation() already returns a fresh copy and the scheduled task only reads it, so
         // sharing a single snapshot is safe; no need to clone per nearby mob.
         Location targetLocation = player.getLocation();
+        Set<EntityType> wantedTypes = definition.entities;
         for (Entity nearby : player.getNearbyEntities(definition.temptRange, definition.temptRange, definition.temptRange)) {
-            if (nearby instanceof Mob mob) {
+            // Filter by configured tempt EntityType set BEFORE region-scheduling. Without this gate, every
+            // Mob in the temptRange box (sheep / cows / random hostiles next to a horse-feeding player)
+            // incurred a runForEntity dispatch that the per-mob tryMoveToLocation would then drop on the
+            // type check — wasting a Folia region task per irrelevant mob per tick.
+            if (nearby instanceof Mob mob && wantedTypes.contains(mob.getType())) {
                 scheduleMobTempt(mob, playerId, targetLocation, definition);
             }
         }
@@ -267,7 +271,7 @@ public class HorseFeedTemptListener implements Listener {
         if (mob == null || !mob.isValid() || mob.isDead() || targetLocation == null || targetLocation.getWorld() == null) {
             return;
         }
-        if (!definition.entities.contains(mob.getType()) || !targetLocation.getWorld().equals(mob.getWorld())) {
+        if (!targetLocation.getWorld().equals(mob.getWorld())) {
             return;
         }
         if (mob.getLocation().distanceSquared(targetLocation) > definition.temptRangeSquared) {

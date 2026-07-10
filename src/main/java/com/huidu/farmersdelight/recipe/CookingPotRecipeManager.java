@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.recipe;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.i18n.I18n;
+import com.huidu.farmersdelight.api.recipe.IngredientMatching;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
@@ -28,12 +29,16 @@ public class CookingPotRecipeManager {
     private volatile Map<String, List<CookingPotRecipe>> sortedCustomRecipes = Map.of();
     private volatile Map<String, List<CookingPotRecipe>> sortedCustomOnlyRecipes = Map.of();
     private final Map<Key, Set<String>> vanillaItemIdsByTagCache = new ConcurrentHashMap<>();
-    private final Map<String, CookingPotRecipe> recipeCache = new LinkedHashMap<>(MAX_CACHE_SIZE + 1, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, CookingPotRecipe> eldest) {
-            return size() > MAX_CACHE_SIZE;
-        }
-    };
+    // LRU access-order LinkedHashMap mutates internal state on get(), so concurrent reads from
+    // multiple region threads (Folia) would corrupt the doubly-linked list. Wrap in synchronizedMap;
+    // callers MUST synchronize externally when iterating (currently no iteration happens).
+    private final Map<String, CookingPotRecipe> recipeCache = java.util.Collections.synchronizedMap(
+            new LinkedHashMap<>(MAX_CACHE_SIZE + 1, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, CookingPotRecipe> eldest) {
+                    return size() > MAX_CACHE_SIZE;
+                }
+            });
     private static final int MAX_CACHE_SIZE = 100;
     private volatile Set<String> validContainerKeys = Set.of();
     // Recipes registered at runtime by addons via the public API. Kept separate so they survive a
@@ -98,6 +103,9 @@ public class CookingPotRecipeManager {
         synchronized (recipeCache) {
             recipeCache.clear();
         }
+        // Invalidate the recipe-list GUI display cache: this republish path (incl. addon register/
+        // unregister) bypasses RecipeViewGui.clearConfigCache.
+        com.huidu.farmersdelight.gui.RecipeViewGui.clearRecipeDisplayCache();
     }
 
     private void loadCustomRecipes(YamlConfiguration config,
@@ -368,11 +376,25 @@ public class CookingPotRecipeManager {
         if (orderedRecipes == null || orderedRecipes.isEmpty()) {
             return null;
         }
+        // Prefer a recipe that consumes exactly the filled slots; only when none does, allow a lenient match
+        // (extra slots of an ingredient the recipe already uses), so exact recipes are never shadowed.
+        CookingPotRecipe exact = matchPass(orderedRecipes, candidateRecipeIds, container, nonEmptyInputs, true);
+        if (exact != null) {
+            return exact;
+        }
+        return matchPass(orderedRecipes, candidateRecipeIds, container, nonEmptyInputs, false);
+    }
+
+    private CookingPotRecipe matchPass(List<CookingPotRecipe> orderedRecipes, Set<String> candidateRecipeIds,
+                                       ItemStack container, List<ItemStack> nonEmptyInputs, boolean exactSlots) {
         for (CookingPotRecipe recipe : orderedRecipes) {
             if (candidateRecipeIds != null && !candidateRecipeIds.contains(recipe.getId())) {
                 continue;
             }
-            if (matchesContainer(recipe, container) && matchRecipe(recipe, nonEmptyInputs)) {
+            // matchRecipePrefiltered skips the per-call ArrayList alloc that matchRecipe's defensive
+            // filter does — caller (matchRecipe public) has already stripped nulls/airs into the list,
+            // and matchPass runs this in a tight loop over every recipe in orderedRecipes.
+            if (matchesContainer(recipe, container) && matchRecipePrefiltered(recipe, nonEmptyInputs, exactSlots)) {
                 return recipe;
             }
         }
@@ -398,32 +420,28 @@ public class CookingPotRecipeManager {
     }
 
     private boolean matchesContainer(CookingPotRecipe recipe, ItemStack container) {
-        if (!recipe.needsContainer()) {
-            return true;
-        }
-        if (container == null || container.getType().isAir()) {
-            return true;
-        }
-        ItemStack required = recipe.getContainer();
-        if (required == null || required.getType().isAir()) {
-            return true;
-        }
-        String requiredCustomId = ItemUtils.getCustomItemId(required);
-        String providedCustomId = ItemUtils.getCustomItemId(container);
-        if (requiredCustomId != null || providedCustomId != null) {
-            return requiredCustomId != null && requiredCustomId.equals(providedCustomId);
-        }
-        return required.isSimilar(container);
+        // The C slot is a batch-output channel, not a cook gate: cooking proceeds regardless of what's in it
+        // (empty, wrong, right). The downstream storeCookedResult / tryMovePendingToOutput only count slots
+        // that hold the recipe's required container before moving pending->output, so a wrong/missing
+        // container just keeps the result in the pending slot until the player swaps in the right one
+        // (no dedicated container slot — it comes from the player's hand at extraction time).
+        return true;
     }
 
     private Set<String> findCandidateRecipes(List<ItemStack> inputs, Map<String, Set<String>> recipeIndex) {
         if (recipeIndex == null || recipeIndex.isEmpty()) {
             return null;
         }
+        // Copy-on-write to avoid the per-call HashSet allocations the old version did even when only
+        // one source set per item / per call needed merging — see the recipe-matching audit notes.
+        // candidates / recipesForItem start as shared references to an unmodified index entry; we
+        // allocate a real HashSet copy only when a second source forces a union or intersection.
         Set<String> candidates = null;
-        
+        boolean candidatesShared = false;
+
         for (ItemStack item : inputs) {
             Set<String> recipesForItem = null;
+            boolean recipesForItemShared = false;
 
             for (String itemId : ItemUtils.getItemIds(item)) {
                 Set<String> indexed = recipeIndex.get(itemId);
@@ -431,8 +449,13 @@ public class CookingPotRecipeManager {
                     continue;
                 }
                 if (recipesForItem == null) {
-                    recipesForItem = new HashSet<>(indexed);
+                    recipesForItem = indexed;
+                    recipesForItemShared = true;
                 } else {
+                    if (recipesForItemShared) {
+                        recipesForItem = new HashSet<>(recipesForItem);
+                        recipesForItemShared = false;
+                    }
                     recipesForItem.addAll(indexed);
                 }
             }
@@ -442,53 +465,57 @@ public class CookingPotRecipeManager {
                     continue;
                 }
                 if (recipesForItem == null) {
-                    recipesForItem = new HashSet<>(indexed);
+                    recipesForItem = indexed;
+                    recipesForItemShared = true;
                 } else {
+                    if (recipesForItemShared) {
+                        recipesForItem = new HashSet<>(recipesForItem);
+                        recipesForItemShared = false;
+                    }
                     recipesForItem.addAll(indexed);
                 }
             }
-            
+
             if (recipesForItem != null) {
                 if (candidates == null) {
-                    candidates = new HashSet<>(recipesForItem);
+                    candidates = recipesForItem;
+                    candidatesShared = recipesForItemShared;
                 } else {
+                    if (candidatesShared) {
+                        candidates = new HashSet<>(candidates);
+                        candidatesShared = false;
+                    }
                     candidates.retainAll(recipesForItem);
                 }
             }
         }
-        
+
         return candidates;
     }
 
     private boolean matchRecipe(CookingPotRecipe recipe, List<ItemStack> inputs) {
-        List<RecipeIngredient> requiredIngredients = recipe.getIngredients();
+        // Lenient acceptance: an exact-slot match also satisfies this, so canCraft uses it.
+        return matchRecipe(recipe, inputs, false);
+    }
 
-        List<ItemStack> availableInputs = new ArrayList<>();
+    private boolean matchRecipe(CookingPotRecipe recipe, List<ItemStack> inputs, boolean exactSlots) {
+        List<ItemStack> nonEmpty = new ArrayList<>();
         for (ItemStack input : inputs) {
             if (input != null && !input.getType().isAir()) {
-                availableInputs.add(input.clone());
+                nonEmpty.add(input);
             }
         }
+        return matchRecipePrefiltered(recipe, nonEmpty, exactSlots);
+    }
 
-        for (RecipeIngredient ingredient : requiredIngredients) {
-            boolean found = false;
-            for (int i = 0; i < availableInputs.size(); i++) {
-                ItemStack available = availableInputs.get(i);
-                if (available != null && available.getAmount() > 0 && matchIngredient(available, ingredient)) {
-                    available.setAmount(available.getAmount() - 1);
-                    if (available.getAmount() <= 0) {
-                        availableInputs.set(i, null);
-                    }
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                return false;
-            }
-        }
-
-        return true;
+    /** Internal variant for callers that have already filtered out nulls/airs (e.g. the matchPass
+     *  loop, which only ever sees the {@code nonEmptyInputs} list built once at the top of
+     *  {@link #matchRecipe(List, ItemStack, String)}). Skips the per-call ArrayList allocation the
+     *  public {@code matchRecipe} does for safety. */
+    private boolean matchRecipePrefiltered(CookingPotRecipe recipe, List<ItemStack> nonEmptyInputs, boolean exactSlots) {
+        return IngredientMatching.matchesIngredients(
+                recipe.getIngredients(), nonEmptyInputs, exactSlots,
+                this::matchIngredient, ItemStack::getAmount);
     }
 
     public boolean canCraft(CookingPotRecipe recipe, List<ItemStack> inputs, ItemStack container) {

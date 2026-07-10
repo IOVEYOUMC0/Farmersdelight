@@ -6,6 +6,7 @@ import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
+import com.huidu.farmersdelight.util.ItemUtils;
 import net.momirealms.craftengine.bukkit.world.BukkitContainer;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
@@ -38,7 +39,7 @@ import java.util.Optional;
  * {@link CookingPotBlockEntity}; this controller keeps a shadow copy, reconciled via
  * {@link #refreshFromEntity}/{@link #writeToEntity} with dirty-slot tracking.
  *
- * <p>{@link #getItem(int)} must return the live shadow {@code Item} so vanilla hopper in-place
+ * {@link #getItem(int)} must return the live shadow {@code Item} so vanilla hopper in-place
  * merges ({@code getItem(slot).grow(n)} followed by {@link #setChanged()}, without calling
  * {@link #setItem}) are captured; returning a detached copy would drop every merged item. Any
  * mutator must {@link #markDirty(int)} the changed slot and call {@link #setChanged()}, or be
@@ -126,7 +127,7 @@ public final class CookingPotBlockEntityController extends BlockEntityController
         data.putInt(COOKING_DURATION, entity.getCookingDuration());
         ItemStack mealContainer = entity.getMealContainer();
         if (mealContainer != null && !mealContainer.getType().isAir()) {
-            Tag mealContainerTag = ItemStackUtils.saveBukkitItemAsTag(mealContainer);
+            Tag mealContainerTag = ItemUtils.saveBukkitItemAsTag(mealContainer);
             if (mealContainerTag != null) {
                 data.put(MEAL_CONTAINER, mealContainerTag);
             }
@@ -288,7 +289,7 @@ public final class CookingPotBlockEntityController extends BlockEntityController
         data.putInt(COOKING_PROGRESS, this.cookingProgress);
         data.putInt(COOKING_DURATION, this.cookingDuration);
         if (this.mealContainer != null && !this.mealContainer.getType().isAir()) {
-            Tag mealContainerTag = ItemStackUtils.saveBukkitItemAsTag(this.mealContainer);
+            Tag mealContainerTag = ItemUtils.saveBukkitItemAsTag(this.mealContainer);
             if (mealContainerTag != null) {
                 data.put(MEAL_CONTAINER, mealContainerTag);
             }

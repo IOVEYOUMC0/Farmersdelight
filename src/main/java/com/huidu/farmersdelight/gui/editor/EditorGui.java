@@ -10,7 +10,7 @@ import org.bukkit.inventory.InventoryHolder;
  * {@link InventoryHolder}, so {@link RecipeEditorListener} can route raw inventory events to it by checking
  * the top inventory's holder.
  *
- * <p>Editor GUIs never move real items: every {@link InventoryClickEvent} is cancelled, and slot
+ * Editor GUIs never move real items: every {@link InventoryClickEvent} is cancelled, and slot
  * contents are only ever set programmatically to copies, so the player's inventory is never consumed or lost (a "copy on click" model).
  */
 public interface EditorGui extends InventoryHolder {

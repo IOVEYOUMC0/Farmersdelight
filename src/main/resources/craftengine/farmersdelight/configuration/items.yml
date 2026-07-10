@@ -118,12 +118,9 @@ items:
     data:
       item-name: <!i><l10n:item.farmersdelight.milk_bottle>
       lore: '<!i><blue><l10n:farmersdelight.tooltip.milk_bottle.effect></blue>'
-    events:
-      - on: consume
-        functions:
-          - type: remove_potion_effect
-            all: true
     settings:
+      tags:
+        - farmersdelight:milk
       craft-remainder:
         type: recipe_based
         terms:
@@ -191,10 +188,41 @@ items:
       item-name: <!i><l10n:item.farmersdelight.tomato_seeds>
     behavior:
       type: block_item
-      block: farmersdelight:tomatoes
+      block: farmersdelight:budding_tomatoes
+  farmersdelight:organic_compost:
+    model: ${__NAMESPACE__}:item/${__ID__}
+    data:
+      item-name: <!i><l10n:block.farmersdelight.organic_compost>
+    behavior:
+      type: block_item
+      block: farmersdelight:organic_compost
+  farmersdelight:rich_soil:
+    model: ${__NAMESPACE__}:item/${__ID__}
+    data:
+      item-name: <!i><l10n:block.farmersdelight.rich_soil>
+    behavior:
+      type: block_item
+      block: farmersdelight:rich_soil
+  farmersdelight:rich_soil_farmland:
+    model: ${__NAMESPACE__}:item/${__ID__}
+    data:
+      item-name: <!i><l10n:block.farmersdelight.rich_soil_farmland>
+    behavior:
+      type: block_item
+      block: farmersdelight:rich_soil_farmland
   farmersdelight:rotten_tomato:
     material: snowball
     model: ${__NAMESPACE__}:item/${__ID__}
+    settings:
+      projectile:
+        item: farmersdelight:rotten_tomato
+        translation: 0,0,0
+        rotation: 1,1,1,1
+        display_transform: NONE
+        scale: 0.1
+        sounds:
+          hit_entity: farmersdelight:entity.rotten_tomato.hit
+          hit_block: farmersdelight:entity.rotten_tomato.hit
     data:
       item-name: <!i><l10n:item.farmersdelight.rotten_tomato>
   farmersdelight:fried_egg:
@@ -427,14 +455,17 @@ items:
     template: farmersdelight:pie_template
     data:
       item-name: <!i><l10n:block.farmersdelight.apple_pie>
+      lore: '<!i><dark_gray><l10n:farmersdelight.tooltip.placeable></dark_gray>'
   farmersdelight:sweet_berry_cheesecake:
     template: farmersdelight:pie_template
     data:
       item-name: <!i><l10n:block.farmersdelight.sweet_berry_cheesecake>
+      lore: '<!i><dark_gray><l10n:farmersdelight.tooltip.placeable></dark_gray>'
   farmersdelight:chocolate_pie:
     template: farmersdelight:pie_template
     data:
       item-name: <!i><l10n:block.farmersdelight.chocolate_pie>
+      lore: '<!i><dark_gray><l10n:farmersdelight.tooltip.placeable></dark_gray>'
   farmersdelight:cake_slice:
     template: farmersdelight:food_template
     data:
@@ -464,8 +495,9 @@ items:
     data:
       item-name: <!i><l10n:block.farmersdelight.chocolate_pie_slice>
   minecraft:pumpkin_pie:
-    settings:
-      disable_vanilla_behavior: true
+    material: pumpkin_pie
+    data:
+      lore: '<!i><dark_gray><l10n:farmersdelight.tooltip.placeable_sneaking></dark_gray>'
     behavior:
       type: ground_block_item
       block: farmersdelight:pumpkin_pie
@@ -880,7 +912,7 @@ items:
     template: farmersdelight:pie_template
     data:
       item-name: <!i><l10n:block.farmersdelight.roast_chicken_block>
-      lore: '<!i><green><l10n:farmersdelight.tooltip.requires_bowl_when_placed></green>'
+      lore: '<!i><dark_gray><l10n:farmersdelight.tooltip.placeable></dark_gray>'
   farmersdelight:roast_chicken:
     template: farmersdelight:soup_template
     data:
@@ -894,7 +926,7 @@ items:
     template: farmersdelight:pie_template
     data:
       item-name: <!i><l10n:block.farmersdelight.stuffed_pumpkin_block>
-      lore: '<!i><green><l10n:farmersdelight.tooltip.requires_bowl_when_placed></green>'
+      lore: '<!i><dark_gray><l10n:farmersdelight.tooltip.placeable></dark_gray>'
   farmersdelight:stuffed_pumpkin:
     template: farmersdelight:soup_template
     data:
@@ -908,7 +940,7 @@ items:
     template: farmersdelight:pie_template
     data:
       item-name: <!i><l10n:block.farmersdelight.honey_glazed_ham_block>
-      lore: '<!i><green><l10n:farmersdelight.tooltip.requires_bowl_when_placed></green>'
+      lore: '<!i><dark_gray><l10n:farmersdelight.tooltip.placeable></dark_gray>'
   farmersdelight:honey_glazed_ham:
     template: farmersdelight:soup_template
     data:
@@ -922,7 +954,7 @@ items:
     template: farmersdelight:pie_template
     data:
       item-name: <!i><l10n:block.farmersdelight.shepherds_pie_block>
-      lore: '<!i><green><l10n:farmersdelight.tooltip.requires_bowl_when_placed></green>'
+      lore: '<!i><dark_gray><l10n:farmersdelight.tooltip.placeable></dark_gray>'
   farmersdelight:shepherds_pie:
     template: farmersdelight:soup_template
     data:
@@ -936,7 +968,7 @@ items:
     template: farmersdelight:pie_template
     data:
       item-name: <!i><l10n:block.farmersdelight.gleaming_salad_block>
-      lore: '<!i><green><l10n:farmersdelight.tooltip.requires_bowl_when_placed></green>'
+      lore: '<!i><dark_gray><l10n:farmersdelight.tooltip.placeable></dark_gray>'
   farmersdelight:gleaming_salad:
     template: farmersdelight:soup_template
     data:
@@ -951,6 +983,7 @@ items:
     model: ${__NAMESPACE__}:item/${__ID__}
     data:
       item-name: <!i><l10n:block.farmersdelight.rice_roll_medley_block>
+      lore: '<!i><dark_gray><l10n:farmersdelight.tooltip.placeable></dark_gray>'
   farmersdelight:dog_food:
     template: farmersdelight:soup_template
     data:
