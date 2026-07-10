@@ -63,17 +63,10 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.concurrent.ThreadLocalRandom;
@@ -81,13 +74,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class FarmersDelightPlugin extends JavaPlugin implements Listener {
-
-    private static final String[][] CONFIG_KEY_MIGRATIONS = {
-            {"knife-drops", "mob-extra-drops"},
-            {"entity-extra-drops", "mob-extra-drops"},
-            {"knife-drop-tools", "mob-extra-drop-tools"},
-            {"entity-extra-drop-tools", "mob-extra-drop-tools"}
-    };
 
 
     private static volatile FarmersDelightPlugin instance;
@@ -123,6 +109,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private HorseFeedTemptListener horseFeedTemptListener;
     private AchievementListener achievementListener;
     private EffectListener effectListener;
+    private final com.huidu.farmersdelight.config.ConfigBootstrap configBootstrap = new com.huidu.farmersdelight.config.ConfigBootstrap(this);
 
     // Lazy-loaded, may be accessed concurrently by multiple region threads (awarding XP when collecting cooking pot results); uses volatile + double-checked locking,
     // consistent with recipeEditorStore.
@@ -311,7 +298,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     @Override
     public void onLoad() {
         instance = this;
-        ensureConfigDefaults();
+        configBootstrap.ensureConfigDefaults();
         I18n.init(this);
         new com.huidu.farmersdelight.resource.ResourceInstaller(this, getFile()).installCraftEngineResourcesOnce();
         com.huidu.farmersdelight.registry.BehaviorRegistrar.registerBlockBehaviors(getLogger());
@@ -354,8 +341,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             I18n.logWarning("plugin.debug_tools_build");
         }
 
-        ensureConfigDefaults();
-        migrateConfigKeys();
+        configBootstrap.ensureConfigDefaults();
+        configBootstrap.migrateConfigKeys();
         I18n.init(this);
 
         scheduler = new SchedulerAdapter(this);
@@ -950,9 +937,9 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     }
 
     public void reloadAll() {
-        ensureConfigDefaults();
+        configBootstrap.ensureConfigDefaults();
         reloadConfig();
-        migrateConfigKeys();
+        configBootstrap.migrateConfigKeys();
         boolean previousAdvancementsEnabled = advancementsEnabled;
         loadConfigs();
         I18n.reload();
@@ -1013,9 +1000,9 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     }
 
     public void reloadMainConfigOnly() {
-        ensureConfigDefaults();
+        configBootstrap.ensureConfigDefaults();
         reloadConfig();
-        migrateConfigKeys();
+        configBootstrap.migrateConfigKeys();
         boolean previousAdvancementsEnabled = advancementsEnabled;
         loadConfigs();
         com.huidu.farmersdelight.util.ItemUtils.clearItemCache();
@@ -1071,7 +1058,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     }
 
     public void reloadGuiConfig() {
-        ensureConfigDefaults();
+        configBootstrap.ensureConfigDefaults();
         guiConfig = loadGuiConfig();
         ConfigurationSection cookingPotSection = guiConfig.getConfigurationSection("cooking-pot-gui");
         cookingPotGuiConfig = cookingPotSection != null
@@ -1432,188 +1419,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     public Set<String> getKnifeTagIds() {
         return knifeTagIds;
-    }
-
-    private void ensureConfigDefaults() {
-        Path dataFolder = getDataFolder().toPath();
-        Path configPath = dataFolder.resolve("config.yml");
-        Path guiPath = dataFolder.resolve("gui.yml");
-        try {
-            Files.createDirectories(dataFolder);
-            if (Files.notExists(configPath)) {
-                writeBundledConfig(configPath);
-            }
-            writeBundledResourceIfMissing("gui.yml", guiPath);
-
-            if (shouldRestoreConfig(configPath)) {
-                backupBrokenConfig(configPath);
-                writeBundledConfig(configPath);
-                I18n.logWarning("config_restored_unreadable", "file", "config.yml");
-            }
-            if (shouldRestoreConfig(guiPath)) {
-                backupBrokenConfig(guiPath);
-                writeBundledResource("gui.yml", guiPath, true);
-                I18n.logWarning("config_restored_unreadable", "file", "gui.yml");
-            }
-        } catch (IOException e) {
-            I18n.logWarning("config_prepare_failed", "error", e.getMessage());
-        }
-    }
-
-    private void migrateConfigKeys() {
-        boolean changed = false;
-        for (String[] migration : CONFIG_KEY_MIGRATIONS) {
-            changed |= migrateConfigSection(migration[0], migration[1]);
-        }
-        if (changed) {
-            saveConfig();
-            reloadConfig();
-        }
-    }
-
-    private boolean migrateConfigSection(String oldPath, String newPath) {
-        if (getConfig().isSet(newPath) || !getConfig().isSet(oldPath)) {
-            return false;
-        }
-        ConfigurationSection oldSection = getConfig().getConfigurationSection(oldPath);
-        if (oldSection != null) {
-            ConfigurationSection newSection = getConfig().createSection(newPath);
-            copyConfigSection(oldSection, newSection);
-        } else {
-            getConfig().set(newPath, getConfig().get(oldPath));
-        }
-        getConfig().set(oldPath, null);
-        I18n.logInfo("config_key_migrated", "old", oldPath, "new", newPath);
-        return true;
-    }
-
-    private void copyConfigSection(ConfigurationSection source, ConfigurationSection target) {
-        for (String key : source.getKeys(false)) {
-            ConfigurationSection child = source.getConfigurationSection(key);
-            if (child != null) {
-                copyConfigSection(child, target.createSection(key));
-            } else {
-                target.set(key, source.get(key));
-            }
-        }
-    }
-
-    private boolean shouldRestoreConfig(Path configPath) {
-        if (!isYamlReadable(configPath)) {
-            return true;
-        }
-        try {
-            return Files.readString(configPath, StandardCharsets.UTF_8).indexOf('\uFFFD') >= 0;
-        } catch (IOException e) {
-            return true;
-        }
-    }
-
-    private boolean isYamlReadable(Path configPath) {
-        try {
-            org.bukkit.configuration.file.YamlConfiguration yaml = new org.bukkit.configuration.file.YamlConfiguration();
-            try (InputStreamReader reader = new InputStreamReader(Files.newInputStream(configPath), StandardCharsets.UTF_8)) {
-                yaml.load(reader);
-            }
-            return true;
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    private void backupBrokenConfig(Path configPath) throws IOException {
-        String fileName = configPath.getFileName().toString();
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
-        String backupName = fileName + "." + timestamp + ".bak";
-        Files.copy(configPath, configPath.resolveSibling(backupName), StandardCopyOption.REPLACE_EXISTING);
-    }
-
-    private void writeBundledConfig(Path configPath) throws IOException {
-        writeBundledResource("config.yml", configPath, true);
-    }
-
-    private void writeBundledResourceIfMissing(String resourcePath, Path targetPath) throws IOException {
-        if (Files.notExists(targetPath)) {
-            writeBundledResource(resourcePath, targetPath, false);
-        }
-    }
-
-    private void writeBundledResource(String resourcePath, Path targetPath, boolean replace) throws IOException {
-        try (InputStream inputStream = getResource(resourcePath)) {
-            if (inputStream == null) {
-                throw new IOException("Bundled " + resourcePath + " was not found in the plugin jar.");
-            }
-            String content = decodeUtf8Resource(inputStream.readAllBytes(), resourcePath);
-            if (isYamlResource(resourcePath) && !isYamlContentReadable(content)) {
-                throw new IOException("Bundled " + resourcePath + " is not valid YAML.");
-            }
-            writeStringAtomically(targetPath, content, replace);
-        }
-    }
-
-    private String decodeUtf8Resource(byte[] bytes, String resourcePath) throws IOException {
-        try {
-            return StandardCharsets.UTF_8.newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(bytes))
-                    .toString();
-        } catch (CharacterCodingException e) {
-            throw new IOException("Bundled " + resourcePath + " is not valid UTF-8.", e);
-        }
-    }
-
-    private boolean isYamlResource(String resourcePath) {
-        return resourcePath != null
-                && (resourcePath.equals("config.yml") || resourcePath.equals("gui.yml"));
-    }
-
-    private boolean isYamlContentReadable(String content) {
-        try {
-            YamlConfiguration yaml = new YamlConfiguration();
-            yaml.loadFromString(content);
-            return true;
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    private void writeStringAtomically(Path targetPath, String content, boolean replace) throws IOException {
-        Path parent = targetPath.getParent();
-        if (parent != null) {
-            Files.createDirectories(parent);
-        }
-        if (!replace && Files.exists(targetPath)) {
-            throw new IOException("Target already exists: " + targetPath);
-        }
-
-        Path tempFile = parent == null
-                ? Files.createTempFile(targetPath.getFileName().toString(), ".tmp")
-                : Files.createTempFile(parent, targetPath.getFileName().toString(), ".tmp");
-        boolean moved = false;
-        try {
-            Files.writeString(tempFile, content, StandardCharsets.UTF_8,
-                    StandardOpenOption.WRITE,
-                    StandardOpenOption.TRUNCATE_EXISTING);
-            try {
-                if (replace) {
-                    Files.move(tempFile, targetPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-                } else {
-                    Files.move(tempFile, targetPath, StandardCopyOption.ATOMIC_MOVE);
-                }
-            } catch (AtomicMoveNotSupportedException ignored) {
-                if (replace) {
-                    Files.move(tempFile, targetPath, StandardCopyOption.REPLACE_EXISTING);
-                } else {
-                    Files.move(tempFile, targetPath);
-                }
-            }
-            moved = true;
-        } finally {
-            if (!moved) {
-                Files.deleteIfExists(tempFile);
-            }
-        }
     }
 
     private YamlConfiguration loadGuiConfig() {
