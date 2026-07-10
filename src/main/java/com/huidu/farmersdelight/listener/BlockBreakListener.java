@@ -5,6 +5,12 @@ import com.huidu.farmersdelight.block.behavior.*;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
+import com.huidu.farmersdelight.util.PresentationUtils;
+import com.huidu.farmersdelight.util.Text;
+import com.huidu.farmersdelight.api.util.TooltipUtils;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
@@ -15,7 +21,6 @@ import net.momirealms.craftengine.core.item.component.DataComponentKeys;
 import net.momirealms.craftengine.core.world.WorldPosition;
 import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.libraries.nbt.CompoundTag;
-import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -27,15 +32,18 @@ import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 public class BlockBreakListener implements Listener {
     private static final String TATAMI_BLOCK_ID = "farmersdelight:tatami";
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         org.bukkit.block.Block block = event.getBlock();
+        // Block.getLocation() already returns a fresh Location object — the extra clone() before
+        // mutating add() was double-allocating per break event.
         FarmersDelightPlugin.getInstance().getStoveManager()
-                .invalidateBlockedAboveCache(block.getLocation().clone().add(0, -1, 0));
+                .invalidateBlockedAboveCache(block.getLocation().add(0, -1, 0));
         syncTraysAroundSupportChange(block);
         ImmutableBlockState state = CustomBlockUtils.getState(block);
         if (isStateManagedInteractiveBlock(state)) {
@@ -47,7 +55,7 @@ public class BlockBreakListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onCustomBlockBreak(CustomBlockBreakEvent event) {
         FarmersDelightPlugin.getInstance().getStoveManager()
-                .invalidateBlockedAboveCache(event.bukkitBlock().getLocation().clone().add(0, -1, 0));
+                .invalidateBlockedAboveCache(event.bukkitBlock().getLocation().add(0, -1, 0));
         syncTraysAroundSupportChange(event.bukkitBlock());
         if (!isManagedInteractiveBlock(event.blockState())) {
             return;
@@ -123,6 +131,15 @@ public class BlockBreakListener implements Listener {
     }
 
     private void cleanupCookingPot(BlockPos pos, World world, Location dropLocation, ImmutableBlockState state, boolean preserveContents, boolean shouldDropItems) {
+        // Force-close any open viewers of this pot BEFORE dropping/removing. This runs inside the
+        // CustomBlockBreakEvent (and explosion) path, which removes the block entity below; the removal-lifecycle
+        // close (CookingPotBlockBehavior.handleStateRemoval) would then early-return on the now-null entity and
+        // never fire, leaving a cross-player viewer with a live GUI over the dropped meal (dupe).
+        com.huidu.farmersdelight.gui.CookingPotGui.closeOpenGuisAt(world, pos.x(), pos.y(), pos.z());
+        FarmersDelightPlugin fdPlugin = FarmersDelightPlugin.getInstance();
+        if (fdPlugin != null && fdPlugin.getHandleManager() != null) {
+            fdPlugin.getHandleManager().removeHandle(world, pos);
+        }
         CookingPotBlockEntity entity = CookingPotBlockBehavior.getBlockEntity(world, pos);
         if (entity == null) {
             if (shouldDropItems) {
@@ -144,11 +161,7 @@ public class BlockBreakListener implements Listener {
     }
 
     private void dropCookingPotBaseItem(World world, Location dropLocation) {
-        dropCookingPotBaseItem(world, dropLocation, null);
-    }
-
-    private void dropCookingPotBaseItem(World world, Location dropLocation, CookingPotBlockEntity entity) {
-        dropCookingPotBaseItem(world, dropLocation, null, entity);
+        dropCookingPotBaseItem(world, dropLocation, null, null);
     }
 
     private void dropCookingPotBaseItem(World world, Location dropLocation, ImmutableBlockState state, CookingPotBlockEntity entity) {
@@ -171,6 +184,15 @@ public class BlockBreakListener implements Listener {
             return;
         }
 
+        // Display the stored meal's name + serving count as tooltip, and a fill bar scaled to the count.
+        // Server-side can only drive vanilla's green->red durability bar, so the level matches but the
+        // colour is the vanilla gradient (a true blue bar would require a client mod).
+        ItemStack meal = entity.getPackedMealDisplayItem();
+        boolean hasMeal = meal != null && !meal.getType().isAir();
+        if (hasMeal) {
+            applyMealLore(potItem, meal);
+        }
+
         Item wrapped = BukkitItemManager.instance().wrap(potItem);
         CompoundTag packedData = CookingPotBlockEntityController.saveData(entity);
         CompoundTag customData = CustomBlockUtils.getComponentCompound(wrapped, DataComponentKeys.CUSTOM_DATA);
@@ -179,15 +201,57 @@ public class BlockBreakListener implements Listener {
         }
         customData.put(behavior.getCustomDataKey(), packedData);
         wrapped.setSparrowTagComponent(DataComponentKeys.CUSTOM_DATA, customData);
+        if (meal != null && !meal.getType().isAir()) {
+            // max_damage = 64, damage = 64 - servings (clamped >=1 so a full meal still shows a near-full bar;
+            // vanilla hides the bar at damage 0). Bar width then scales with the meal count.
+            int servings = Math.max(1, Math.min(64, meal.getAmount()));
+            wrapped.maxDamage(64);
+            wrapped.damage(Math.max(1, 64 - servings));
+            TooltipUtils.hideDurabilityLine(wrapped);
+        }
         net.momirealms.craftengine.core.world.World ceWorld = BukkitAdaptor.adapt(world);
         ceWorld.dropItemNaturally(new WorldPosition(ceWorld, dropLocation.getX(), dropLocation.getY(), dropLocation.getZ()), wrapped);
     }
 
-    private void dropCookingPotContents(World world, Location dropLocation, CookingPotBlockEntity entity) {
-        if (world == null || dropLocation == null || entity == null) {
+    /** Builds the packed cooking pot item's tooltip: the stored meal's name + serving count. */
+    private void applyMealLore(ItemStack item, ItemStack meal) {
+        org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
             return;
         }
+        int servings = meal.getAmount();
+        List<Component> lore = meta.hasLore() ? new ArrayList<>(meta.lore()) : new ArrayList<>();
+        // Name line: the meal name (white), prefixed with the meal's inline icon glyph when one is registered
+        // (configuration/meal_icons.yml). Built from an empty root so the name keeps the normal font instead of
+        // inheriting the glyph font (farmersdelight:custom), which would render the letters as boxes.
+        Component name = ItemUtils.getTranslatableDisplayComponentNoAnvil(meal).colorIfAbsent(NamedTextColor.WHITE);
+        Component nameLine = name;
+        String customId = ItemUtils.getCustomItemId(meal);
+        if (customId != null) {
+            String glyph = PresentationUtils.imageGlyph("farmersdelight:icon_"
+                    + customId.substring(customId.indexOf(':') + 1));
+            if (!glyph.isEmpty()) {
+                nameLine = Component.empty()
+                        .append(Text.deserialize(glyph).color(NamedTextColor.WHITE))
+                        .append(Component.space())
+                        .append(name);
+            }
+        }
+        lore.add(Component.empty());
+        lore.add(nameLine.decoration(TextDecoration.ITALIC, false));
+        // Translatable so each viewer's client renders in its own locale; carries a server-resolved
+        // .fallback so packs without the lang entry still show readable text. Gray applied here because
+        // the lang value is plain text without color codes.
+        Component servingsLine = com.huidu.farmersdelight.api.text.FarmersDelightText.translatable(
+                "farmersdelight.tooltip.cooking_pot.servings",
+                servings
+        ).color(NamedTextColor.GRAY);
+        lore.add(servingsLine.decoration(TextDecoration.ITALIC, false));
+        meta.lore(lore);
+        item.setItemMeta(meta);
+    }
 
+    private void dropCookingPotContents(World world, Location dropLocation, CookingPotBlockEntity entity) {
         for (ItemStack item : entity.getInventory()) {
             if (item != null && !item.getType().isAir()) {
                 world.dropItemNaturally(dropLocation, item);
@@ -229,9 +293,7 @@ public class BlockBreakListener implements Listener {
         return isCookingPotBlock(state)
                 || isSkilletBlock(state)
                 || CustomBlockUtils.hasBehavior(state, CuttingBoardBlockBehavior.class)
-                || Constants.BLOCK_CUTTING_BOARD.equals(CustomBlockUtils.getId(state))
                 || CustomBlockUtils.hasBehavior(state, StoveCookingBlockBehavior.class)
-                || Constants.BLOCK_STOVE.equals(CustomBlockUtils.getId(state))
                 || TATAMI_BLOCK_ID.equals(CustomBlockUtils.getId(state));
     }
 
@@ -239,19 +301,15 @@ public class BlockBreakListener implements Listener {
         return isCookingPotBlock(state)
                 || isSkilletBlock(state)
                 || CustomBlockUtils.hasBehavior(state, CuttingBoardBlockBehavior.class)
-                || Constants.BLOCK_CUTTING_BOARD.equals(CustomBlockUtils.getId(state))
-                || CustomBlockUtils.hasBehavior(state, StoveCookingBlockBehavior.class)
-                || Constants.BLOCK_STOVE.equals(CustomBlockUtils.getId(state));
+                || CustomBlockUtils.hasBehavior(state, StoveCookingBlockBehavior.class);
     }
 
     private boolean isSkilletBlock(ImmutableBlockState state) {
-        return CustomBlockUtils.hasBehavior(state, SkilletBlockBehavior.class)
-                || Constants.BLOCK_SKILLET.equals(CustomBlockUtils.getId(state));
+        return CustomBlockUtils.hasBehavior(state, SkilletBlockBehavior.class);
     }
 
     private boolean isCookingPotBlock(ImmutableBlockState state) {
-        return CustomBlockUtils.hasBehavior(state, CookingPotBlockBehavior.class)
-                || Constants.BLOCK_COOKING_POT.equals(CustomBlockUtils.getId(state));
+        return CustomBlockUtils.hasBehavior(state, CookingPotBlockBehavior.class);
     }
 
     private boolean isTatamiBlock(org.bukkit.block.Block block) {

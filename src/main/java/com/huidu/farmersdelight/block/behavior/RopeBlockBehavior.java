@@ -3,6 +3,7 @@ package com.huidu.farmersdelight.block.behavior;
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
+import com.huidu.farmersdelight.util.ProtectionCompat;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.core.block.BlockDefinition;
@@ -136,6 +137,12 @@ public class RopeBlockBehavior extends BlockBehavior {
 
                 BlockPos bp = new BlockPos(cx, cy, cz);
                 ImmutableBlockState placementState = computeConnectionState(ropeBlock.defaultState(), world, bp);
+
+                // R-SEC-001: this path DENYs the vanilla interaction and places the block itself via
+                // CraftEngineBlocks.place, so vanilla's own WorldGuard build check never fires — gate here.
+                if (!ProtectionCompat.canBuild(bukkitPlayer, target, ProtectionCompat.Feature.ROPE)) {
+                    return InteractionResult.PASS;
+                }
 
                 Location placeLoc = new Location(world, cx + 0.5, cy, cz + 0.5);
                 if (!CraftEngineBlocks.place(placeLoc, placementState, true)) return InteractionResult.PASS;
