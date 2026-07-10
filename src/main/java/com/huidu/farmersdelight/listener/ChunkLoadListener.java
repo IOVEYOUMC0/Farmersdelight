@@ -31,7 +31,10 @@ public class ChunkLoadListener implements Listener {
     private static final int DEFAULT_STARTUP_CHUNK_LOADS_PER_TICK = 16;
 
     private final FarmersDelightPlugin plugin;
-    private PluginTask startupLoadTask;
+    // Written on enable/disable (main thread) and read + self-nulled inside the repeating task body
+    // (global-region thread). volatile gives the needed happens-before so disable's cancel isn't
+    // missed and the body never sees a stale handle. R-CONC-002.
+    private volatile PluginTask startupLoadTask;
 
     public ChunkLoadListener(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
@@ -171,10 +174,10 @@ public class ChunkLoadListener implements Listener {
         Map<BlockPosKey, CookingPotBlockEntity> entities =
                 CookingPotBlockBehavior.getBlockEntitiesInChunk(world, chunkX, chunkZ);
         if (entities.isEmpty()) return;
-
-        // Snapshot positions before removing to avoid mutating the authoritative map / index while iterating.
-        List<BlockPosKey> toRemove = new ArrayList<>(entities.keySet());
-        for (BlockPosKey posKey : toRemove) {
+        // getBlockEntitiesInChunk already returns a fresh HashMap snapshot (see its impl), and
+        // removeBlockEntity mutates the authoritative chunkIndex/worldBlockEntities, not `entities`.
+        // The old outer `new ArrayList<>(entities.keySet())` was a redundant double-snapshot.
+        for (BlockPosKey posKey : entities.keySet()) {
             CookingPotBlockBehavior.removeBlockEntity(world, posKey, false);
         }
     }
@@ -183,10 +186,7 @@ public class ChunkLoadListener implements Listener {
         Map<BlockPosKey, CuttingBoardBlockEntity> entities =
                 CuttingBoardBlockBehavior.getBlockEntitiesInChunk(world, chunkX, chunkZ);
         if (entities.isEmpty()) return;
-
-        // Snapshot positions before removing to avoid mutating the authoritative map / index while iterating.
-        List<BlockPosKey> toRemove = new ArrayList<>(entities.keySet());
-        for (BlockPosKey posKey : toRemove) {
+        for (BlockPosKey posKey : entities.keySet()) {
             CuttingBoardBlockBehavior.removeBlockEntity(world, posKey, false);
         }
     }

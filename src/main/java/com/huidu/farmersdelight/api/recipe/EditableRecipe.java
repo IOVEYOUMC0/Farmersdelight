@@ -11,7 +11,7 @@ import java.util.Map;
  * A mutable draft of a recipe being edited in the generic editor. The editor GUI fills the item slots
  * and numeric values; the addon's {@link RecipeEditor#save} turns this back into its own recipe format.
  *
- * <p>Lives in the name-stable {@code api} package; uses only Bukkit / java types.
+ * Lives in the name-stable {@code api} package; uses only Bukkit / java types.
  */
 public final class EditableRecipe {
 

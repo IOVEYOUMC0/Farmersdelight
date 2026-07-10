@@ -121,6 +121,16 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         return Set.of();
     }
 
+    /** Adds every proxy display id tracked cutting boards still reference, so {@code /fd cleanup} removes
+     *  only orphaned displays and leaves live cutting-board visuals alone. */
+    public static void collectLiveDisplayIds(Set<Integer> out) {
+        for (Map<BlockPosKey, CuttingBoardBlockEntity> worldEntities : worldBlockEntities.values()) {
+            for (CuttingBoardBlockEntity entity : worldEntities.values()) {
+                entity.collectDisplayIds(out);
+            }
+        }
+    }
+
     /** Computes the chunk key from block coordinates (high 32 bits = chunkX, low 32 bits = chunkZ). */
     private static long chunkKey(int blockX, int blockZ) {
         return (((long) (blockX >> 4)) << 32) | ((blockZ >> 4) & 0xFFFFFFFFL);
@@ -391,9 +401,9 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
                     .map(Key::of)
                     .toList();
 
-            String knifeSound = getArgumentString(arguments, "knife-sound", Constants.SOUND_CUTTING_BOARD_KNIFE);
-            int maxStackAmount = getIntValue(arguments, "max-stack-amount", 64);
-            String customDataKey = getArgumentString(arguments, "data-key", "farmersdelight:cutting_board");
+            String knifeSound = BehaviorArgParser.getArgumentString(arguments, "knife-sound", Constants.SOUND_CUTTING_BOARD_KNIFE);
+            int maxStackAmount = BehaviorArgParser.getInt(arguments, "max-stack-amount", 64);
+            String customDataKey = BehaviorArgParser.getArgumentString(arguments, "data-key", "farmersdelight:cutting_board");
             return new CuttingBoardBlockBehavior(block, facingProperty, toolTags, toolItems, knifeSound, maxStackAmount, customDataKey);
         }
     };
@@ -415,21 +425,6 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
             return null;
         }
         return CustomBlockUtils.getBehavior(state, CuttingBoardBlockBehavior.class);
-    }
-
-    private static String getArgumentString(Map<String, Object> arguments, String key, String defaultValue) {
-        if (arguments == null) {
-            return defaultValue;
-        }
-        Object value = arguments.get(key);
-        if (value == null) {
-            return defaultValue;
-        }
-        String text = String.valueOf(value).trim();
-        if (text.isEmpty()) {
-            return defaultValue;
-        }
-        return text;
     }
 
     private static Key normalizeTagKey(String raw) {
@@ -460,7 +455,8 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
 
         World world = bukkitPlayer.getWorld();
         Block block = world.getBlockAt(posKey.x(), posKey.y(), posKey.z());
-        if (!WorldGuardCompat.canUse(bukkitPlayer, block) || !WorldGuardCompat.canBuild(bukkitPlayer, block)) {
+        if (!ProtectionCompat.canUse(bukkitPlayer, block, ProtectionCompat.Feature.CUTTING_BOARD)
+                || !ProtectionCompat.canBuild(bukkitPlayer, block, ProtectionCompat.Feature.CUTTING_BOARD)) {
             return InteractionResult.PASS;
         }
         Map<BlockPosKey, CuttingBoardBlockEntity> worldEntities = worldBlockEntities.computeIfAbsent(
@@ -563,8 +559,16 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         }
 
         if (blockEntity.hasItem() && mainHand.getType().isAir()) {
-            ItemStack storedItem = blockEntity.getStoredItem();
-            blockEntity.clearItem();
+            // Atomic getAndClear so two concurrent empty-hand right-clicks (different Folia regions) can't
+            // both observe hasItem == true and each take a clone of the same stored item.
+            ItemStack storedItem;
+            synchronized (blockEntity) {
+                if (!blockEntity.hasItem()) {
+                    return InteractionResult.PASS;
+                }
+                storedItem = blockEntity.getStoredItem();
+                blockEntity.clearItem();
+            }
             removeStoredData(world, posKey);
 
             if (storedItem != null && !storedItem.getType().isAir() && bukkitPlayer.getGameMode() != GameMode.CREATIVE) {
@@ -593,6 +597,19 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         if (sourceItem == null || sourceItem.getType().isAir()) {
             return false;
         }
+        synchronized (blockEntity) {
+            // Re-check inside the lock: another viewer may have placed an item between the outer
+            // hasItem() probe and this call, in which case stacking (not placing) is the right path.
+            if (blockEntity.hasItem()) {
+                return false;
+            }
+            return tryPlaceOnEmptyBoardLocked(sourceItem, offhand, player, world, posKey, facing, blockEntity);
+        }
+    }
+
+    private boolean tryPlaceOnEmptyBoardLocked(ItemStack sourceItem, boolean offhand, Player player,
+                                                World world, BlockPosKey posKey, BlockFace facing,
+                                                CuttingBoardBlockEntity blockEntity) {
 
         // Optional restriction: only recipe-input items (or tools) may be placed. Rejected items fall
         // through to the existing "no recipe" feedback in useOnBlock. Real-time read so /fd reload applies.
@@ -644,20 +661,22 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
             return false;
         }
 
-        ItemStack stored = blockEntity.getStoredItem();
-        int stackLimit = Math.min(getBoardStackLimit(stored), getBoardStackLimit(mainHand));
-        if (stored == null || !mainHand.isSimilar(stored) || stored.getAmount() >= stackLimit) {
-            return false;
+        // Atomic: stored-read → setStoredItem must not interleave with another viewer's stack/take/cut.
+        int toMove;
+        synchronized (blockEntity) {
+            ItemStack stored = blockEntity.getStoredItem();
+            int stackLimit = Math.min(getBoardStackLimit(stored), getBoardStackLimit(mainHand));
+            if (stored == null || !mainHand.isSimilar(stored) || stored.getAmount() >= stackLimit) {
+                return false;
+            }
+            int space = stackLimit - stored.getAmount();
+            toMove = Math.min(space, mainHand.getAmount());
+            if (toMove <= 0) {
+                return false;
+            }
+            stored.setAmount(stored.getAmount() + toMove);
+            blockEntity.setStoredItem(stored, world, posKey, facing);
         }
-
-        int space = stackLimit - stored.getAmount();
-        int toMove = Math.min(space, mainHand.getAmount());
-        if (toMove <= 0) {
-            return false;
-        }
-
-        stored.setAmount(stored.getAmount() + toMove);
-        blockEntity.setStoredItem(stored, world, posKey, facing);
         saveBlockEntityData(world, posKey);
         if (player.getGameMode() != GameMode.CREATIVE) {
             int remaining = mainHand.getAmount() - toMove;
@@ -844,8 +863,17 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         return toolItems.stream().anyMatch(toolItem -> ItemUtils.matchesItemId(item, toolItem));
     }
 
-    private boolean processCutting(CuttingBoardBlockEntity blockEntity, ItemStack tool, Player player, 
+    private boolean processCutting(CuttingBoardBlockEntity blockEntity, ItemStack tool, Player player,
                                     BlockFace facing, World world, BlockPosKey posKey, boolean toolIsOffhand) {
+        // Wrap the whole cut in the entity monitor so two concurrent tool-right-clicks (different
+        // regions) can't each grab a clone of the same stored item and both drop the recipe's result.
+        synchronized (blockEntity) {
+            return processCuttingLocked(blockEntity, tool, player, facing, world, posKey, toolIsOffhand);
+        }
+    }
+
+    private boolean processCuttingLocked(CuttingBoardBlockEntity blockEntity, ItemStack tool, Player player,
+                                          BlockFace facing, World world, BlockPosKey posKey, boolean toolIsOffhand) {
         ItemStack storedItem = blockEntity.getStoredItem();
         if (storedItem == null) return false;
 
@@ -1019,24 +1047,6 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
             return rawList.stream().map(String::valueOf).toList();
         }
         return List.of();
-    }
-
-    private static boolean getBooleanValue(Map<String, Object> arguments, String key, boolean defaultValue) {
-        if (arguments == null) return defaultValue;
-        Object value = arguments.get(key);
-        if (value instanceof Boolean b) return b;
-        if (value instanceof String s) return Boolean.parseBoolean(s);
-        return defaultValue;
-    }
-
-    private static int getIntValue(Map<String, Object> arguments, String key, int defaultValue) {
-        if (arguments == null) return defaultValue;
-        Object value = arguments.get(key);
-        if (value instanceof Number n) return n.intValue();
-        if (value instanceof String s) {
-            try { return Integer.parseInt(s); } catch (NumberFormatException ignored) {}
-        }
-        return defaultValue;
     }
 
     private void debug(String message) {

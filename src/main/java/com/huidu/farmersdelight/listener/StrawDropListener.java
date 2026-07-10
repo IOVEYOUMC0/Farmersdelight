@@ -4,7 +4,6 @@ import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.advancement.AdvancementManager;
 import com.huidu.farmersdelight.block.behavior.TallCropBlockBehavior;
 import com.huidu.farmersdelight.config.StrawDropConfig;
-import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
@@ -87,7 +86,7 @@ public class StrawDropListener implements Listener {
 
         String customItemId = ItemUtils.getCustomItemId(item);
 
-        // Vanilla (customId == null) keeps the original short-circuit logic and isn't cached.
+        // Vanilla items (customId == null) short-circuit immediately and don't enter the cache.
         if (customItemId == null) {
             return false;
         }
@@ -154,7 +153,7 @@ public class StrawDropListener implements Listener {
             return false;
         }
 
-        if (!Constants.BLOCK_RICE.equals(CustomBlockUtils.getId(state))) {
+        if (!CustomBlockUtils.hasBehavior(state, TallCropBlockBehavior.class)) {
             return false;
         }
 
@@ -179,7 +178,7 @@ public class StrawDropListener implements Listener {
             return behavior.isLowerHalf(lowerState) && behavior.isLowerMature(lowerState);
         }
         Integer lowerAge = CustomBlockUtils.getPropertyInt(lowerState, "age");
-        return Constants.BLOCK_RICE.equals(CustomBlockUtils.getId(lowerState))
+        return CustomBlockUtils.hasBehavior(lowerState, TallCropBlockBehavior.class)
                 && lowerAge != null
                 && lowerAge >= 4;
     }

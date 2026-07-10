@@ -10,7 +10,7 @@ import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
 import com.huidu.farmersdelight.util.RiceCropRules;
-import com.huidu.farmersdelight.util.WorldGuardCompat;
+import com.huidu.farmersdelight.util.ProtectionCompat;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.bukkit.api.event.CustomBlockBreakEvent;
 import net.momirealms.craftengine.core.block.BlockDefinition;
@@ -54,6 +54,16 @@ public class RicePlantListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onRicePhysics(BlockPhysicsEvent event) {
         Block block = event.getBlock();
+        // Cheap material fast-reject BEFORE any CraftEngine state resolution. BlockPhysicsEvent is one of
+        // the hottest Bukkit events (fluid flow, redstone, gravity, neighbor updates), and getCustomBlockState
+        // does an NMS getBlockState + BlockPos/Optional allocation per call — wasteful on non-rice blocks.
+        // Rice and wild rice only ever carry TRIPWIRE (tall stages: CE lower/higher_tripwire auto-state) or
+        // KELP (young stages: CE kelp auto-state), so any other material can't be rice. Mirrors CraftEngine's
+        // own onBlockPhysics (fast-rejects on getChangedType()==NOTE_BLOCK) and FD's RugListener/RopeBlockListener.
+        Material carrierType = block.getType();
+        if (carrierType != Material.TRIPWIRE && carrierType != Material.KELP && carrierType != Material.KELP_PLANT) {
+            return;
+        }
         ImmutableBlockState state = CraftEngineBlocks.getCustomBlockState(block);
         if (isWildRiceBlock(state)) {
             if (canWildRiceStay(block, state)) {
@@ -141,7 +151,7 @@ public class RicePlantListener implements Listener {
             event.setCancelled(true);
             return;
         }
-        if (!WorldGuardCompat.canBuild(player, plantLocation)) {
+        if (!ProtectionCompat.canBuild(player, plantLocation, ProtectionCompat.Feature.RICE)) {
             event.setCancelled(true);
             return;
         }
@@ -177,7 +187,7 @@ public class RicePlantListener implements Listener {
     private void plantWildRice(PlayerInteractEvent event, Player player, EquipmentSlot hand, ItemStack item, Block clickedBlock) {
         Location plantLocation = findPlantLocation(clickedBlock);
         if (plantLocation != null && canPlantWildRiceAt(plantLocation.getBlock())) {
-            if (!WorldGuardCompat.canBuild(player, plantLocation)) {
+            if (!ProtectionCompat.canBuild(player, plantLocation, ProtectionCompat.Feature.RICE)) {
                 event.setCancelled(true);
                 return;
             }
@@ -355,21 +365,7 @@ public class RicePlantListener implements Listener {
     }
 
     private boolean isUpperRiceHalf(ImmutableBlockState state) {
-        Object halfValue = getPropertyValue(state, "half");
-        if (halfValue == null) {
-            return false;
-        }
-
-        if (halfValue instanceof Integer intValue) {
-            return intValue == 1;
-        }
-
-        if (halfValue instanceof Number numberValue) {
-            return numberValue.intValue() == 1;
-        }
-
-        String textValue = String.valueOf(halfValue).trim().toLowerCase();
-        return "upper".equals(textValue) || "1".equals(textValue);
+        return isUpperHalfValue(getPropertyValue(state, "half"));
     }
 
     private Object inferRiceHalfValue(BlockDefinition block, String target) {
