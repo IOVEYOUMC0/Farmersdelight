@@ -63,16 +63,10 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystemAlreadyExistsException;
-import java.nio.file.FileSystems;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -81,8 +75,6 @@ import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 import java.util.logging.Level;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
@@ -90,8 +82,6 @@ import java.util.stream.Stream;
 
 public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
-    private static final String CRAFTENGINE_RESOURCE_ROOT = "craftengine/farmersdelight";
-    private static final Path CRAFTENGINE_RESOURCE_TARGET = Path.of("CraftEngine", "resources", "farmersdelight");
     private static final String[][] CONFIG_KEY_MIGRATIONS = {
             {"knife-drops", "mob-extra-drops"},
             {"entity-extra-drops", "mob-extra-drops"},
@@ -323,7 +313,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         instance = this;
         ensureConfigDefaults();
         I18n.init(this);
-        releaseBundledCraftEngineResourcesOnce();
+        new com.huidu.farmersdelight.resource.ResourceInstaller(this, getFile()).installCraftEngineResourcesOnce();
         com.huidu.farmersdelight.registry.BehaviorRegistrar.registerBlockBehaviors(getLogger());
         com.huidu.farmersdelight.registry.BehaviorRegistrar.registerItemBehaviors();
         // Register the WorldGuard custom region flag here (onLoad): WG locks its FlagRegistry once it
@@ -1626,246 +1616,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         }
     }
 
-    private void releaseBundledCraftEngineResourcesOnce() {
-        Path pluginsFolder = getDataFolder().toPath().getParent();
-        if (pluginsFolder == null) {
-            I18n.logWarning("plugin.craftengine_resources_release_failed",
-                    "error", "Unable to resolve the plugins folder.");
-            return;
-        }
-
-        Path targetRoot = pluginsFolder.resolve(CRAFTENGINE_RESOURCE_TARGET);
-        try {
-            int copiedFiles;
-            if (Files.exists(targetRoot)) {
-                // The initial release is unconditional; this toggle only controls whether missing files are re-completed on later startups.
-                if (!getConfig().getBoolean("craftengine-resources.auto-completion", true)) {
-                    return;
-                }
-                copiedFiles = copyMissingBundledResourceFiles(CRAFTENGINE_RESOURCE_ROOT, targetRoot);
-            } else {
-                copiedFiles = copyBundledResourceDirectory(CRAFTENGINE_RESOURCE_ROOT, targetRoot);
-            }
-            if (copiedFiles > 0) {
-                I18n.logInfo("plugin.craftengine_resources_released",
-                        "path", targetRoot,
-                        "count", copiedFiles);
-            }
-        } catch (IOException e) {
-            I18n.logWarning("plugin.craftengine_resources_release_failed", "error", e.getMessage());
-        }
-    }
-
-    private int copyMissingBundledResourceFiles(String resourceRoot, Path targetRoot) throws IOException {
-        List<String> resourcePaths = listBundledResourceFiles(resourceRoot);
-        if (resourcePaths.isEmpty()) {
-            throw new IOException("No bundled CraftEngine resources found at " + resourceRoot);
-        }
-
-        int copiedFiles = 0;
-        Files.createDirectories(targetRoot);
-        for (String resourcePath : resourcePaths) {
-            String relativePath = resourcePath.substring(resourceRoot.length() + 1);
-            Path targetPath = resolveSafeChild(targetRoot, relativePath);
-            if (Files.exists(targetPath)) {
-                continue;
-            }
-
-            Files.createDirectories(Objects.requireNonNull(targetPath.getParent(), "targetPath parent"));
-            Path tempFile = Files.createTempFile(targetPath.getParent(), "fd-ce-resource-", ".tmp");
-            boolean moved = false;
-            try (InputStream inputStream = getResource(resourcePath)) {
-                if (inputStream == null) {
-                    throw new IOException("Bundled " + resourcePath + " was not found in the plugin jar.");
-                }
-                Files.copy(inputStream, tempFile, StandardCopyOption.REPLACE_EXISTING);
-                try {
-                    Files.move(tempFile, targetPath, StandardCopyOption.ATOMIC_MOVE);
-                } catch (AtomicMoveNotSupportedException ignored) {
-                    Files.move(tempFile, targetPath);
-                }
-                moved = true;
-                copiedFiles++;
-            } finally {
-                if (!moved) {
-                    Files.deleteIfExists(tempFile);
-                }
-            }
-        }
-        return copiedFiles;
-    }
-
-    private int copyBundledResourceDirectory(String resourceRoot, Path targetRoot) throws IOException {
-        List<String> resourcePaths = listBundledResourceFiles(resourceRoot);
-        if (resourcePaths.isEmpty()) {
-            throw new IOException("No bundled CraftEngine resources found at " + resourceRoot);
-        }
-
-        Path parent = Objects.requireNonNull(targetRoot.getParent(), "targetRoot parent");
-        Files.createDirectories(parent);
-        Path tempRoot = Files.createTempDirectory(parent, targetRoot.getFileName() + "-");
-        boolean moved = false;
-
-        try {
-            int copiedFiles = 0;
-            for (String resourcePath : resourcePaths) {
-                String relativePath = resourcePath.substring(resourceRoot.length() + 1);
-                Path targetPath = resolveSafeChild(tempRoot, relativePath);
-                Files.createDirectories(Objects.requireNonNull(targetPath.getParent(), "targetPath parent"));
-                try (InputStream inputStream = getResource(resourcePath)) {
-                    if (inputStream == null) {
-                        throw new IOException("Bundled " + resourcePath + " was not found in the plugin jar.");
-                    }
-                    Files.copy(inputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
-                    copiedFiles++;
-                }
-            }
-
-            try {
-                Files.move(tempRoot, targetRoot, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(tempRoot, targetRoot);
-            }
-            moved = true;
-            return copiedFiles;
-        } finally {
-            if (!moved) {
-                deleteTreeQuietly(tempRoot);
-            }
-        }
-    }
-
-    private Path resolveSafeChild(Path root, String relativePath) throws IOException {
-        Path normalizedRoot = root.normalize();
-        Path targetPath = normalizedRoot.resolve(relativePath).normalize();
-        if (!targetPath.startsWith(normalizedRoot)) {
-            throw new IOException("Invalid bundled resource path: " + relativePath);
-        }
-        return targetPath;
-    }
-
-    private List<String> listBundledResourceFiles(String resourceRoot) throws IOException {
-        // Primary strategy: scan the plugin jar's entries directly. Directory entries are not guaranteed to exist in the jar --
-        // the ProGuard-obfuscated Folia jar (obfuscateFoliaJar) strips them --
-        // so getClassLoader().getResource(<directory>) returns null and the URL-based walk below
-        // finds nothing ("No bundled CraftEngine resources found"). Reading file entries by prefix
-        // is unaffected by missing directory entries and per-platform classloader differences.
-        List<String> fromJar = listJarFileResourceFiles(resourceRoot);
-        if (fromJar != null) {
-            return fromJar;
-        }
-
-        // Fallback for exploded directory/IDE/test-run scenarios, where the plugin is not packaged as a jar file.
-        URL resourceUrl = getClass().getClassLoader().getResource(resourceRoot);
-        if (resourceUrl == null) {
-            return List.of();
-        }
-
-        try {
-            URI resourceUri = resourceUrl.toURI();
-            if ("file".equals(resourceUrl.getProtocol())) {
-                return listFileResourceFiles(resourceRoot, Path.of(resourceUri));
-            }
-            if ("jar".equals(resourceUrl.getProtocol())) {
-                return listJarResourceFiles(resourceRoot, resourceUri);
-            }
-            throw new IOException("Unsupported bundled resource protocol: " + resourceUrl.getProtocol());
-        } catch (URISyntaxException e) {
-            throw new IOException("Invalid bundled resource URI for " + resourceRoot, e);
-        }
-    }
-
-    /**
-     * Lists bundled resource files under {@code resourceRoot} by scanning the plugin jar's entries.
-     * Returns {@code null} (not an empty list) when the plugin is not run from a readable jar file
-     * (e.g. an exploded IDE/test run), so the caller can fall back to classloader-based discovery.
-     */
-    private List<String> listJarFileResourceFiles(String resourceRoot) throws IOException {
-        File pluginJar = getFile();
-        if (pluginJar == null || !pluginJar.isFile()) {
-            return null;
-        }
-
-        String prefix = resourceRoot.endsWith("/") ? resourceRoot : resourceRoot + "/";
-        List<String> resourcePaths = new ArrayList<>();
-        try (JarFile jarFile = new JarFile(pluginJar)) {
-            Enumeration<JarEntry> entries = jarFile.entries();
-            while (entries.hasMoreElements()) {
-                JarEntry entry = entries.nextElement();
-                if (entry.isDirectory()) {
-                    continue;
-                }
-                String name = entry.getName();
-                if (name.startsWith(prefix)) {
-                    resourcePaths.add(name);
-                }
-            }
-        }
-        resourcePaths.sort(Comparator.naturalOrder());
-        return resourcePaths;
-    }
-
-    private List<String> listFileResourceFiles(String resourceRoot, Path rootPath) throws IOException {
-        try (Stream<Path> stream = Files.walk(rootPath)) {
-            return stream
-                    .filter(Files::isRegularFile)
-                    .map(rootPath::relativize)
-                    .map(path -> resourceRoot + "/" + path.toString().replace('\\', '/'))
-                    .sorted()
-                    .toList();
-        }
-    }
-
-    private List<String> listJarResourceFiles(String resourceRoot, URI resourceUri) throws IOException {
-        String uriText = resourceUri.toString();
-        int separatorIndex = uriText.indexOf("!/");
-        if (separatorIndex < 0) {
-            throw new IOException("Invalid jar resource URI: " + resourceUri);
-        }
-
-        URI jarUri = URI.create(uriText.substring(0, separatorIndex));
-        FileSystem fileSystem = null;
-        boolean closeFileSystem = false;
-
-        try {
-            try {
-                fileSystem = FileSystems.newFileSystem(jarUri, Map.of());
-                closeFileSystem = true;
-            } catch (FileSystemAlreadyExistsException ignored) {
-                fileSystem = FileSystems.getFileSystem(jarUri);
-            }
-
-            Path rootPath = fileSystem.getPath("/" + resourceRoot);
-            try (Stream<Path> stream = Files.walk(rootPath)) {
-                return stream
-                        .filter(Files::isRegularFile)
-                        .map(rootPath::relativize)
-                        .map(path -> resourceRoot + "/" + path.toString().replace('\\', '/'))
-                        .sorted()
-                        .toList();
-            }
-        } finally {
-            if (closeFileSystem && fileSystem != null) {
-                fileSystem.close();
-            }
-        }
-    }
-
-    private void deleteTreeQuietly(Path root) {
-        if (root == null || !Files.exists(root)) {
-            return;
-        }
-        try (Stream<Path> stream = Files.walk(root)) {
-            for (Path path : stream.sorted((left, right) -> right.getNameCount() - left.getNameCount()).toList()) {
-                try {
-                    Files.deleteIfExists(path);
-                } catch (IOException ignored) {
-                }
-            }
-        } catch (IOException ignored) {
-        }
-    }
-
     private YamlConfiguration loadGuiConfig() {
         Path guiPath = getDataFolder().toPath().resolve("gui.yml");
         YamlConfiguration yaml = new YamlConfiguration();
@@ -1975,7 +1725,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private ConfigurationSection loadRugConfigSection() {
         Path pluginsFolder = getDataFolder().toPath().getParent();
         if (pluginsFolder == null) return null;
-        File rugsFile = pluginsFolder.resolve(CRAFTENGINE_RESOURCE_TARGET).resolve("rugs.yml").toFile();
+        File rugsFile = pluginsFolder.resolve(com.huidu.farmersdelight.resource.ResourceInstaller.CRAFTENGINE_RESOURCE_TARGET).resolve("rugs.yml").toFile();
         if (!rugsFile.isFile()) return null;
         return YamlConfiguration.loadConfiguration(rugsFile);
     }
