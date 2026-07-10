@@ -23,13 +23,9 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
@@ -59,15 +55,11 @@ public class RecipeViewGui implements InventoryHolder {
     // scan on every recipe-list draw / tool animation; cache the result, clear on reload, callers get clones.
     private static final Map<Key, List<ItemStack>> toolPreviewCache = new ConcurrentHashMap<>();
     private static final ItemStack EMPTY_SLOT_BACKGROUND = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
-    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
+    static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
     private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
     private static final Pattern SHIFT_TAG_PATTERN = Pattern.compile("<shift:(-?\\d+)>");
     private static final int MAX_COMPACT_INGREDIENT_LINE_LENGTH = 42;
     private static final int GUI_TICK_INTERVAL_TICKS = 4;
-    private static final int COOKING_PROCESS_BAR_FRAMES = 20;
-    // These N+1 distinct progress bar frame items are identical per frame; cache them (cleared on reload) so the
-    // GUI tick animation does not recreate a CraftEngine item every 4 ticks.
-    private static final ItemStack[] processBarFrameCache = new ItemStack[COOKING_PROCESS_BAR_FRAMES + 1];
 
     static {
         ItemMeta meta = EMPTY_SLOT_BACKGROUND.getItemMeta();
@@ -86,8 +78,8 @@ public class RecipeViewGui implements InventoryHolder {
     private final FarmersDelightPlugin plugin;
     private final UUID playerId;
     private final Player player;
-    private final RecipeViewGuiConfig config;
-    private Inventory inventory;
+    final RecipeViewGuiConfig config;
+    Inventory inventory;
     private GuiState state = GuiState.MAIN_MENU;
     private int currentPage = 0;
     private volatile String selectedRecipeId = null;
@@ -95,7 +87,7 @@ public class RecipeViewGui implements InventoryHolder {
     private boolean craftableOnly = false;
     private GuiState recipeBackState = GuiState.COOKING_POT_LIST;
     volatile boolean closed = false;
-    private volatile int currentToolIndex = 0;
+    volatile int currentToolIndex = 0;
     private volatile int currentToolPreviewIndex = 0;
     private int toolSwitchTicks = 0;
     private static final int TOOL_SWITCH_INTERVAL = 40;
@@ -103,7 +95,8 @@ public class RecipeViewGui implements InventoryHolder {
     private final Map<Integer, Integer> animatedIngredientIndices = new HashMap<>();
     private final Map<Integer, RecipeIngredient> animatedIngredientDefinitions = new HashMap<>();
     private int ingredientSwitchTicks = 0;
-    private int cookingProcessBarTicks = 0;
+    int cookingProcessBarTicks = 0;
+    final RecipeDetailRenderer detailRenderer = new RecipeDetailRenderer(this);
     private static final int INGREDIENT_SWITCH_INTERVAL = 20;
     
     private final boolean fromCookingPot;
@@ -184,7 +177,7 @@ public class RecipeViewGui implements InventoryHolder {
         RecipeIngredientIcons.clearCaches();
         recipeListDisplayCache.clear();
         toolPreviewCache.clear();
-        java.util.Arrays.fill(processBarFrameCache, null);
+        RecipeDetailRenderer.clearProcessBarFrameCache();
         warnedMissingCustomCookingPotDetailConfigs.clear();
         warnedCookingPotDetailCapacityConfigs.clear();
     }
@@ -343,7 +336,7 @@ public class RecipeViewGui implements InventoryHolder {
         }
 
         RecipeViewGuiConfig.RecipeDetailConfig detailConfig = getActiveCookingPotDetailConfig();
-        int progressSlot = getCookingPotProcessBarSlot(detailConfig);
+        int progressSlot = detailRenderer.getCookingPotProcessBarSlot(detailConfig);
         if (progressSlot < 0) {
             return;
         }
@@ -354,7 +347,7 @@ public class RecipeViewGui implements InventoryHolder {
             cookingProcessBarTicks = 0;
         }
 
-        inventory.setItem(progressSlot, createCookingPotProcessBarItem(cookingProcessBarFrame(recipe)));
+        inventory.setItem(progressSlot, RecipeDetailRenderer.createCookingPotProcessBarItem(detailRenderer.cookingProcessBarFrame(recipe)));
     }
 
     private void resetDetailAnimations() {
@@ -586,12 +579,12 @@ public class RecipeViewGui implements InventoryHolder {
         if (cookingPotMode) {
             CookingPotRecipe recipe = plugin.getCookingPotRecipes().getRecipe(getActiveCookingPotRecipeGroup(), selectedRecipeId);
             if (recipe != null) {
-                drawCookingPotDetail(recipe, detailConfig, player);
+                detailRenderer.drawCookingPotDetail(recipe, detailConfig, player);
             }
         } else {
             CuttingBoardRecipe recipe = plugin.getCuttingBoardRecipes().getRecipe(selectedRecipeId);
             if (recipe != null) {
-                drawCuttingBoardDetail(recipe, detailConfig, player);
+                detailRenderer.drawCuttingBoardDetail(recipe, detailConfig, player);
             }
         }
 
@@ -651,176 +644,14 @@ public class RecipeViewGui implements InventoryHolder {
         inventory.setItem(slot, createBackgroundItem(detailConfig));
     }
 
-    private void drawCookingPotDetail(CookingPotRecipe recipe, RecipeViewGuiConfig.RecipeDetailConfig detailConfig, Player player) {
-        if (detailConfig.getResultSlot() >= 0) {
-            inventory.setItem(detailConfig.getResultSlot(), recipe.getResult().clone());
-        }
-
-        fillIngredientSlots(detailConfig, detailConfig.getIngredientSlots(), recipe.getIngredients(), player);
-
-        if (recipe.needsContainer() && recipe.getContainer() != null && detailConfig.getContainerSlot() >= 0) {
-            ItemStack containerItem = recipe.getContainer().clone();
-            ItemMeta containerMeta = containerItem.getItemMeta();
-            containerMeta.displayName(itemNameComponent(recipe.getContainer(), player).colorIfAbsent(NamedTextColor.AQUA));
-            containerMeta.lore(List.of(tr("gui.recipe.container", NamedTextColor.GRAY)));
-            containerItem.setItemMeta(containerMeta);
-            inventory.setItem(detailConfig.getContainerSlot(), containerItem);
-        }
-
-        setCookingPotProcessItems(recipe, detailConfig, player);
-    }
-
-    private void setCookingPotProcessItems(CookingPotRecipe recipe,
-                                           RecipeViewGuiConfig.RecipeDetailConfig detailConfig,
-                                           Player player) {
-        int arrowSlot = detailConfig.getArrowSlot();
-        if (arrowSlot < 0 || arrowSlot >= inventory.getSize()) {
-            return;
-        }
-
-        GuiConfig.GuiItem configured = detailConfig.getItem("arrow");
-        Map<String, String> placeholders = cookingInfoPlaceholders(recipe, player);
-        ItemStack processItem = configured == null ? new ItemStack(Material.CLOCK) : configured.createItem(placeholders);
-        ItemMeta meta = processItem.getItemMeta();
-        if (meta != null) {
-            if (configured == null) {
-                meta.displayName(tr("gui.recipe.cook_time", NamedTextColor.YELLOW));
-            }
-            if (meta.lore() == null || meta.lore().isEmpty()) {
-                meta.lore(List.of(
-                        tr("gui.recipe.cook_time_line", NamedTextColor.GRAY,
-                                Component.text(placeholders.get("cook_time")).color(NamedTextColor.AQUA)),
-                        tr("gui.recipe.experience_line", NamedTextColor.GRAY,
-                                Component.text(placeholders.get("experience")).color(NamedTextColor.GREEN))
-                ));
-            }
-            processItem.setItemMeta(meta);
-        }
-        inventory.setItem(arrowSlot, processItem);
-        setCookingPotProcessBar(recipe, detailConfig);
-    }
-
-    private void setCookingPotProcessBar(CookingPotRecipe recipe,
-                                         RecipeViewGuiConfig.RecipeDetailConfig detailConfig) {
-        int progressSlot = getCookingPotProcessBarSlot(detailConfig);
-        if (progressSlot < 0) {
-            return;
-        }
-
-        inventory.setItem(progressSlot, createCookingPotProcessBarItem(cookingProcessBarFrame(recipe)));
-    }
-
-    private int getCookingPotProcessBarSlot(RecipeViewGuiConfig.RecipeDetailConfig detailConfig) {
-        // Prefer the progress slot cached at parse time, avoiding a layout rescan each GUI tick.
-        int configuredProgressSlot = detailConfig.getProgressSlot();
-        if (configuredProgressSlot >= 0 && configuredProgressSlot < inventory.getSize()) {
-            return configuredProgressSlot;
-        }
-
-        // Fallback: when an arrow slot is configured but no explicit progress slot, place the bar one slot
-        // below the arrow (only occupying that slot if it is empty/background/decoration, to avoid
-        // overwriting functional slots).
-        int arrowSlot = detailConfig.getArrowSlot();
-        int fallbackSlot = arrowSlot + 9;
-        if (arrowSlot < 0 || fallbackSlot < 0 || fallbackSlot >= inventory.getSize()) {
-            return -1;
-        }
-        String slotType = detailConfig.getSlotType(fallbackSlot);
-        if (slotType != null && !"background".equals(slotType) && !"decoration".equals(slotType)) {
-            return -1;
-        }
-        return fallbackSlot;
-    }
-
-    private ItemStack createCookingPotProcessBarItem(int frame) {
-        int safeFrame = Math.max(0, Math.min(COOKING_PROCESS_BAR_FRAMES, frame));
-        ItemStack cached = processBarFrameCache[safeFrame];
-        if (cached != null) {
-            return cached.clone();
-        }
-
-        ItemStack item = ItemUtils.createItem("farmersdelight:" + safeFrame);
-        if (item == null) {
-            item = new ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE);
-        }
-
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.displayName(Component.text(" "));
-            meta.lore(List.of());
-            item.setItemMeta(meta);
-        }
-        processBarFrameCache[safeFrame] = item.clone();
-        return item;
-    }
-
-    private int cookingProcessBarFrame(CookingPotRecipe recipe) {
-        int duration = recipe == null ? 0 : recipe.getCookTime();
-        if (duration <= 0) {
-            return 0;
-        }
-        int percent = Math.min(100, cookingProcessBarTicks * 100 / duration);
-        return Math.max(0, Math.min(COOKING_PROCESS_BAR_FRAMES, percent / 5));
-    }
-
-    private String formatCookTime(CookingPotRecipe recipe, Player player) {
-        return cookTimeSeconds(recipe) + i18nOrDefault("gui.recipe.seconds_suffix", player, "s");
-    }
-
-    private Map<String, String> cookingInfoPlaceholders(CookingPotRecipe recipe, Player player) {
-        String cookTime = formatCookTime(recipe, player);
-        String experience = formatExperience(recipe == null ? 0.0D : recipe.getExperience());
-        return Map.of(
-                "cook_time", cookTime,
-                "cooking_time", cookTime,
-                "time", cookTime,
-                "experience", experience,
-                "exp", experience
-        );
-    }
-
-    private String formatExperience(double experience) {
-        if (experience <= 0.0D) {
-            return "0";
-        }
-        if (Math.rint(experience) == experience) {
-            return String.valueOf((int) experience);
-        }
-        return String.format(java.util.Locale.ROOT, "%.1f", experience);
-    }
-
-    private int cookTimeSeconds(CookingPotRecipe recipe) {
+    int cookTimeSeconds(CookingPotRecipe recipe) {
         if (recipe == null || recipe.getCookTime() <= 0) {
             return 0;
         }
         return Math.max(1, (int) Math.ceil(recipe.getCookTime() / 20.0D));
     }
 
-    private void drawCuttingBoardDetail(CuttingBoardRecipe recipe, RecipeViewGuiConfig.RecipeDetailConfig detailConfig, Player player) {
-        if (detailConfig.getInputSlot() >= 0) {
-            ItemStack inputItem = recipe.getInputDisplay().clone();
-            ItemMeta inputMeta = inputItem.getItemMeta();
-            inputMeta.displayName(itemNameComponent(inputItem, player).colorIfAbsent(NamedTextColor.RED));
-            inputMeta.lore(formatIngredientDetailLoreLines(recipe.getInput(), player,
-                    tr("gui.recipe.input", NamedTextColor.GRAY)));
-            inputItem.setItemMeta(inputMeta);
-            inventory.setItem(detailConfig.getInputSlot(), inputItem);
-        }
-
-        if (detailConfig.getToolSlot() >= 0) {
-            List<CuttingBoardRecipe.ToolRequirement> tools = recipe.getTools();
-            if (tools != null && !tools.isEmpty()) {
-                int safeIndex = currentToolIndex % tools.size();
-                Key currentTool = tools.get(safeIndex).key();
-                ItemStack toolItem = createToolDisplayItem(currentTool, tools.size(), safeIndex, player);
-                inventory.setItem(detailConfig.getToolSlot(), toolItem);
-            }
-        }
-
-        fillResultSlots(detailConfig, detailConfig.getResultSlots(), recipe.getResults(), player);
-    }
-
-    private ItemStack createToolDisplayItem(Key toolKey, int totalTools, int currentIndex, Player player) {
+    ItemStack createToolDisplayItem(Key toolKey, int totalTools, int currentIndex, Player player) {
         List<ItemStack> previewOptions = resolveToolPreviewOptions(toolKey);
         int safePreviewIndex = 0;
         if (!previewOptions.isEmpty()) {
@@ -934,44 +765,6 @@ public class RecipeViewGui implements InventoryHolder {
         return item != null && item.getType() != Material.BARRIER && !item.getType().isAir();
     }
 
-    private void fillIngredientSlots(RecipeViewGuiConfig.BaseConfig guiConfig, List<Integer> slots,
-                                     List<RecipeIngredient> ingredients, Player player) {
-        for (int i = 0; i < slots.size(); i++) {
-            if (i < ingredients.size()) {
-                ItemStack ingredientDisplay = createIngredientDisplay(ingredients.get(i), player, slots.get(i));
-                inventory.setItem(slots.get(i), ingredientDisplay);
-            } else {
-                inventory.setItem(slots.get(i), createBackgroundItem(guiConfig));
-            }
-        }
-    }
-
-    private void fillResultSlots(RecipeViewGuiConfig.BaseConfig guiConfig, List<Integer> slots,
-                                 List<CuttingBoardRecipe.ResultEntry> results, Player player) {
-        for (int i = 0; i < slots.size(); i++) {
-            if (i < results.size()) {
-                CuttingBoardRecipe.ResultEntry resultEntry = results.get(i);
-                ItemStack resultDisplay = resultEntry.item().clone();
-                ItemMeta resultMeta = resultDisplay.getItemMeta();
-        List<Component> lore = new ArrayList<>();
-        if (resultMeta.hasLore()) {
-            lore = new ArrayList<>(resultMeta.lore());
-        }
-                lore.add(0, tr("gui.recipe.result", NamedTextColor.GREEN));
-                if (resultEntry.chance() < 1.0d) {
-                    lore.add(1, tr("gui.recipe.chance_line", NamedTextColor.GRAY,
-                            Component.text((int) Math.round(resultEntry.chance() * 100))
-                                    .color(NamedTextColor.YELLOW)));
-                }
-                resultMeta.lore(lore);
-                resultDisplay.setItemMeta(resultMeta);
-                inventory.setItem(slots.get(i), resultDisplay);
-            } else {
-                inventory.setItem(slots.get(i), createBackgroundItem(guiConfig));
-            }
-        }
-    }
-
     private void setGuiItem(RecipeViewGuiConfig.BaseConfig guiConfig, String itemKey, int slot) {
         if (slot < 0) return;
         GuiConfig.GuiItem item = guiConfig.getItem(itemKey);
@@ -1080,7 +873,7 @@ public class RecipeViewGui implements InventoryHolder {
         }
     }
 
-    private ItemStack createBackgroundItem(RecipeViewGuiConfig.BaseConfig guiConfig) {
+    ItemStack createBackgroundItem(RecipeViewGuiConfig.BaseConfig guiConfig) {
         GuiConfig.GuiItem background = guiConfig == null ? null : guiConfig.getItem("background");
         return background == null ? EMPTY_SLOT_BACKGROUND.clone() : background.createItem();
     }
@@ -1171,7 +964,7 @@ public class RecipeViewGui implements InventoryHolder {
         }
     }
 
-    private ItemStack createIngredientDisplay(RecipeIngredient ingredient, Player player, int slot) {
+    ItemStack createIngredientDisplay(RecipeIngredient ingredient, Player player, int slot) {
         if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
             List<Component> lore = new ArrayList<>();
             ItemStack display = RecipeIngredientIcons.createItemFromKey(itemIngredient.key());
@@ -1307,36 +1100,6 @@ public class RecipeViewGui implements InventoryHolder {
         return display;
     }
 
-    private List<Component> formatIngredientDetailLoreLines(RecipeIngredient ingredient, Player player, Component category) {
-        List<Component> lines = new ArrayList<>();
-        lines.add(category);
-        if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
-            if (config.isShowIngredientIds()) {
-                lines.add(colored("&7" + itemIngredient.key()));
-            }
-            return lines;
-        }
-        lines.addAll(formatIngredientLoreLines(ingredient, player));
-        return removeAdjacentDuplicateComponents(lines);
-    }
-
-    private List<Component> removeAdjacentDuplicateComponents(List<Component> lines) {
-        if (lines.size() < 2) {
-            return lines;
-        }
-        List<Component> result = new ArrayList<>(lines.size());
-        String previous = null;
-        for (Component line : lines) {
-            String serialized = LEGACY.serialize(line);
-            if (!serialized.equals(previous)) {
-                result.add(line);
-            }
-            previous = serialized;
-        }
-        return result;
-    }
-
-
 
     private String formatIngredient(RecipeIngredient ingredient, Player player) {
         if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
@@ -1418,7 +1181,7 @@ public class RecipeViewGui implements InventoryHolder {
         return lines;
     }
 
-    private List<Component> formatIngredientLoreLines(RecipeIngredient ingredient, Player player) {
+    List<Component> formatIngredientLoreLines(RecipeIngredient ingredient, Player player) {
         List<Component> lines = new ArrayList<>();
         if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
             lines.add(itemNameComponent(RecipeIngredientIcons.createItemFromKey(itemIngredient.key()), player).colorIfAbsent(NamedTextColor.WHITE));
@@ -1633,12 +1396,12 @@ public class RecipeViewGui implements InventoryHolder {
         return ItemUtils.getDisplayName(item, player);
     }
 
-    private Component itemNameComponent(ItemStack item, Player player) {
+    Component itemNameComponent(ItemStack item, Player player) {
         return ItemUtils.getDisplayComponent(item, player)
                 .decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
     }
 
-    private String i18nOrDefault(String key, Player player, String fallback) {
+    String i18nOrDefault(String key, Player player, String fallback) {
         String value = I18n.get(key, player);
         if (key.equals(value)) {
             return fallback;
@@ -1649,7 +1412,7 @@ public class RecipeViewGui implements InventoryHolder {
     /** Client-side translatable lore line: Component.translatable(key) with a color and italic-off,
      * so each player's client renders the key from its own resource-pack lang file. The key must exist in
      * assets/farmersdelight/lang/<locale>.json. */
-    private Component tr(String key, NamedTextColor color) {
+    Component tr(String key, NamedTextColor color) {
         return Component.translatable(key)
                 .color(color)
                 .decoration(TextDecoration.ITALIC, false);
@@ -1657,7 +1420,7 @@ public class RecipeViewGui implements InventoryHolder {
 
     /** Translatable with positional %s args; each arg is wrapped in Component.text(...)
      * unless already a Component, so colored sub-components pass through unchanged. */
-    private Component tr(String key, NamedTextColor color, Object... args) {
+    Component tr(String key, NamedTextColor color, Object... args) {
         Component[] components = new Component[args.length];
         for (int i = 0; i < args.length; i++) {
             Object a = args[i];
@@ -1668,7 +1431,7 @@ public class RecipeViewGui implements InventoryHolder {
                 .decoration(TextDecoration.ITALIC, false);
     }
 
-    private Component colored(String text) {
+    Component colored(String text) {
         if (text == null || text.isEmpty()) {
             return Component.empty();
         }
