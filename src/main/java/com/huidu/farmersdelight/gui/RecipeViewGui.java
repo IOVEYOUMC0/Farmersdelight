@@ -94,7 +94,7 @@ public class RecipeViewGui implements InventoryHolder {
     private boolean cookingPotMode = true;
     private boolean craftableOnly = false;
     private GuiState recipeBackState = GuiState.COOKING_POT_LIST;
-    private volatile boolean closed = false;
+    volatile boolean closed = false;
     private volatile int currentToolIndex = 0;
     private volatile int currentToolPreviewIndex = 0;
     private int toolSwitchTicks = 0;
@@ -2677,7 +2677,7 @@ public class RecipeViewGui implements InventoryHolder {
         activeGuis.remove(event.getPlayer().getUniqueId());
     }
 
-    private void close() {
+    void close() {
         if (closed) return;
         closed = true;
         GuiTickManager.getInstance(plugin).unregisterCallback(tickCallback);
@@ -2738,40 +2738,13 @@ public class RecipeViewGui implements InventoryHolder {
         if (listenerRegistered) return;
         synchronized (RecipeViewGui.class) {
             if (listenerRegistered) return;
-            Bukkit.getPluginManager().registerEvents(new EventDispatcher(), plugin);
+            Bukkit.getPluginManager().registerEvents(new RecipeViewEventDispatcher(), plugin);
             listenerRegistered = true;
         }
     }
 
-    public static class EventDispatcher implements Listener {
-        @EventHandler(priority = EventPriority.HIGHEST)
-        public void onClick(InventoryClickEvent event) {
-            if (event.getView().getTopInventory().getHolder() instanceof RecipeViewGui gui) {
-                gui.onClick(event);
-            }
-        }
-
-        @EventHandler(priority = EventPriority.HIGHEST)
-        public void onDrag(InventoryDragEvent event) {
-            if (event.getView().getTopInventory().getHolder() instanceof RecipeViewGui gui) {
-                gui.onDrag(event);
-            }
-        }
-
-        @EventHandler(priority = EventPriority.MONITOR)
-        public void onClose(InventoryCloseEvent event) {
-            if (event.getView().getTopInventory().getHolder() instanceof RecipeViewGui gui) {
-                gui.onClose(event);
-            }
-        }
-
-        @EventHandler(priority = EventPriority.MONITOR)
-        public void onPlayerQuit(PlayerQuitEvent event) {
-            RecipeViewGui gui = activeGuis.remove(event.getPlayer().getUniqueId());
-            if (gui != null && !gui.closed) {
-                gui.close();
-            }
-        }
+    static RecipeViewGui removeActiveGui(UUID playerId) {
+        return activeGuis.remove(playerId);
     }
 
     public static RecipeViewGui getActiveGui(UUID playerId) {
