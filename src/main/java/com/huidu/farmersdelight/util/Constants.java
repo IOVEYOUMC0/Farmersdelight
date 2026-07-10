@@ -60,6 +60,24 @@ public final class Constants {
     public static final String BEHAVIOR_ROPE = "farmersdelight:rope";
     public static final String BEHAVIOR_MUSHROOM_COLONY = "farmersdelight:mushroom_colony";
     public static final String BEHAVIOR_WILD_PLANT = "farmersdelight:wild_plant";
+    public static final String BEHAVIOR_TOMATO_VINE = "farmersdelight:tomato_vine";
+    public static final String BEHAVIOR_CANVAS_RUG = "farmersdelight:canvas_rug";
+    public static final String BEHAVIOR_ORGANIC_COMPOST = "farmersdelight:organic_compost";
+    public static final String BEHAVIOR_RICH_SOIL = "farmersdelight:rich_soil";
+    public static final String BEHAVIOR_RICH_SOIL_FARMLAND = "farmersdelight:rich_soil_farmland";
+    public static final String ITEM_BEHAVIOR_CONDITIONAL_PLANTING = "farmersdelight:conditional_block_planting";
+    public static final String BLOCK_ORGANIC_COMPOST = "farmersdelight:organic_compost";
+    public static final String BLOCK_RICH_SOIL = "farmersdelight:rich_soil";
+    public static final String BLOCK_RICH_SOIL_FARMLAND = "farmersdelight:rich_soil_farmland";
+    public static final String ITEM_ORGANIC_COMPOST = "farmersdelight:organic_compost";
+    public static final String ITEM_RICH_SOIL = "farmersdelight:rich_soil";
+    public static final String ITEM_RICH_SOIL_FARMLAND = "farmersdelight:rich_soil_farmland";
+    public static final String BLOCK_SAFETY_NET = "farmersdelight:safety_net";
+    public static final String BLOCK_TOMATO_CROP_ON_ROPE = "farmersdelight:tomato_crop_on_rope";
+    public static final String BLOCK_CANVAS_RUG = "farmersdelight:canvas_rug";
+    public static final String ITEM_SAFETY_NET = "farmersdelight:safety_net";
+    public static final String ITEM_TOMATO = "farmersdelight:tomato";
+    public static final String ITEM_CANVAS_RUG = "farmersdelight:canvas_rug";
     public static final String CE_SHORT_SKILLET = "skillet";
     public static final String CE_SHORT_STOVE = "stove";
     public static final String SOUND_COOKING_POT_BOIL = "farmersdelight:block.cooking_pot.boil";
@@ -83,17 +101,25 @@ public final class Constants {
     public static final int SLOT_CUTTING_BOARD_INPUT = 0;
     public static final int SLOT_CUTTING_BOARD_OUTPUT = 1;
     public static final int DEFAULT_COOKING_TIME_SKILLET = 600;
+    public static final int MINIMUM_COOKING_TIME_SKILLET = 60;
     public static final int DEFAULT_COOKING_TIME_COOKING_POT = 200;
+    public static final int DEFAULT_COOKING_POT_DISPLAY_VISIBILITY_CHECK_INTERVAL_TICKS = 100;
+    public static final int DEFAULT_COOKING_POT_PLACE_INTERACTION_COOLDOWN_MS = 1000;
     public static final int DEFAULT_COMFORT_DURATION = 300;
     public static final int DEFAULT_NOURISHMENT_DURATION = 300;
     public static final int MUSHROOM_COLONY_MAX_LIGHT = 13;
     public static final int STOVE_COOLDOWN_DECREMENT = 2;
     public static final float SKILLET_COOKING_TIME_REDUCTION = 0.2f;
     public static final float SKILLET_FIRE_ASPECT_BONUS = 0.05f;
-    public static final float STOVE_PARTICLE_CHANCE = 0.2f;
-    public static final float STOVE_CRACKLE_CHANCE = 0.05f;
+    // Lowered from 0.2 / 0.05 after spark profiling: dense stove scenes (3000+ lit stoves) generate
+    // world.spawnParticle / playSound broadcast packets at rate = stoves × chance × slots. Even with
+    // R-PERF-005 chunk-tracked gating, packet floor is proportional to chance. 0.1 smoke / 0.02
+    // crackle keep visual identity intact while cutting hot-tick packet count roughly in half.
+    public static final float STOVE_PARTICLE_CHANCE = 0.1f;
+    public static final float STOVE_CRACKLE_CHANCE = 0.02f;
     public static final float SKILLET_PARTICLE_CHANCE = 0.1f;
-    public static final float SKILLET_SIZZLE_CHANCE = 0.03f;
+    // Lowered from 0.03 after spark profiling — same rationale as STOVE_* above.
+    public static final float SKILLET_SIZZLE_CHANCE = 0.01f;
     public static final float CUTTING_BOARD_FAIL_VOLUME = 0.25f;
     public static final float CUTTING_BOARD_FAIL_PITCH = 0.5f;
 
