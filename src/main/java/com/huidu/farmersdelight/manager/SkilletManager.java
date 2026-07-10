@@ -6,7 +6,6 @@ import com.huidu.farmersdelight.advancement.AdvancementManager;
 import com.huidu.farmersdelight.block.behavior.SkilletBlockBehavior;
 import com.huidu.farmersdelight.config.CuttingBoardDisplayConfig;
 import com.huidu.farmersdelight.i18n.I18n;
-import com.huidu.farmersdelight.storage.LegacyBlockStorageManager;
 import com.huidu.farmersdelight.util.scheduler.PluginTask;
 import com.huidu.farmersdelight.visual.ItemDisplayManager;
 import com.huidu.farmersdelight.api.event.ProfessionCookingExperienceEvent;
@@ -27,6 +26,7 @@ import org.joml.Vector3f;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
@@ -36,6 +36,9 @@ public class SkilletManager {
     
     private static final int HEARTBEAT_LOG_INTERVAL = 20;
     private static final int DEFAULT_TICK_BUDGET = 512;
+    // Squared player-proximity radius for gating per-tick smoke/sizzle broadcasts (32 blocks =
+    // vanilla particle/sound range, matches StoveManager/TickManager).
+    private static final double EFFECT_VIEWER_DISTANCE_SQUARED = 32.0D * 32.0D;
     private static final int DEFAULT_COOK_TIME = Constants.DEFAULT_COOKING_TIME_SKILLET;
     private static final int DEFAULT_MIN_COOK_TIME = 60;
     private static final int DEFAULT_COOLING_DECREMENT = 2;
@@ -53,7 +56,11 @@ public class SkilletManager {
     private volatile List<Location> tickLocationsSnapshot = List.of();
     private volatile long tickLocationsSnapshotVersion = -1L;
     private final CampfireRecipeCache campfireRecipes = new CampfireRecipeCache("skillet", this::debug);
-    private PluginTask tickTask;
+    // R-CONC-002 (#010 precedent): tickTask is written by region threads (ensureTaskRunning, reached from
+    // block events) and read+nulled by the global tick thread (stopTaskIfIdle) — volatile for visibility
+    // + a dedicated lock so the check-then-schedule / check-then-cancel are atomic (no double-schedule).
+    private volatile PluginTask tickTask;
+    private final Object tickTaskLock = new Object();
     private int heartbeatTicks;
     private int tickCursor;
     private int tickBudget;
@@ -75,6 +82,18 @@ public class SkilletManager {
     private double sizzleChance = DEFAULT_SIZZLE_CHANCE;
     private float sizzleVolume = 0.5F;
     private float sizzlePitch = 1.0F;
+    // Per-chunk hard cap on particle+sound packets emitted per dispatch from THIS manager, mirroring
+    // StoveManager's budget — stops a dense pocket of cooking skillets from steamrolling the packet
+    // queue when many cook rolls land in one Bukkit tick. Reset once per bukkit tick, shared across the
+    // whole tick pass. No chunk stagger is applied: the manager dispatches on a period-4 timer at a
+    // fixed tick residue, so a Bukkit.getCurrentTick()-derived stagger would never rotate — it would
+    // permanently silence 3/4 of chunks — so only the hard budget cap is used here.
+    private int chunkEffectBudgetLimit = 50;
+    private final Map<Long, AtomicInteger> chunkEffectBudget = new ConcurrentHashMap<>();
+    private long effectBudgetResetTick = -1L;
+    // Reusable per-thread recipient list for targeted particle/sound sends (per-thread for Folia's
+    // concurrent per-region skillet ticks; refilled per skillet and consumed synchronously).
+    private static final ThreadLocal<List<Player>> NEARBY_VIEWER_SCRATCH = ThreadLocal.withInitial(ArrayList::new);
 
     public static class SkilletData {
         final Location location;
@@ -83,8 +102,8 @@ public class SkilletManager {
         ItemStack displayedItem;
         BlockFace displayedFacing;
         CuttingBoardDisplayConfig.DisplayOverride displayedOverride;
-        // 上次构建视觉时所用的原始 storedItem 快照,作为 ensureVisualsExist 的廉价前置判断,
-        // 避免每 tick 重复做 facing/override/resolveDisplayItem 等昂贵的 CraftEngine 查找与分配。
+        // Snapshot of storedItem at last visual build; cheap precheck for ensureVisualsExist
+        // to avoid repeating costly facing/override/resolveDisplayItem CraftEngine lookups each tick.
         ItemStack lastVisualStoredItem;
         int cookingProgress = 0;
         int cookingDuration;
@@ -170,16 +189,26 @@ public class SkilletManager {
         if (tickTask != null) {
             return;
         }
-        debug("tick task: starting skillet tick task");
-        tickTask = plugin.scheduler().runRepeating(this::tick, 1L, 4L);
+        synchronized (tickTaskLock) {
+            if (tickTask != null) {
+                return;
+            }
+            debug("tick task: starting skillet tick task");
+            tickTask = plugin.scheduler().runRepeating(this::tick, 1L, 4L);
+        }
     }
 
     private void stopTaskIfIdle() {
-        if (tickTask != null && skillets.isEmpty()) {
-            debug("tick task: stopping skillet tick task because no skillets remain");
-            tickTask.cancel();
-            tickTask = null;
-            heartbeatTicks = 0;
+        if (tickTask == null || !skillets.isEmpty()) {
+            return;
+        }
+        synchronized (tickTaskLock) {
+            if (tickTask != null && skillets.isEmpty()) {
+                debug("tick task: stopping skillet tick task because no skillets remain");
+                tickTask.cancel();
+                tickTask = null;
+                heartbeatTicks = 0;
+            }
         }
     }
 
@@ -199,6 +228,14 @@ public class SkilletManager {
         indexSkillet(normalized);
         markTickLocationsDirty();
         return created;
+    }
+
+    /** Adds every proxy display id this manager's tracked skillets still reference, so /fd cleanup
+     *  can leave live skillet visuals alone and remove only orphans. */
+    public void collectLiveDisplayIds(java.util.Set<Integer> out) {
+        for (SkilletData skillet : skillets.values()) {
+            out.addAll(skillet.displayEntityIds);
+        }
     }
 
     public void recordPlacedSkillet(Location location, ItemStack skilletItem) {
@@ -224,6 +261,10 @@ public class SkilletManager {
                 ? player.getInventory().getItemInOffHand()
                 : player.getInventory().getItemInMainHand();
 
+        // The SkilletData object is the per-block monitor: concurrent empty-hand takes, stacks, and a
+        // racing break (which also locks on the same SkilletData) all serialize so storedItem can only
+        // leave the skillet once.
+        synchronized (skillet) {
         if (heldItem == null || heldItem.getType().isAir()) {
             if (!skillet.hasItem()) {
                 return false;
@@ -344,6 +385,7 @@ public class SkilletManager {
         awardUseSkillet(player);
         SoundUtils.play(block.getWorld(), location, getAddFoodSound(location), Sound.BLOCK_LANTERN_PLACE, 0.7f, 1.0f);
         return true;
+        }
     }
 
     public ItemStack getStoredItemSnapshot(Location location) {
@@ -527,23 +569,26 @@ public class SkilletManager {
         SkilletData skillet = removeTrackedSkillet(normalized);
         if (skillet != null) {
             cleanupVisual(skillet);
-            if (shouldDropItems && skillet.storedItem != null && !skillet.storedItem.getType().isAir()) {
-                normalized.getWorld().dropItemNaturally(dropLocation, skillet.storedItem.clone());
-            }
-            if (shouldDropItems) {
-                ItemStack skilletDrop = skillet.skilletStack != null && !skillet.skilletStack.getType().isAir()
-                        ? skillet.skilletStack.clone()
-                        : ItemUtils.createItem(Constants.ITEM_SKILLET);
-                if (skilletDrop != null && !skilletDrop.getType().isAir()) {
-                    skilletDrop.setAmount(1);
-                    normalized.getWorld().dropItemNaturally(dropLocation, skilletDrop);
+            // Lock on the same SkilletData monitor as handleInteract so a racing empty-hand take can't
+            // observe storedItem mid-clear and pocket a clone that we then also drop here (dup).
+            synchronized (skillet) {
+                if (shouldDropItems && skillet.storedItem != null && !skillet.storedItem.getType().isAir()) {
+                    normalized.getWorld().dropItemNaturally(dropLocation, skillet.storedItem.clone());
+                    skillet.storedItem = null;
+                }
+                if (shouldDropItems) {
+                    ItemStack skilletDrop = skillet.skilletStack != null && !skillet.skilletStack.getType().isAir()
+                            ? skillet.skilletStack.clone()
+                            : ItemUtils.createItem(Constants.ITEM_SKILLET);
+                    if (skilletDrop != null && !skilletDrop.getType().isAir()) {
+                        skilletDrop.setAmount(1);
+                        normalized.getWorld().dropItemNaturally(dropLocation, skilletDrop);
+                    }
                 }
             }
         }
-        // 只有确实有煎锅(内存中)或有持久化数据时才清理,避免每次破坏普通方块都白白获取一次全局写锁
-        // + CEWorld 脏标记(普通方块该位置既无煎锅也无存储数据,清理是纯无用功)。
-        LegacyBlockStorageManager storage = plugin.getLegacyBlockStorageManager();
-        if (skillet != null || (storage != null && storage.hasBlockData(normalized))) {
+        // Only clean up when a skillet actually exists (in memory), to avoid a wasted CEWorld dirty mark on every normal block break.
+        if (skillet != null) {
             removeStoredData(normalized);
         }
         TrayManager trayManager = plugin.getTrayManager();
@@ -672,27 +717,15 @@ public class SkilletManager {
             return skillet;
         }
 
-        LegacyBlockStorageManager storage = plugin.getLegacyBlockStorageManager();
-        if (storage != null) {
-            Map<String, Object> data = storage.loadBlockData(normalized, BLOCK_TYPE);
-            if (data != null) {
-                loadSkillet(normalized.getWorld(), new BlockPosKey(normalized), data);
-                storage.removeBlockData(normalized);
-                skillet = skillets.get(normalized);
-                if (skillet != null) {
-                    markSkilletDirty(normalized);
-                    return skillet;
-                }
-            }
-        }
-
         return getOrCreateSkillet(normalized);
     }
 
     public void cleanup() {
-        if (tickTask != null) {
-            tickTask.cancel();
-            tickTask = null;
+        synchronized (tickTaskLock) {
+            if (tickTask != null) {
+                tickTask.cancel();
+                tickTask = null;
+            }
         }
         for (SkilletData skillet : skillets.values()) {
             cleanupVisual(skillet);
@@ -732,7 +765,7 @@ public class SkilletManager {
         return result;
     }
 
-    /** 是否存在任何被跟踪的煎锅(廉价判断,不分配位置列表)。 */
+    /** Whether any tracked skillets exist (cheap check, no location list allocation). */
     public boolean hasTrackedSkillets() {
         return !skillets.isEmpty();
     }
@@ -936,8 +969,8 @@ public class SkilletManager {
 
         ensureVisualsExist(location, skillet);
 
-        // 没有匹配配方的煎锅永远不可能烹饪,直接冷却并返回,省去每 tick 的热源探测
-        // (热源判定常常要做 CraftEngine 自定义方块状态查找)。
+        // A skillet with no matching recipe can never cook, so just cool down and return, skipping the per-tick heat-source probe
+        // (heat detection often does a CraftEngine custom block-state lookup).
         if (skillet.currentRecipe == null) {
             skillet.cookingProgress = Math.max(0, skillet.cookingProgress - coolingDecrement);
             return;
@@ -960,12 +993,38 @@ public class SkilletManager {
 
         skillet.cookingProgress++;
 
+        // Skip the per-tick smoke/sizzle broadcast when no player is close (R-PERF-003) — mirrors
+        // StoveManager/TickManager. cookingProgress++ above stays unconditional so unattended
+        // skillets still finish cooking.
         ThreadLocalRandom random = ThreadLocalRandom.current();
-        if (smokeEnabled && random.nextDouble() < smokeChance) {
-            spawnCookingParticles(location);
+        // Collect the chunk-tracked nearby players once: this is both the "any player near?" gate and the
+        // recipient set for the sends below, so the particle/sound target player.spawnParticle/playSound
+        // instead of world.spawnParticle re-walking the whole world player list per call (R-PERF-006).
+        List<Player> nearbyViewers = ManagerSupport.collectNearbyPlayers(
+                world, location, EFFECT_VIEWER_DISTANCE_SQUARED, NEARBY_VIEWER_SCRATCH.get());
+        // Per-chunk per-dispatch packet budget (mirrors StoveManager): a dense pocket of cooking skillets
+        // can't emit more than chunkEffectBudgetLimit particle/sound packets from one chunk in a single
+        // Bukkit tick, capping the peak packet burst. Emission chance is unchanged, so per-skillet
+        // visuals are identical to before — only pathological density (~50+ cooking skillets in one
+        // chunk) is clipped. The budget map is cleared once per bukkit tick across the whole tick pass.
+        long chunkKey = chunkKey(location);
+        long currentBukkitTick = Bukkit.getCurrentTick();
+        if (currentBukkitTick != effectBudgetResetTick) {
+            chunkEffectBudget.clear();
+            effectBudgetResetTick = currentBukkitTick;
         }
-        if (sizzleEnabled && random.nextDouble() < sizzleChance) {
-            SoundUtils.play(world, location, getSizzleSound(location), Sound.BLOCK_CAMPFIRE_CRACKLE, sizzleVolume, sizzlePitch);
+        AtomicInteger chunkBudget = nearbyViewers.isEmpty()
+                ? null
+                : chunkEffectBudget.computeIfAbsent(chunkKey, k -> new AtomicInteger());
+        boolean canSpawnEffects = chunkBudget != null && chunkBudget.get() < chunkEffectBudgetLimit;
+        if (canSpawnEffects && smokeEnabled && random.nextDouble() < smokeChance) {
+            spawnCookingParticles(nearbyViewers, location);
+            chunkBudget.incrementAndGet();
+        }
+        if (canSpawnEffects && chunkBudget.get() < chunkEffectBudgetLimit
+                && sizzleEnabled && random.nextDouble() < sizzleChance) {
+            SoundUtils.play(nearbyViewers, location, getSizzleSound(location), Sound.BLOCK_CAMPFIRE_CRACKLE, sizzleVolume, sizzlePitch);
+            chunkBudget.incrementAndGet();
         }
         if (skillet.cookingProgress >= skillet.cookingDuration) {
             debug(() -> "tick finish: progress reached duration for " + formatItem(skillet.storedItem)
@@ -1088,17 +1147,12 @@ public class SkilletManager {
         };
     }
 
-    private void spawnCookingParticles(Location location) {
-        Location particleLocation = location.clone().add(0.5, smokeYOffset, 0.5);
-        location.getWorld().spawnParticle(
-                smokeParticle,
-                particleLocation,
-                smokeCount,
-                smokeOffsetX,
-                smokeOffsetY,
-                smokeOffsetZ,
-                smokeSpeed
-        );
+    private void spawnCookingParticles(List<Player> viewers, Location location) {
+        double px = location.getX() + 0.5;
+        double py = location.getY() + smokeYOffset;
+        double pz = location.getZ() + 0.5;
+        ManagerSupport.spawnParticleFor(viewers, smokeParticle, px, py, pz,
+                smokeCount, smokeOffsetX, smokeOffsetY, smokeOffsetZ, smokeSpeed);
     }
 
     private void createVisual(Location location, SkilletData skillet) {
@@ -1161,7 +1215,7 @@ public class SkilletManager {
                 case ITEM -> false;
                 default -> ItemUtils.shouldUseBlockStyleDisplay(stackForDisplay);
             };
-            float xRotation = isBlockItem ? 0.0F : 90.0F;
+            float xRotation = isBlockItem ? 0.0F : -90.0F;
             float yRotation = DisplayTransformUtils.skilletYaw(facing);
             float zRotation = 0.0F;
             if (displayOverride.rotationDegrees() != null) {
@@ -1288,10 +1342,10 @@ public class SkilletManager {
         }
 
         int expectedCount = getModelCount(skillet.storedItem);
-        // 廉价前置判断:显示实体数量正确、且 storedItem 自上次构建以来未变化时直接返回,跳过下面昂贵的
-        // facing/override/resolveDisplayItem 解析。storedItem 变化(放入/烹饪)与配置变化都会各自走重建路径
-        // (createVisual / refreshVisualsAfterConfigReload),而方块朝向放置后不会改变。数量不符(视觉丢失等)
-        // 会让此判断不成立,从而走慢路径重建,作为兜底。
+        // Cheap precheck: return early when the display entity count is correct and storedItem is unchanged since last build,
+        // skipping the costly facing/override/resolveDisplayItem resolution below. storedItem changes (insert/cook) and config
+        // changes each take their own rebuild path (createVisual / refreshVisualsAfterConfigReload), and block facing never changes
+        // after placement. A count mismatch (lost visuals, etc.) fails this check and falls through to the slow rebuild path.
         if (skillet.displayEntityIds.size() == expectedCount
                 && skillet.lastVisualStoredItem != null
                 && skillet.lastVisualStoredItem.isSimilar(skillet.storedItem)) {
@@ -1315,10 +1369,15 @@ public class SkilletManager {
             return;
         }
         for (SkilletData skillet : skillets.values()) {
-            if (skillet != null && skillet.hasItem()) {
-                cleanupVisual(skillet);
-                createVisual(skillet.location, skillet);
+            if (skillet == null || !skillet.hasItem() || skillet.location == null) {
+                continue;
             }
+            SkilletData entry = skillet;
+            Location loc = entry.location;
+            plugin.scheduler().runAt(loc, () -> {
+                cleanupVisual(entry);
+                createVisual(loc, entry);
+            });
         }
     }
 
@@ -1385,10 +1444,6 @@ public class SkilletManager {
 
     private void removeStoredData(Location location) {
         markSkilletDirty(location);
-        LegacyBlockStorageManager storage = plugin.getLegacyBlockStorageManager();
-        if (storage != null) {
-            storage.removeBlockData(ManagerSupport.normalize(location));
-        }
     }
 
     private void awardUseSkillet(Player player) {

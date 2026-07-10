@@ -33,10 +33,10 @@ public class I18n {
     private static volatile LocaleState state = new LocaleState(Map.of(), null, FALLBACK_LOCALE);
 
     /**
-     * 语言查找状态的不可变快照：locales、currentLocale、defaultLocale 三者始终一致。
-     * 重载时只整体替换 state 这一个 volatile 引用，读取方要么看到完整的旧快照、
-     * 要么看到完整的新快照，避免在 region 线程读取时撞上 clear()/put() 破坏底层 HashMap
-     * （可能导致错误结果、NPE，甚至 region 线程在损坏的桶链上死循环）。
+     * Immutable snapshot of the locale lookup state: locales, currentLocale, and defaultLocale are always consistent.
+     * Reload replaces only the single volatile state reference wholesale, so readers see either the complete old
+     * snapshot or the complete new one, avoiding clear()/put() corrupting the underlying HashMap while a region thread reads it
+     * (which could cause wrong results, NPEs, or a region thread spinning forever on a corrupted bucket chain).
      */
     private record LocaleState(Map<String, YamlConfiguration> locales,
                                YamlConfiguration currentLocale,
@@ -56,7 +56,7 @@ public class I18n {
 
         saveDefaultLanguages();
 
-        // 全部构建在局部 map 里，完成后再一次性原子发布，期间不触碰正在被读取的旧快照。
+        // Build everything in a local map, then publish atomically all at once, never touching the old snapshot being read.
         Map<String, YamlConfiguration> loaded = new HashMap<>();
         File[] langFiles = langFolder.listFiles((dir, name) -> name.endsWith(".yml"));
         if (langFiles != null) {
@@ -351,8 +351,8 @@ public class I18n {
 
         YamlConfiguration lang = locales.get(locale.toLowerCase(Locale.ROOT));
         if (lang == null) {
-            // 在彻底回退到服务器语言之前，先尝试按语言前缀匹配（例如玩家语言 en_gb -> 已安装的 en_us），
-            // 这样客户端仍能获得其所用的语言。
+            // Before fully falling back to the server language, try matching by language prefix (e.g. player en_gb -> installed en_us),
+            // so the client still gets its own language.
             String matched = matchInstalledLocale(locales, locale);
             if (matched != null) {
                 lang = locales.get(matched);
@@ -486,6 +486,95 @@ public class I18n {
 
     public static Component getComponent(String key, Player player, Map<String, String> placeholders) {
         return Text.deserialize(formatNamed(key, player, placeholders));
+    }
+
+    /** Returns a Component.translatable(key) that each player's
+     * client renders from its own resource-pack lang file. Use this for any user-visible GUI text so the
+     * server sends a translation key (not a pre-rendered string) and the player sees their own language
+     * without needing to re-open the GUI when they switch client language. The key must exist in the
+     * resource pack's assets/farmersdelight/lang/<locale>.json. */
+    public static Component translatable(String key) {
+        return Component.translatable(key);
+    }
+
+    /** Plain-text translation in the server's default locale via com.huidu.farmersdelight.util.ItemUtils#translate.
+     *  Walks FD lang files, then CraftEngine's TranslationManager, then Adventure's GlobalTranslator, then
+     *  returns the key itself if nothing has a value. Use for bossbar titles and lore lines where the
+     *  visible text must NOT depend on the receiving client's locale or resource-pack contents. */
+    public static String serverText(String key) {
+        return com.huidu.farmersdelight.util.ItemUtils.translate(key, state.defaultLocale());
+    }
+
+    /** serverText(String) formatted with positional %s args and wrapped in a
+     *  Component.text. Falls back to the unformatted text if the args don't match the placeholders.
+     *  Args that are themselves Component get serialized through plain-text first so colored
+     *  sub-components are not silently dropped (the result is a flat text Component anyway). */
+    public static Component serverComponent(String key, Object... args) {
+        String resolved = serverText(key);
+        if (args == null || args.length == 0) {
+            return Text.deserialize(resolved);
+        }
+        Object[] flat = new Object[args.length];
+        for (int i = 0; i < args.length; i++) {
+            Object a = args[i];
+            flat[i] = a instanceof Component c
+                    ? net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(c)
+                    : String.valueOf(a);
+        }
+        String formatted;
+        try {
+            formatted = String.format(resolved, flat);
+        } catch (java.util.IllegalFormatException ex) {
+            formatted = resolved;
+        }
+        return Text.deserialize(formatted);
+    }
+
+    /** Component.translatable(key, args) carrying a server-resolved .fallback(...) string,
+     *  so clients whose resource pack lacks the lang entry see readable text in the server's default locale
+     *  instead of the raw key. Non-Component args get wrapped in Component.text(String.valueOf(arg))
+     *  for the client-side render; the fallback string formats the %s placeholders with the args'
+     *  plain-text serialisation. */
+    public static Component translatableWithFallback(String key, Object... args) {
+        if (args == null) args = new Object[0];
+        Component[] argComponents = new Component[args.length];
+        Object[] flat = new Object[args.length];
+        for (int i = 0; i < args.length; i++) {
+            Object a = args[i];
+            if (a instanceof Component c) {
+                argComponents[i] = c;
+                flat[i] = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(c);
+            } else {
+                String s = String.valueOf(a);
+                argComponents[i] = Component.text(s);
+                flat[i] = s;
+            }
+        }
+        String template = serverText(key);
+        String fallback;
+        if (args.length == 0) {
+            fallback = template;
+        } else {
+            try {
+                fallback = String.format(template, flat);
+            } catch (java.util.IllegalFormatException ex) {
+                fallback = template;
+            }
+        }
+        return Component.translatable(key, argComponents).fallback(fallback);
+    }
+
+    /** Translatable with positional %s args. Each arg is wrapped in a Component.text(...)
+     * unless it's already a Component, so colored sub-components pass through unchanged. Order of args must
+     * match the order of %s placeholders in the lang value. */
+    public static Component translatable(String key, Object... args) {
+        if (args.length == 0) return Component.translatable(key);
+        Component[] components = new Component[args.length];
+        for (int i = 0; i < args.length; i++) {
+            Object a = args[i];
+            components[i] = a instanceof Component c ? c : Component.text(String.valueOf(a));
+        }
+        return Component.translatable(key, components);
     }
 
     public static void cleanup() {
