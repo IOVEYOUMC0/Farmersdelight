@@ -5,14 +5,18 @@ import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.recipe.CookingPotRecipe;
 import com.huidu.farmersdelight.recipe.RecipeIngredient;
 import com.huidu.farmersdelight.util.BlockPosKey;
+import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.world.BlockPos;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.block.BlockFace;
 import org.bukkit.entity.ExperienceOrb;
+import org.bukkit.entity.Item;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -166,7 +170,8 @@ public class CookingPotBlockEntity {
                 return;
             }
             setSlot(slot, copyOrNull(item));
-            if (inventory[slot] == null || inventory[slot].getType().isAir()) {
+            // Amount-based empty check — see takeMealPortionWithExperience for rationale.
+            if (inventory[slot] == null || inventory[slot].getAmount() <= 0) {
                 slotExperience[slot] = 0.0D;
             }
         }
@@ -224,7 +229,8 @@ public class CookingPotBlockEntity {
                 continue;
             }
             ItemStack item = inventory[slot];
-            if (item != null && !item.getType().isAir()) {
+            // Amount-based empty check — see takeMealPortionWithExperience for rationale.
+            if (item != null && item.getAmount() > 0) {
                 return slot;
             }
         }
@@ -282,6 +288,16 @@ public class CookingPotBlockEntity {
     public ItemStack getMealDisplayItem() {
         synchronized (inventoryLock) {
             return getFirstItem(layout.outputSlots());
+        }
+    }
+
+    /** Headline meal item for the broken-pot lore + fill bar: prefer the pending-output slot
+     *  (the just-cooked meal still inside the pot), fall back to output when pending is empty.
+     *  Differs from getMealDisplayItem(), which only ever reads the output slot. */
+    public ItemStack getPackedMealDisplayItem() {
+        synchronized (inventoryLock) {
+            ItemStack pending = getFirstItem(layout.pendingOutputSlots());
+            return pending != null ? pending : getFirstItem(layout.outputSlots());
         }
     }
 
@@ -365,36 +381,6 @@ public class CookingPotBlockEntity {
             consumeIngredientsInternal(recipe, world, blockLoc);
         }
         syncWorldlyContainer();
-    }
-
-    private ItemStack storeRemainderInIngredientSlots(ItemStack remainder) {
-        ItemStack pending = remainder.clone();
-        for (int i : layout.inputSlots()) {
-            ItemStack slotItem = inventory[i];
-            if (slotItem == null || slotItem.getType().isAir()) {
-                setSlot(i, pending);
-                slotExperience[i] = 0.0D;
-                return null;
-            }
-
-            if (!slotItem.isSimilar(pending)) {
-                continue;
-            }
-
-            int space = slotItem.getMaxStackSize() - slotItem.getAmount();
-            if (space <= 0) {
-                continue;
-            }
-
-            int toMove = Math.min(space, pending.getAmount());
-            slotItem.setAmount(slotItem.getAmount() + toMove);
-            if (toMove == pending.getAmount()) {
-                return null;
-            }
-
-            pending.setAmount(pending.getAmount() - toMove);
-        }
-        return pending;
     }
 
     private ItemStack insertIntoSlots(ItemStack item, int startSlot, int endSlot) {
@@ -655,40 +641,103 @@ public class CookingPotBlockEntity {
     private void consumeIngredientsInternal(CookingPotRecipe recipe, World world, Location blockLoc) {
         if (recipe == null) return;
 
-        List<ItemStack> drops = new ArrayList<>();
+        // For each recipe ingredient, charge ONE unit of consumption to a slot — preferring slots not yet used
+        // in this cook cycle (Forge's "shrink each filled slot by 1" behavior for the exact case), falling back
+        // to re-using a slot with remaining stacked amount (covers the consolidated case: one slot with 2 cocoa
+        // satisfying a 2-cocoa recipe). Without this, a recipe with the same ingredient listed twice
+        // (e.g. 2× cocoa) would greedily pull both units from the first matching slot, leaving the second
+        // identical slot untouched: e.g. [4 cocoa, 4 cocoa, …] -> after 2 cooks: [empty, 4 cocoa, …].
+        int[] slots = layout.inputSlots();
+        int[] consume = new int[slots.length];
+        List<ItemStack> remainders = new ArrayList<>();
+
         for (RecipeIngredient ingredient : recipe.getIngredients()) {
-            for (int i : layout.inputSlots()) {
-                ItemStack slotItem = inventory[i];
-                if (slotItem == null || slotItem.getType().isAir() || !matchesIngredient(slotItem, ingredient)) {
-                    continue;
-                }
+            int idx = pickConsumptionSlot(slots, consume, ingredient, true);
+            if (idx < 0) {
+                idx = pickConsumptionSlot(slots, consume, ingredient, false);
+            }
+            if (idx < 0) {
+                // canCook should have prevented this; defensive no-op.
+                continue;
+            }
+            ItemStack slotItem = inventory[slots[idx]];
+            ItemStack remainder = getCraftingRemainder(slotItem, 1);
+            if (remainder != null && !remainder.getType().isAir()) {
+                remainders.add(remainder);
+            }
+            consume[idx]++;
+        }
 
-                ItemStack remainder = getCraftingRemainder(slotItem, 1);
-
-                int newAmount = slotItem.getAmount() - 1;
-                if (newAmount <= 0) {
-                    setSlot(i, null);
-                    slotExperience[i] = 0.0D;
-                } else {
-                    slotItem.setAmount(newAmount);
-                }
-
-                if (remainder != null) {
-                    ItemStack leftover = storeRemainderInIngredientSlots(remainder);
-                    if (leftover != null && !leftover.getType().isAir()) {
-                        drops.add(leftover);
-                    }
-                }
-                break;
+        for (int idx = 0; idx < slots.length; idx++) {
+            if (consume[idx] == 0) continue;
+            int i = slots[idx];
+            ItemStack slotItem = inventory[i];
+            if (slotItem == null) continue;
+            int newAmount = slotItem.getAmount() - consume[idx];
+            if (newAmount <= 0) {
+                setSlot(i, null);
+                slotExperience[i] = 0.0D;
+            } else {
+                slotItem.setAmount(newAmount);
             }
         }
 
-        if (world != null && blockLoc != null) {
+        if (world != null && blockLoc != null && !remainders.isEmpty()) {
+            ejectRemainders(world, blockLoc, remainders);
+        }
+    }
+
+    /** Picks a slot index to charge one consumption unit of ingredient. When preferFresh is
+     * true, skips slots already used in this cook cycle so 2× same-ingredient recipes naturally pull one
+     * from each matching slot. Returns -1 when no slot is eligible (caller falls back to a non-fresh pass). */
+    private int pickConsumptionSlot(int[] slots, int[] consume, RecipeIngredient ingredient, boolean preferFresh) {
+        for (int idx = 0; idx < slots.length; idx++) {
+            if (preferFresh && consume[idx] > 0) continue;
+            ItemStack slotItem = inventory[slots[idx]];
+            if (slotItem == null || slotItem.getType().isAir()) continue;
+            if (consume[idx] >= slotItem.getAmount()) continue;
+            if (!matchesIngredient(slotItem, ingredient)) continue;
+            return idx;
+        }
+        return -1;
+    }
+
+    /** Pops empty-container remainders (buckets, bottles) out the pot's LEFT side — counter-clockwise of its
+     * facing — with a small horizontal push + upward hop. Freeing the input slot is the point: keeping
+     * remainders in the slot clogs hopper-fed pots. Falls back to dropping at pot center when facing can't
+     * be read (block already gone). */
+    private void ejectRemainders(World world, Location blockLoc, List<ItemStack> remainders) {
+        BlockFace facing = CustomBlockUtils.getFacing(blockLoc.getBlock());
+        BlockFace eject = counterClockwise(facing);
+        if (eject == null) {
             Location dropLoc = blockLoc.clone().add(0.5, 0.7, 0.5);
-            for (ItemStack remainder : drops) {
-                world.dropItemNaturally(dropLoc, remainder);
+            for (ItemStack r : remainders) {
+                world.dropItemNaturally(dropLoc, r);
             }
+            return;
         }
+        double dx = eject.getModX();
+        double dz = eject.getModZ();
+        Location ejectLoc = blockLoc.clone().add(0.5 + dx * 0.25, 0.7, 0.5 + dz * 0.25);
+        Vector velocity = new Vector(dx * 0.08, 0.25, dz * 0.08);
+        for (ItemStack r : remainders) {
+            Item entity = world.dropItem(ejectLoc, r);
+            entity.setVelocity(velocity);
+        }
+    }
+
+    /** Bukkit has no built-in BlockFace.counterClockWise(); this returns the horizontal CCW
+     * neighbor, matching Forge's Direction.getCounterClockWise() for N/S/E/W. Null for any
+     * non-horizontal or unknown facing — caller falls back to the centered drop. */
+    private static BlockFace counterClockwise(BlockFace facing) {
+        if (facing == null) return null;
+        return switch (facing) {
+            case NORTH -> BlockFace.WEST;
+            case WEST  -> BlockFace.SOUTH;
+            case SOUTH -> BlockFace.EAST;
+            case EAST  -> BlockFace.NORTH;
+            default    -> null;
+        };
     }
 
     public boolean doesMealHaveContainer() {
@@ -810,7 +859,11 @@ public class CookingPotBlockEntity {
                 return null;
             }
             ItemStack meal = inventory[outputSlot];
-            if (meal == null || meal.getType().isAir()) return null;
+            // Amount-based empty check (instead of getType().isAir()) so this hot path stays callable
+            // from unit tests against a stub ItemStack that doesn't bring Bukkit's BlockType registry.
+            // In production the array never holds an AIR-material stack — empty slots are stored as null
+            // and the writer paths reject AIR before it lands here — so the semantic matches the prior check.
+            if (meal == null || meal.getAmount() <= 0) return null;
 
             int amount = Math.max(1, Math.min(requestedAmount, meal.getAmount()));
             SplitItem result = splitItemFromSlot(outputSlot, amount);
@@ -935,7 +988,7 @@ public class CookingPotBlockEntity {
 
                 ItemStack requiredContainer = mealContainerStack.get();
                 if (requiredContainer != null && !requiredContainer.getType().isAir()) {
-                    consumeContainerAmount(movableAmount);
+                    consumeContainerAmount(requiredContainer, movableAmount);
                 }
 
                 if (pending.getAmount() <= 0) {
@@ -971,7 +1024,7 @@ public class CookingPotBlockEntity {
             int availableContainers = getAvailableContainerAmount(requiredContainer);
             if (directMove >= result.getAmount() && availableContainers >= result.getAmount()) {
                 addItemToSlots(layout.outputSlots(), result, storedExperience);
-                consumeContainerAmount(result.getAmount());
+                consumeContainerAmount(requiredContainer, result.getAmount());
                 mealContainerStack.set(null);
                 return true;
             }
@@ -1004,6 +1057,22 @@ public class CookingPotBlockEntity {
         return getAvailableSpace(layout.outputSlots(), item);
     }
 
+    /** True if provided is the container required demands (custom-id match, else
+     *  isSimilar). Unlike isContainerValid this validates against the passed argument, not
+     *  the mealContainerStack field — needed for the direct-store path where the field is still null
+     *  (a null field made isContainerValid accept ANY item, so a wrong container in a C-slot was
+     *  counted and consumed). required null/air = no requirement (matches anything). */
+    private boolean isSameContainer(ItemStack required, ItemStack provided) {
+        if (required == null || required.getType().isAir()) return true;
+        if (provided == null || provided.getType().isAir()) return false;
+        String requiredId = ItemUtils.getCustomItemId(required);
+        String providedId = ItemUtils.getCustomItemId(provided);
+        if (requiredId != null && providedId != null) {
+            return requiredId.equals(providedId);
+        }
+        return required.isSimilar(provided);
+    }
+
     private int getAvailableContainerAmount(ItemStack requiredContainer) {
         if (requiredContainer == null || requiredContainer.getType().isAir()) {
             return Integer.MAX_VALUE;
@@ -1011,14 +1080,14 @@ public class CookingPotBlockEntity {
         int amount = 0;
         for (int slot : layout.containerSlots()) {
             ItemStack container = inventory[slot];
-            if (isContainerValid(container)) {
+            if (isSameContainer(requiredContainer, container)) {
                 amount += container.getAmount();
             }
         }
         return amount;
     }
 
-    private void consumeContainerAmount(int amount) {
+    private void consumeContainerAmount(ItemStack requiredContainer, int amount) {
         if (amount <= 0) return;
         int remainingAmount = amount;
         for (int slot : layout.containerSlots()) {
@@ -1027,6 +1096,9 @@ public class CookingPotBlockEntity {
             }
             ItemStack container = inventory[slot];
             if (container == null || container.getType().isAir()) {
+                continue;
+            }
+            if (!isSameContainer(requiredContainer, container)) {
                 continue;
             }
             int consumed = Math.min(remainingAmount, container.getAmount());
@@ -1161,7 +1233,8 @@ public class CookingPotBlockEntity {
             return null;
         }
         ItemStack source = inventory[slot];
-        if (source == null || source.getType().isAir()) {
+        // Same amount-based empty check as the take path — see takeMealPortionWithExperience for why.
+        if (source == null || source.getAmount() <= 0) {
             return null;
         }
         ItemStack split = source.clone();

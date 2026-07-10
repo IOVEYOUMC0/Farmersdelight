@@ -6,10 +6,12 @@ import com.huidu.farmersdelight.gui.CookingPotGui;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.manager.TickManager;
 import com.huidu.farmersdelight.manager.TrayManager;
+import com.huidu.farmersdelight.util.BehaviorArgParser;
 import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CraftEngineAdapter;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
+import com.huidu.farmersdelight.visual.ItemDisplayManager;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -19,6 +21,7 @@ import net.momirealms.craftengine.core.block.behavior.EntityBlock;
 import net.momirealms.craftengine.core.block.behavior.WorldlyContainerHolder;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
+import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.entity.player.InteractionResult;
 import net.momirealms.craftengine.core.util.Direction;
 import net.momirealms.craftengine.core.world.BlockPos;
@@ -30,9 +33,7 @@ import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.block.Block;
-import org.bukkit.entity.Display;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.Transformation;
 import org.joml.AxisAngle4f;
@@ -40,12 +41,10 @@ import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -74,18 +73,32 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     // Must be maintained in lockstep with structural writes to worldBlockEntities, otherwise on chunk unload
     // missed entities won't be saved, losing pot contents.
     private static final Map<UUID, Map<Long, Set<BlockPosKey>>> chunkIndex = new ConcurrentHashMap<>();
-    private static final Map<UUID, Map<BlockPosKey, TextDisplay>> worldProgressDisplays = new ConcurrentHashMap<>();
-    // These per-pot display caches must also be keyed by world: BlockPosKey carries no world info, so two pots
-    // at the same x,y,z in different worlds would otherwise share progress text / visibility
-    // throttling / recipe name state.
-    private static final Map<DisplayStateKey, Set<UUID>> displayVisibleToPlayers = new ConcurrentHashMap<>();
-    private static final Map<DisplayStateKey, Long> displayVisibilityLastCheckTick = new ConcurrentHashMap<>();
-    private static final Map<DisplayStateKey, Long> progressDisplayCreateLastCheckTick = new ConcurrentHashMap<>();
-    private static final Map<DisplayStateKey, String> progressDisplayTextCache = new ConcurrentHashMap<>();
-    private static final int VISIBILITY_CHECK_INTERVAL_TICKS = 100;
+    // Progress text now rides on ProxyItemDisplayManager (packet-only TextDisplay) — value is the
+    // proxy entityId. The proxy manager handles chunk-tracked viewer selection, distance filter, and
+    // text diff internally, so per-pot visibility / throttle caches are gone.
+    private static final Map<UUID, Map<BlockPosKey, Integer>> worldProgressDisplays = new ConcurrentHashMap<>();
+    // cookingRecipeItems is per-world-keyed (via DisplayStateKey) so two pots at the same x,y,z in
+    // different worlds don't share recipe-name state.
     private static final Map<DisplayStateKey, ItemStack> cookingRecipeItems = new ConcurrentHashMap<>();
     private static final Map<BlockPosKey, Long> recentPlacements = new ConcurrentHashMap<>();
-    private static final long PLACE_INTERACTION_COOLDOWN_MS = 1000L;
+
+    private static int visibilityCheckIntervalTicks() {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        return plugin == null
+                ? Constants.DEFAULT_COOKING_POT_DISPLAY_VISIBILITY_CHECK_INTERVAL_TICKS
+                : Math.max(1, plugin.getConfigInt(
+                        Constants.DEFAULT_COOKING_POT_DISPLAY_VISIBILITY_CHECK_INTERVAL_TICKS,
+                        "cooking-pot.display.visibility-check-interval-ticks"));
+    }
+
+    private static long placeInteractionCooldownMs() {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        return plugin == null
+                ? Constants.DEFAULT_COOKING_POT_PLACE_INTERACTION_COOLDOWN_MS
+                : Math.max(0, plugin.getConfigInt(
+                        Constants.DEFAULT_COOKING_POT_PLACE_INTERACTION_COOLDOWN_MS,
+                        "cooking-pot.place-interaction-cooldown-ms"));
+    }
 
     /** World-scoped key used by the per-pot display caches above. */
     private record DisplayStateKey(UUID worldId, BlockPosKey pos) {
@@ -348,7 +361,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         if (world == null || posKey == null) return;
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         if (plugin != null && plugin.getTickManager() != null) {
-            plugin.getTickManager().unregisterActiveBlock(world, posKey, TickManager.BlockType.COOKING_POT);
+            plugin.getTickManager().markInactive(world, posKey, TickManager.BlockType.COOKING_POT);
         }
         removeProgressDisplay(world, posKey);
         Map<BlockPosKey, CookingPotBlockEntity> worldEntities = worldBlockEntities.get(world.getUID());
@@ -383,20 +396,15 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         }
         // On whole-world removal, also discard that world's chunk index.
         chunkIndex.remove(worldId);
-        Map<BlockPosKey, TextDisplay> displays = worldProgressDisplays.remove(worldId);
+        Map<BlockPosKey, Integer> displays = worldProgressDisplays.remove(worldId);
         if (displays != null) {
-            for (Map.Entry<BlockPosKey, TextDisplay> entry : displays.entrySet()) {
-                BlockPosKey posKey = entry.getKey();
-                TextDisplay display = entry.getValue();
-                if (removeDisplayEntities && display != null && display.isValid()) {
-                    display.remove();
+            FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+            ItemDisplayManager visualManager = plugin == null ? null : plugin.getItemDisplayManager();
+            for (Map.Entry<BlockPosKey, Integer> entry : displays.entrySet()) {
+                if (removeDisplayEntities && visualManager != null) {
+                    visualManager.destroyDisplay(entry.getValue());
                 }
-                DisplayStateKey stateKey = new DisplayStateKey(worldId, posKey);
-                displayVisibleToPlayers.remove(stateKey);
-                displayVisibilityLastCheckTick.remove(stateKey);
-                progressDisplayCreateLastCheckTick.remove(stateKey);
-                progressDisplayTextCache.remove(stateKey);
-                cookingRecipeItems.remove(stateKey);
+                cookingRecipeItems.remove(new DisplayStateKey(worldId, entry.getKey()));
             }
             displays.clear();
         }
@@ -413,21 +421,27 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         worldBlockEntities.clear();
         // When clearing the authoritative map, also clear the chunk index.
         chunkIndex.clear();
-        for (Map<BlockPosKey, TextDisplay> displays : worldProgressDisplays.values()) {
-            for (TextDisplay display : displays.values()) {
-                if (removeDisplayEntities && display != null && display.isValid()) {
-                    display.remove();
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        ItemDisplayManager visualManager = plugin == null ? null : plugin.getItemDisplayManager();
+        for (Map<BlockPosKey, Integer> displays : worldProgressDisplays.values()) {
+            if (removeDisplayEntities && visualManager != null) {
+                for (Integer entityId : displays.values()) {
+                    visualManager.destroyDisplay(entityId);
                 }
             }
             displays.clear();
         }
         worldProgressDisplays.clear();
-        displayVisibleToPlayers.clear();
-        displayVisibilityLastCheckTick.clear();
-        progressDisplayCreateLastCheckTick.clear();
-        progressDisplayTextCache.clear();
         cookingRecipeItems.clear();
         recentPlacements.clear();
+    }
+
+    /** Adds every progress-text proxy display id tracked cooking pots still reference, so /fd
+     *  cleanup removes only orphaned displays and leaves live pot progress text alone. */
+    public static void collectLiveDisplayIds(java.util.Set<Integer> out) {
+        for (Map<BlockPosKey, Integer> displays : worldProgressDisplays.values()) {
+            out.addAll(displays.values());
+        }
     }
 
     public static void markRecentlyPlaced(Location location) {
@@ -437,7 +451,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         long now = System.currentTimeMillis();
         // Also evict expired entries here: isRecentlyPlaced() only cleans up on query, so a pot that is placed
         // but never interacted with would otherwise leak its entry until cleanup.
-        recentPlacements.entrySet().removeIf(entry -> now - entry.getValue() > PLACE_INTERACTION_COOLDOWN_MS);
+        recentPlacements.entrySet().removeIf(entry -> now - entry.getValue() > placeInteractionCooldownMs());
         recentPlacements.put(new BlockPosKey(location), now);
     }
 
@@ -448,7 +462,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         }
 
         long now = System.currentTimeMillis();
-        if (now - placedAt > PLACE_INTERACTION_COOLDOWN_MS) {
+        if (now - placedAt > placeInteractionCooldownMs()) {
             recentPlacements.remove(posKey, placedAt);
             return false;
         }
@@ -458,14 +472,14 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     public static void updateProgressDisplay(World world, BlockPosKey posKey, int progressPercent) {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         if (world == null || posKey == null || progressPercent <= 0
-                || (plugin != null && !plugin.isCookingPotProgressDisplayEnabled())) {
+                || (plugin == null || !plugin.isCookingPotProgressDisplayEnabled())) {
             removeProgressDisplay(world, posKey);
             return;
         }
 
         DisplayStateKey stateKey = stateKey(world, posKey);
         String text;
-        if (plugin != null && plugin.isShowRecipeNameInProgressDisplay()) {
+        if (plugin.isShowRecipeNameInProgressDisplay()) {
             ItemStack recipeItem = cookingRecipeItems.get(stateKey);
             if (recipeItem != null) {
                 String recipeName = com.huidu.farmersdelight.util.ItemUtils.getDisplayName(recipeItem);
@@ -477,26 +491,41 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             text = progressPercent + "%";
         }
 
-        TextDisplay display = getProgressDisplay(world, posKey);
-        String previousText = progressDisplayTextCache.get(stateKey);
-        if (display != null && text.equals(previousText)) {
-            updateDisplayVisibility(world, posKey, display);
+        ItemDisplayManager visualManager = plugin.getItemDisplayManager();
+        if (visualManager == null || !visualManager.isAvailable()) {
             return;
         }
 
-        if (display == null && !shouldCreateProgressDisplay(world, posKey)) {
-            return;
-        }
-        if (display == null) {
-            display = getOrCreateProgressDisplay(world, posKey);
-        }
-        if (display == null) {
-            return;
+        net.kyori.adventure.text.Component component = net.kyori.adventure.text.Component.text(text);
+        Map<BlockPosKey, Integer> worldDisplays = worldProgressDisplays.computeIfAbsent(
+                world.getUID(), ignored -> new ConcurrentHashMap<>());
+        Integer existingId = worldDisplays.get(posKey);
+        if (existingId != null) {
+            // updateText returns false only when the proxy id is gone (e.g. cleanup raced); re-spawn.
+            if (visualManager.updateText(existingId, component)) {
+                return;
+            }
+            worldDisplays.remove(posKey);
         }
 
-        progressDisplayTextCache.put(stateKey, text);
-        display.text(net.kyori.adventure.text.Component.text(text));
-        updateDisplayVisibility(world, posKey, display);
+        double yOffset = plugin.getCookingPotProgressDisplayYOffset();
+        float scale = plugin.getCookingPotProgressDisplayScale();
+        Location displayLoc = posKey.toLocation(world).clone().add(0.5, yOffset, 0.5);
+        Transformation transformation = new Transformation(
+                new Vector3f(0f, 0f, 0f),
+                new AxisAngle4f(0f, 0f, 0f, 1f),
+                new Vector3f(scale, scale, scale),
+                new AxisAngle4f(0f, 0f, 0f, 1f));
+        int newId = visualManager.createTextDisplay(new ItemDisplayManager.TextDisplaySpec(
+                displayLoc,
+                component,
+                transformation,
+                org.bukkit.Color.fromARGB(0, 0, 0, 0),
+                true,
+                false));
+        if (newId >= 0) {
+            worldDisplays.put(posKey, newId);
+        }
     }
 
     public static void setCookingRecipeItem(World world, BlockPosKey posKey, ItemStack recipeItem) {
@@ -512,192 +541,18 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     }
 
     public static void removeProgressDisplay(World world, BlockPosKey posKey) {
-        if (world == null || posKey == null) {
-            return;
-        }
+        if (world == null || posKey == null) return;
 
-        Map<BlockPosKey, TextDisplay> displays = worldProgressDisplays.get(world.getUID());
+        Map<BlockPosKey, Integer> displays = worldProgressDisplays.get(world.getUID());
         if (displays != null) {
-            TextDisplay display = displays.remove(posKey);
-            if (display != null && display.isValid()) {
-                display.remove();
+            Integer entityId = displays.remove(posKey);
+            FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+            ItemDisplayManager visualManager = plugin == null ? null : plugin.getItemDisplayManager();
+            if (entityId != null && visualManager != null) {
+                visualManager.destroyDisplay(entityId);
             }
         }
-
-        DisplayStateKey stateKey = stateKey(world, posKey);
-        displayVisibleToPlayers.remove(stateKey);
-        displayVisibilityLastCheckTick.remove(stateKey);
-        progressDisplayCreateLastCheckTick.remove(stateKey);
-        progressDisplayTextCache.remove(stateKey);
-        cookingRecipeItems.remove(stateKey);
-    }
-
-    private static TextDisplay getProgressDisplay(World world, BlockPosKey posKey) {
-        Map<BlockPosKey, TextDisplay> displays = worldProgressDisplays.get(world.getUID());
-        if (displays == null) {
-            return null;
-        }
-        TextDisplay display = displays.get(posKey);
-        if (display != null && display.isValid()) {
-            return display;
-        }
-        displays.remove(posKey);
-        DisplayStateKey stateKey = stateKey(world, posKey);
-        displayVisibleToPlayers.remove(stateKey);
-        displayVisibilityLastCheckTick.remove(stateKey);
-        progressDisplayTextCache.remove(stateKey);
-        return null;
-    }
-
-    private static TextDisplay getOrCreateProgressDisplay(World world, BlockPosKey posKey) {
-        Map<BlockPosKey, TextDisplay> displays = worldProgressDisplays.computeIfAbsent(
-                world.getUID(), ignored -> new ConcurrentHashMap<>());
-
-        TextDisplay existing = displays.get(posKey);
-        if (existing != null && existing.isValid()) {
-            return existing;
-        }
-
-        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
-        double yOffset = plugin != null ? plugin.getCookingPotProgressDisplayYOffset() : 1.2D;
-        float scale = plugin != null ? plugin.getCookingPotProgressDisplayScale() : 0.5F;
-        Location location = posKey.toLocation(world).clone().add(0.5, yOffset, 0.5);
-        TextDisplay created = world.spawn(location, TextDisplay.class, entity -> {
-            entity.setBillboard(Display.Billboard.CENTER);
-            entity.setPersistent(false);
-            entity.setShadowed(true);
-            entity.setSeeThrough(false);
-            entity.setBackgroundColor(org.bukkit.Color.fromARGB(0, 0, 0, 0));
-            entity.setVisibleByDefault(false);
-            entity.setTransformation(new Transformation(
-                    new Vector3f(0f, 0f, 0f),
-                    new AxisAngle4f(0f, 0f, 0f, 1f),
-                    new Vector3f(scale, scale, scale),
-                    new AxisAngle4f(0f, 0f, 0f, 1f)
-            ));
-        });
-        displays.put(posKey, created);
-        return created;
-    }
-
-    private static boolean shouldCreateProgressDisplay(World world, BlockPosKey posKey) {
-        // Use the real server tick (not the system clock), so the throttle interval reflects actual elapsed ticks
-        // and degrades gracefully under TPS lag instead of rechecking more often.
-        long currentTick = Bukkit.getCurrentTick();
-        DisplayStateKey stateKey = stateKey(world, posKey);
-        Long lastCheckTick = progressDisplayCreateLastCheckTick.get(stateKey);
-        if (lastCheckTick != null && currentTick - lastCheckTick < VISIBILITY_CHECK_INTERVAL_TICKS) {
-            return false;
-        }
-        progressDisplayCreateLastCheckTick.put(stateKey, currentTick);
-
-        Location potLoc = posKey.toLocation(world).add(0.5, 0, 0.5);
-        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
-        if (plugin != null && plugin.scheduler().isFolia()) {
-            return true;
-        }
-        double visibleDistanceSquared = plugin != null
-                ? plugin.getCookingPotProgressDisplayVisibilityDistanceSquared()
-                : 100.0D;
-        double lookDotThreshold = plugin != null
-                ? plugin.getCookingPotProgressDisplayLookDotThreshold()
-                : 0.95D;
-
-        for (Player player : world.getPlayers()) {
-            if (canSeeProgressDisplay(player, potLoc, visibleDistanceSquared, lookDotThreshold)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static void updateDisplayVisibility(World world, BlockPosKey posKey, TextDisplay display) {
-        if (display == null || !display.isValid()) return;
-
-        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
-        DisplayStateKey stateKey = stateKey(world, posKey);
-        if (plugin != null && plugin.scheduler().isFolia()) {
-            display.setVisibleByDefault(true);
-            displayVisibleToPlayers.remove(stateKey);
-            return;
-        }
-
-        // Use the real server tick (not the system clock), so the throttle interval reflects actual elapsed ticks
-        // and degrades gracefully under TPS lag instead of rechecking more often.
-        long currentTick = Bukkit.getCurrentTick();
-        Long lastCheckTick = displayVisibilityLastCheckTick.get(stateKey);
-        if (lastCheckTick != null && currentTick - lastCheckTick < VISIBILITY_CHECK_INTERVAL_TICKS) {
-            return;
-        }
-        displayVisibilityLastCheckTick.put(stateKey, currentTick);
-
-        Location potLoc = posKey.toLocation(world).add(0.5, 0, 0.5);
-        Set<UUID> nearbyUUIDs = new HashSet<>();
-        Set<UUID> visibleTo = displayVisibleToPlayers.computeIfAbsent(stateKey, k -> ConcurrentHashMap.newKeySet());
-        double visibleDistanceSquared = plugin != null
-                ? plugin.getCookingPotProgressDisplayVisibilityDistanceSquared()
-                : 100.0D;
-        double lookDotThreshold = plugin != null
-                ? plugin.getCookingPotProgressDisplayLookDotThreshold()
-                : 0.95D;
-
-        for (Player p : world.getPlayers()) {
-            if (!p.isOnline() || p.getLocation().distanceSquared(potLoc) > visibleDistanceSquared) {
-                continue;
-            }
-
-            nearbyUUIDs.add(p.getUniqueId());
-
-            boolean isLooking = isLookingAt(p, potLoc, lookDotThreshold);
-
-            if (isLooking) {
-                if (!visibleTo.contains(p.getUniqueId())) {
-                    p.showEntity(FarmersDelightPlugin.getInstance(), display);
-                    visibleTo.add(p.getUniqueId());
-                }
-            } else {
-                if (visibleTo.contains(p.getUniqueId())) {
-                    p.hideEntity(FarmersDelightPlugin.getInstance(), display);
-                    visibleTo.remove(p.getUniqueId());
-                }
-            }
-        }
-
-        visibleTo.removeIf(uuid -> {
-            if (nearbyUUIDs.contains(uuid)) {
-                return false;
-            }
-            Player player = Bukkit.getPlayer(uuid);
-            if (player != null && player.isOnline()) {
-                player.hideEntity(FarmersDelightPlugin.getInstance(), display);
-            }
-            return true;
-        });
-    }
-
-    private static boolean canSeeProgressDisplay(Player player, Location potLoc,
-                                                 double visibleDistanceSquared,
-                                                 double lookDotThreshold) {
-        return player != null
-                && player.isOnline()
-                && player.getLocation().distanceSquared(potLoc) <= visibleDistanceSquared
-                && isLookingAt(player, potLoc, lookDotThreshold);
-    }
-
-    private static boolean isLookingAt(Player player, Location potLoc, double lookDotThreshold) {
-        Location eyeLoc = player.getEyeLocation();
-        double dx = potLoc.getX() - eyeLoc.getX();
-        double dy = potLoc.getY() - eyeLoc.getY();
-        double dz = potLoc.getZ() - eyeLoc.getZ();
-        double length = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (length <= 0.0001D) {
-            return false;
-        }
-        org.bukkit.util.Vector lookDir = eyeLoc.getDirection();
-        double dot = lookDir.getX() * (dx / length)
-                + lookDir.getY() * (dy / length)
-                + lookDir.getZ() * (dz / length);
-        return dot > lookDotThreshold;
+        cookingRecipeItems.remove(stateKey(world, posKey));
     }
 
     public static void saveAllData() {
@@ -842,25 +697,25 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         @Override
         public CookingPotBlockBehavior create(BlockDefinition block, net.momirealms.craftengine.core.plugin.config.ConfigSection section) {
             Map<String, Object> arguments = section != null ? section.values() : Map.of();
-            String permission = getString(arguments, "permission", "farmersdelight.use.cooking_pot");
-            boolean openWhileSneaking = getBoolean(arguments, "open-while-sneaking", false);
-            boolean placeTrayOnOpen = getBoolean(arguments, "place-tray-on-open", true);
+            String permission = BehaviorArgParser.getString(arguments, "permission", "farmersdelight.use.cooking_pot");
+            boolean openWhileSneaking = BehaviorArgParser.getBoolean(arguments, "open-while-sneaking", false);
+            boolean placeTrayOnOpen = BehaviorArgParser.getBoolean(arguments, "place-tray-on-open", true);
             String boilSound = getNullableString(arguments, "boil-sound");
             String soupBoilSound = getNullableString(arguments, "soup-boil-sound");
             Double soundChance = getNullableDouble(arguments, "sound-chance");
             Double soundVolume = getNullableDouble(arguments, "sound-volume");
             Double soundPitchMin = getNullableDouble(arguments, "sound-pitch-min");
             Double soundPitchMax = getNullableDouble(arguments, "sound-pitch-max");
-            String customDataKey = getString(arguments, "data-key", "farmersdelight:cooking_pot");
+            String customDataKey = BehaviorArgParser.getString(arguments, "data-key", "farmersdelight:cooking_pot");
             Map<String, Object> custom = getMap(arguments, "custom");
             CookingPotLayout layout = CookingPotLayout.DEFAULT;
             String customRecipeGroupId = null;
             String titleOverride = null;
             if (custom != null && !custom.isEmpty()) {
-                int inputSlots = getInt(custom, "input-slots", CookingPotLayout.DEFAULT.inputSlots().length);
-                int pendingOutputSlots = getInt(custom, "pending-output-slots", CookingPotLayout.DEFAULT.pendingOutputSlots().length);
-                int outputSlots = getInt(custom, "output-slots", CookingPotLayout.DEFAULT.outputSlots().length);
-                int containerSlots = getInt(custom, "container-slots", CookingPotLayout.DEFAULT.containerSlots().length);
+                int inputSlots = BehaviorArgParser.getInt(custom, "input-slots", CookingPotLayout.DEFAULT.inputSlots().length);
+                int pendingOutputSlots = BehaviorArgParser.getInt(custom, "pending-output-slots", CookingPotLayout.DEFAULT.pendingOutputSlots().length);
+                int outputSlots = BehaviorArgParser.getInt(custom, "output-slots", CookingPotLayout.DEFAULT.outputSlots().length);
+                int containerSlots = BehaviorArgParser.getInt(custom, "container-slots", CookingPotLayout.DEFAULT.containerSlots().length);
                 layout = CookingPotLayout.custom(inputSlots, pendingOutputSlots, outputSlots, containerSlots);
                 customRecipeGroupId = getNullableString(custom, "id");
                 titleOverride = getNullableString(custom, "title");
@@ -895,6 +750,18 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
 
         Player bukkitPlayer = Bukkit.getPlayer(context.getPlayer().uuid());
         if (bukkitPlayer == null) return InteractionResult.PASS;
+
+        if (context.getHand() == InteractionHand.MAIN_HAND
+                && bukkitPlayer.isSneaking()
+                && (bukkitPlayer.getInventory().getItemInMainHand() == null
+                        || bukkitPlayer.getInventory().getItemInMainHand().getType().isAir())) {
+            FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+            com.huidu.farmersdelight.manager.HandleManager hm = plugin == null ? null : plugin.getHandleManager();
+            if (hm != null) {
+                hm.toggleHandle(bukkitPlayer.getWorld(), pos, bukkitPlayer);
+                return InteractionResult.SUCCESS_AND_CANCEL;
+            }
+        }
 
         if (bukkitPlayer.isSneaking() && !openWhileSneaking) {
             return InteractionResult.PASS;
@@ -1065,6 +932,12 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             return;
         }
 
+        // Force-close any open viewers at this position FIRST, BEFORE the null-entity check: a player/explosion
+        // break removes the entity in the CustomBlockBreakEvent path before this removal callback fires, so
+        // gating the close on getBlockEntity != null would skip it for the common case and leave a still-open
+        // Bukkit Inventory as a free pool of items the viewer can click out (dupe). closeOpenGuisAt only needs
+        // the world + coords and is a cheap no-op when no viewer is open at this position.
+        com.huidu.farmersdelight.gui.CookingPotGui.closeOpenGuisAt(world, pos.x(), pos.y(), pos.z());
         BlockPosKey posKey = new BlockPosKey(pos);
         if (getBlockEntity(world, posKey) == null) {
             return;
@@ -1107,25 +980,6 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         });
     }
 
-    private static String getString(Map<String, Object> arguments, String key, String defaultValue) {
-        Object value = getArgument(arguments, key);
-        if (value != null) {
-            return String.valueOf(value);
-        }
-        return defaultValue;
-    }
-
-    private static boolean getBoolean(Map<String, Object> arguments, String key, boolean defaultValue) {
-        Object value = getArgument(arguments, key);
-        if (value instanceof Boolean bool) {
-            return bool;
-        }
-        if (value instanceof String string) {
-            return Boolean.parseBoolean(string);
-        }
-        return defaultValue;
-    }
-
     private static String getNullableString(Map<String, Object> arguments, String key) {
         Object value = getArgument(arguments, key);
         if (value == null) {
@@ -1158,21 +1012,6 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             return null;
         }
         return arguments.get(key);
-    }
-
-    private static int getInt(Map<String, Object> arguments, String key, int defaultValue) {
-        Object value = getArgument(arguments, key);
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        if (value instanceof String string) {
-            try {
-                return Integer.parseInt(string.trim());
-            } catch (NumberFormatException ignored) {
-                return defaultValue;
-            }
-        }
-        return defaultValue;
     }
 
     private static Map<String, Object> getMap(Map<String, Object> arguments, String key) {

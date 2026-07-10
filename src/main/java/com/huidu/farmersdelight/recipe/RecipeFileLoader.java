@@ -32,7 +32,7 @@ final class RecipeFileLoader {
             try {
                 plugin.saveResource(relativePath, false);
             } catch (IllegalArgumentException e) {
-                plugin.getLogger().warning("Failed to save bundled recipe file " + relativePath + ": " + e.getMessage());
+                I18n.logWarning("recipe_bundled_save_failed", "file", relativePath, "error", e.getMessage());
                 return new YamlConfiguration();
             }
         }
@@ -45,8 +45,7 @@ final class RecipeFileLoader {
             yaml.load(reader);
             return yaml;
         } catch (Exception e) {
-            plugin.getLogger().warning("Failed to load recipe file " + relativePath
-                    + " as UTF-8 YAML; skipping it. " + e.getMessage());
+            I18n.logWarning("recipe_load_failed", "file", relativePath, "error", e.getMessage());
             return new YamlConfiguration();
         }
     }

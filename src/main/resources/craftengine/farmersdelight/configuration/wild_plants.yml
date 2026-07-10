@@ -15,6 +15,7 @@
           push-reaction: destroy
         tags:
           - minecraft:flowers
+          - minecraft:small_flowers
         behavior:
           - type: liquid_flowable_block
           - type: bush_block
@@ -70,6 +71,7 @@
           push-reaction: destroy
         tags:
           - minecraft:flowers
+          - minecraft:small_flowers
         behavior:
           - type: liquid_flowable_block
           - type: bush_block
@@ -119,6 +121,7 @@
           push-reaction: destroy
         tags:
           - minecraft:flowers
+          - minecraft:small_flowers
         behavior:
           - type: liquid_flowable_block
           - type: bush_block
@@ -176,6 +179,7 @@
           push-reaction: destroy
         tags:
           - minecraft:flowers
+          - minecraft:tall_flowers
         behavior:
           - type: double_high_block
           - type: farmersdelight:wild_rice

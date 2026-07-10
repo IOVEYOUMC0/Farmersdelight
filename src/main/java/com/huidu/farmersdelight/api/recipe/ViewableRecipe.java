@@ -11,7 +11,7 @@ import java.util.Map;
  * A type-agnostic, displayable recipe shown in the generic recipe book. Addons adapt their own recipes
  * to this so FarmersDelight's recipe book can render them without knowing the addon's internal types.
  *
- * <p>Lives in the name-stable api package; uses only Bukkit / Adventure / java types.
+ * Lives in the name-stable api package; uses only Bukkit / Adventure / java types.
  */
 public interface ViewableRecipe {
 
@@ -43,5 +43,14 @@ public interface ViewableRecipe {
      */
     default Map<String, List<ItemStack>> displaySlots() {
         return Map.of();
+    }
+
+    /**
+     * Whether player can currently make this recipe (has the required inputs). Used by the recipe
+     * book's optional "craftable only" filter. Defaults to true (always shown) for types that don't
+     * implement an inventory check.
+     */
+    default boolean craftableBy(Player player) {
+        return true;
     }
 }

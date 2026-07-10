@@ -1,6 +1,7 @@
 package com.huidu.farmersdelight.recipe;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
+import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.util.Constants;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
@@ -19,7 +20,7 @@ import java.util.Map;
 /**
  * Writes edited recipes back to the recipes/*.yml files and reloads them.
  *
- * <p>Saves are synchronous: they are triggered by an admin action (a GUI button), the files are small, and
+ * Saves are synchronous: they are triggered by an admin action (a GUI button), the files are small, and
  * FarmersDelightPlugin#reloadRecipeFiles() must run on the main/region thread anyway.
  * The files themselves are written atomically (temp file + move), so a crash mid-write does not
  * corrupt the recipe files.
@@ -156,7 +157,7 @@ public final class RecipeEditorStore {
             plugin.reloadRecipeFiles();
             return true;
         } catch (Exception e) {
-            plugin.getLogger().warning("Failed to save recipe file " + relativePath + ": " + e.getMessage());
+            I18n.logWarning("recipe_save_failed", "file", relativePath, "error", e.getMessage());
             return false;
         }
     }

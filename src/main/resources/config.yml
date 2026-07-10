@@ -16,6 +16,16 @@ debug:
   enabled: false
   categories: []
 
+# Vanilla loot table injection. The plugin ships a built-in datapack (`farmersdelight_loot`)
+# that overrides vanilla chest / mob drop / grass loot tables to inject FarmersDelight items
+# via CraftEngine's `craftengine:item` loot pool entry type. The datapack is copied into each
+# world's `datapacks/` folder on first enable and requires a server restart (or /reload) to
+# take effect. Once installed, admin edits to the datapack files survive plugin updates
+# (already-present datapack folders are not overwritten). Set to false to skip the install
+# (useful if you want to author your own loot tables manually or use another loot plugin).
+loot-injection:
+  install-datapack: true
+
 # Advancement system. When disabled, the built-in advancement datapack is not synced.
 advancements:
   enabled: true
@@ -126,7 +136,146 @@ cutting-board:
       style: block
     farmersdelight:tray:
       style: block
+    # 3D blocks whose item icon is 2D (item/generated parent in the vanilla model) — placed on the board
+    # they read as flat sprites instead of awkward floating meshes. Unknown ids are ignored silently
+    # (CuttingBoardDisplayConfig validates only the namespace:id format, never material existence), so
+    # listing newer-version items stays safe on older servers — e.g. pale_oak_sapling on 1.21.1.
+    minecraft:torch:
+      style: item
+    minecraft:soul_torch:
+      style: item
+    minecraft:redstone_torch:
+      style: item
+    minecraft:lantern:
+      style: item
+    minecraft:soul_lantern:
+      style: item
+    minecraft:end_rod:
+      style: item
+    minecraft:lightning_rod:
+      style: item
+    minecraft:chain:
+      style: item
+    minecraft:hopper:
+      style: item
+    minecraft:cauldron:
+      style: item
+    minecraft:brewing_stand:
+      style: item
+    minecraft:campfire:
+      style: item
+    minecraft:soul_campfire:
+      style: item
+    minecraft:cake:
+      style: item
+    minecraft:conduit:
+      style: item
+    minecraft:end_portal_frame:
+      style: item
+    minecraft:flower_pot:
+      style: item
+    minecraft:ladder:
+      style: item
+    minecraft:scaffolding:
+      style: item
+    minecraft:tripwire_hook:
+      style: item
+    minecraft:cobweb:
+      style: item
+    minecraft:lily_pad:
+      style: item
+    minecraft:vine:
+      style: item
+    minecraft:weeping_vines:
+      style: item
+    minecraft:twisting_vines:
+      style: item
+    minecraft:hanging_roots:
+      style: item
+    minecraft:nether_wart:
+      style: item
+    minecraft:nether_sprouts:
+      style: item
+    minecraft:crimson_roots:
+      style: item
+    minecraft:warped_roots:
+      style: item
+    minecraft:crimson_fungus:
+      style: item
+    minecraft:warped_fungus:
+      style: item
+    minecraft:dead_bush:
+      style: item
+    minecraft:short_grass:
+      style: item
+    minecraft:tall_grass:
+      style: item
+    minecraft:fern:
+      style: item
+    minecraft:large_fern:
+      style: item
+    minecraft:sugar_cane:
+      style: item
+    minecraft:kelp:
+      style: item
+    minecraft:sea_pickle:
+      style: item
+    minecraft:azalea:
+      style: item
+    minecraft:flowering_azalea:
+      style: item
+    minecraft:pink_petals:
+      style: item
+    minecraft:glow_lichen:
+      style: item
+    minecraft:sculk_vein:
+      style: item
+    minecraft:oak_sapling:
+      style: item
+    minecraft:spruce_sapling:
+      style: item
+    minecraft:birch_sapling:
+      style: item
+    minecraft:jungle_sapling:
+      style: item
+    minecraft:acacia_sapling:
+      style: item
+    minecraft:dark_oak_sapling:
+      style: item
+    minecraft:cherry_sapling:
+      style: item
+    minecraft:pale_oak_sapling:
+      style: item
+    minecraft:mangrove_propagule:
+      style: item
+    minecraft:bamboo_sapling:
+      style: item
+    minecraft:firefly_bush:
+      style: item
   # Batch-override displays by item tag. key may omit #, or use a quoted "#namespace:tag" in display-overrides.
+  display-tag-overrides:
+    # Vanilla item tags that cover whole families of 3D-block-with-2D-item entries — saves listing every
+    # wood/colour variant individually. Unknown tags are ignored at lookup, so versions that lack a tag
+    # just won't apply the override.
+    minecraft:doors:
+      style: item
+    minecraft:beds:
+      style: item
+      rotation: -90,-90,0
+      position: 0,0.05,0
+    minecraft:banners:
+      style: item
+    minecraft:signs:
+      style: item
+    minecraft:hanging_signs:
+      style: item
+    minecraft:rails:
+      style: item
+    minecraft:small_flowers:
+      style: item
+    minecraft:tall_flowers:
+      style: item
+  # Example:
   # display-tag-overrides:
   #   minecraft:logs:
   #     style: block
@@ -321,6 +470,23 @@ cooking-pot:
     # Tray marker key. Not recommended to change for an already-placed world; old trays cannot be recognized as auto trays after changing it.
     marker-key: auto_tray_marker
 
+  # Player-installed bail handle decoration. Toggled via shift + empty-hand right-click on a cooking
+  # pot. Mirrors the tray configuration shape: change the handle furniture ID here if you renamed it
+  # on the resource pack side, or to swap in a custom handle variant.
+  handle:
+    # CraftEngine handle furniture ID. Must be updated here too if renamed on the resource side.
+    handle-block-id: farmersdelight:cooking_pot_handle
+    # Handle marker key. Not recommended to change for an already-placed world; old handles cannot be
+    # recognized as auto handles after changing it.
+    marker-key: auto_pot_handle
+    # Handle anchor offset relative to the pot block, mirroring the tray block. Defaults centre the
+    # handle horizontally over the pot; the CE handle definition's element {position: 0, 0.5, 0}
+    # then puts the visible bail at the pot's mid-height where its arc extends up over the rim.
+    # Tweak when you swap in a custom handle furniture model with a different anchor.
+    x-offset: 0.5
+    y-offset: 0.0
+    z-offset: 0.5
+
   # Cooking pot world particle effects.
   effects:
     bubble:
@@ -475,7 +641,10 @@ stove:
     smoke:
       enabled: true
       type: SMOKE
-      chance: 0.20
+      # Emitted every dispatch (every 4 ticks) per lit stove when a player is near. Now that stoves
+      # emit uniformly (no chunk stagger), these chances are the true per-stove rate — previously a
+      # broken stagger meant only ~1/4 of stoves emitted, so the shipped values were ~4× higher.
+      chance: 0.05
       count: 1
       y-offset: 0.0
       offset-x: 0.0
@@ -484,9 +653,12 @@ stove:
       speed: 0.02
     crackle:
       enabled: true
-      chance: 0.05
+      chance: 0.0125
       volume: 1.0
       pitch: 1.0
+    fire:
+      enabled: true
+      chance: 0.125
 
   display:
     # Scale of food displayed on the stove.
@@ -591,6 +763,46 @@ pet-foods:
       tick-interval: 10
       # true = a tamed horse owned by the feeding player is not further pulled by its own horse feed.
       ignore-owned-tamed: true
+
+# Recipe discovery: when enabled, recipes start LOCKED in the recipe books (FarmersDelight's own cooking-pot /
+# cutting-board viewer AND the addon recipe book) and are revealed per-player as they unlock them. Locking only
+# affects the books' display -- it never blocks actual crafting at a station. Off by default (books behave as before).
+recipe-discovery:
+  enabled: false
+  # How locked recipes appear in a book: 'placeholder' shows a locked icon; 'hidden' omits them until unlocked.
+  locked-display: placeholder
+  # Item id used for the 'placeholder' locked icon.
+  locked-icon: BARRIER
+  # Auto-unlock a recipe when the player obtains its result item or one of its exact (non-tag) ingredients.
+  unlock-on-obtain: true
+  # Send the player a chat message when a recipe unlocks.
+  notify: true
+
+# Buff bossbar — render per-player active-buff state as a bossbar. Addons (e.g. Brewin' And Chewin')
+# push their buffs into this via the BuffBossbar API; FD renders them per the layout-mode below.
+# Set enabled: false to suppress every buff bossbar globally regardless of per-addon toggles.
+bossbar:
+  enabled: true
+  # stacked = every active buff gets its own bossbar simultaneously (vanilla style; up to ~4 simultaneous is fine).
+  # rotating = exactly one bossbar visible at a time, cycles to the next active buff every rotation-interval-ticks.
+  layout-mode: stacked
+  # Ticks between switches in rotating mode. Lower bound 20 (1 second). Ignored in stacked mode.
+  rotation-interval-ticks: 80
+  # Per-buff visual. color ∈ {PINK, BLUE, RED, GREEN, YELLOW, PURPLE, WHITE};
+  # overlay ∈ {PROGRESS, NOTCHED_6, NOTCHED_10, NOTCHED_12, NOTCHED_20}. Case-insensitive,
+  # hyphen/underscore tolerant. Addons (e.g. BrewinAndChewin) configure their own buff styles in
+  # their own config.yml; this section only covers FD's two built-in buffs.
+  styles:
+    nourishment: {color: GREEN, overlay: PROGRESS}
+    comfort:     {color: BLUE,  overlay: PROGRESS}
+
+# Buff persistence. Comfort / Nourishment remaining time is mirrored into player PDC on quit and
+# restored on join, so the buff survives relog / restart (and rides whole-PDC sync plugins like
+# HuskSync / MySQLPlayerDataBridge across a proxy network). Because those sync plugins apply the
+# synced PDC a moment AFTER join, the restore is retried once this many ticks later — gap-filling,
+# so it never overwrites a buff gained since join. Set to 0 to skip the retry (single-server only).
+buff-persistence:
+  restore-retry-delay-ticks: 40
 
 # Comfort effect. The original mod deprecated Comfort (replaced by Nourishment), so it is off by default with an empty list.
 # The mechanic code is kept: set enabled to true and add foods under foods if needed.

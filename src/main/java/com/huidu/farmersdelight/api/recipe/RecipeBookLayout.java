@@ -13,10 +13,10 @@ import java.util.Map;
  * using these instead of the shared recipe-book-gui config — so multiple addons never pile into one
  * menu, and each addon controls its title (image-font textures included), grid, and decoration items.
  *
- * <p>The addon builds this from its own config and pre-resolves any CraftEngine <image:>/<shift:>
+ * The addon builds this from its own config and pre-resolves any CraftEngine <image:>/<shift:>
  * glyphs in title() itself (it has CraftEngine access); FarmersDelight uses the title as-is.
  *
- * <p>Lives in the name-stable api package; uses only Bukkit / Adventure / java types.
+ * Lives in the name-stable api package; uses only Bukkit / Adventure / java types.
  */
 public interface RecipeBookLayout {
 

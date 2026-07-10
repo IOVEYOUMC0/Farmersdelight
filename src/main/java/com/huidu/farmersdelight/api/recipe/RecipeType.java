@@ -10,7 +10,7 @@ import java.util.List;
  * FarmersDelightApi.registerRecipeType, it appears as a category in the generic recipe book and,
  * if it provides an editor(), is editable through the generic editor.
  *
- * <p>Lives in the name-stable api package; uses only Bukkit / Adventure / api types.
+ * Lives in the name-stable api package; uses only Bukkit / Adventure / api types.
  */
 public interface RecipeType {
 
@@ -56,6 +56,13 @@ public interface RecipeType {
     /** This type's own recipe-DETAIL page layout (see listLayout()). Null = use the shared book.
      * A custom detail layout can place ViewableRecipe#displaySlots() roles (fluid, return, …). */
     default RecipeBookLayout detailLayout() {
+        return null;
+    }
+
+    /** Id of a sibling type to switch to when the book's "switch" button is clicked (e.g. a keg toggling
+     * between its fermenting and pouring recipes). Null = no switch button. The two types should point at
+     * each other to make the toggle round-trip. */
+    default String switchTarget() {
         return null;
     }
 }

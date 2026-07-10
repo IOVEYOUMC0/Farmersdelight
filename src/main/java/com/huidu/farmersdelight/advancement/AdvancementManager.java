@@ -11,6 +11,7 @@ import com.fren_gor.ultimateAdvancementAPI.advancement.tasks.TaskAdvancement;
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.util.ItemUtils;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -96,6 +97,7 @@ public class AdvancementManager {
 
         BaseAdvancement getHam = base("get_ham", icon("farmersdelight:ham", Material.COOKED_BEEF), AdvancementFrameType.TASK, craftKnife, 2, 0);
         BaseAdvancement harvestStraw = base("harvest_straw", icon("farmersdelight:straw", Material.WHEAT), AdvancementFrameType.TASK, craftKnife, 2, 1);
+        BaseAdvancement placeOrganicCompost = base("place_organic_compost", icon("farmersdelight:organic_compost", Material.DIRT), AdvancementFrameType.TASK, harvestStraw, 3, 1);
         BaseAdvancement useCuttingBoard = base("use_cutting_board", icon("farmersdelight:cutting_board", Material.OAK_SLAB), AdvancementFrameType.TASK, craftKnife, 2, 2);
         BaseAdvancement netheriteKnife = base("obtain_netherite_knife", icon("farmersdelight:netherite_knife", Material.NETHERITE_SWORD), AdvancementFrameType.CHALLENGE, useCuttingBoard, 3, 2);
 
@@ -104,16 +106,24 @@ public class AdvancementManager {
         BaseAdvancement placeCookingPot = base("place_cooking_pot", icon("farmersdelight:cooking_pot", Material.BRICKS), AdvancementFrameType.GOAL, placeCampfire, 2, 4);
         BaseAdvancement placeFeast = base("place_feast", icon("farmersdelight:roast_chicken", Material.COOKED_CHICKEN), AdvancementFrameType.TASK, placeCookingPot, 3, 4);
         MultiTasksAdvancement masterChef = multi("master_chef", icon("farmersdelight:beef_stew", Material.COOKED_PORKCHOP), AdvancementFrameType.CHALLENGE, placeFeast, 4, 4, DISHES);
+        BaseAdvancement eatNourishingFood = base("eat_nourishing_food", icon("farmersdelight:steak_and_potatoes", Material.COOKED_BEEF), AdvancementFrameType.TASK, placeCookingPot, 3, 5);
 
         BaseAdvancement hitRaider = base("hit_raider_with_rotten_tomato", icon("farmersdelight:rotten_tomato", Material.RED_DYE), AdvancementFrameType.TASK, getFdSeed, 2, 5);
         BaseAdvancement getMushroom = base("get_mushroom_colony", icon("farmersdelight:red_mushroom_colony", Material.RED_MUSHROOM), AdvancementFrameType.TASK, getFdSeed, 2, 6);
         BaseAdvancement plantRice = base("plant_rice", icon("farmersdelight:rice", Material.WHEAT_SEEDS), AdvancementFrameType.TASK, getFdSeed, 2, 7);
         MultiTasksAdvancement plantAllCrops = multi("plant_all_crops", icon("farmersdelight:cabbage_seeds", Material.WHEAT_SEEDS), AdvancementFrameType.CHALLENGE, plantRice, 3, 7, CROPS);
 
+        BaseAdvancement getOrganicCompost = base("get_organic_compost", icon("farmersdelight:organic_compost", Material.DIRT), AdvancementFrameType.TASK, getFdSeed, 2, 8);
+        BaseAdvancement getRichSoil = base("get_rich_soil", icon("farmersdelight:rich_soil", Material.DIRT), AdvancementFrameType.GOAL, getOrganicCompost, 3, 8);
+        BaseAdvancement hoeRichSoil = base("hoe_rich_soil", icon("farmersdelight:rich_soil_farmland", Material.FARMLAND), AdvancementFrameType.CHALLENGE, getRichSoil, 4, 8);
+
+        BaseAdvancement harvestRopeloggedTomato = base("harvest_ropelogged_tomato", icon("farmersdelight:tomato", Material.RED_DYE), AdvancementFrameType.TASK, getFdSeed, 2, 9);
+
         Set<BaseAdvancement> all = new HashSet<>(Arrays.asList(
-                craftKnife, placeCampfire, getFdSeed, getHam, harvestStraw, useCuttingBoard, netheriteKnife,
-                useSkillet, placeSkillet, placeCookingPot, placeFeast, masterChef,
-                hitRaider, getMushroom, plantRice, plantAllCrops));
+                craftKnife, placeCampfire, getFdSeed, getHam, harvestStraw, placeOrganicCompost, useCuttingBoard, netheriteKnife,
+                useSkillet, placeSkillet, placeCookingPot, placeFeast, masterChef, eatNourishingFood,
+                hitRaider, getMushroom, plantRice, plantAllCrops, harvestRopeloggedTomato,
+                getOrganicCompost, getRichSoil, hoeRichSoil));
         tab.registerAdvancements(root, all);
 
         byId.clear();
@@ -124,17 +134,22 @@ public class AdvancementManager {
         byId.put("get_ham", getHam);
         byId.put("harvest_straw", harvestStraw);
         byId.put("use_cutting_board", useCuttingBoard);
-        byId.put("netherite_knife", netheriteKnife);
+        byId.put("obtain_netherite_knife", netheriteKnife);
         byId.put("use_skillet", useSkillet);
         byId.put("place_skillet", placeSkillet);
         byId.put("place_cooking_pot", placeCookingPot);
         byId.put("place_feast", placeFeast);
         byId.put("master_chef", masterChef);
+        byId.put("eat_nourishing_food", eatNourishingFood);
         byId.put("hit_raider_with_rotten_tomato", hitRaider);
-        byId.put("rotten_tomato_throw", hitRaider);
         byId.put("get_mushroom_colony", getMushroom);
         byId.put("plant_rice", plantRice);
         byId.put("plant_all_crops", plantAllCrops);
+        byId.put("get_organic_compost", getOrganicCompost);
+        byId.put("get_rich_soil", getRichSoil);
+        byId.put("hoe_rich_soil", hoeRichSoil);
+        byId.put("place_organic_compost", placeOrganicCompost);
+        byId.put("harvest_ropelogged_tomato", harvestRopeloggedTomato);
     }
 
     /** Builds the CraftEngine item for ceId; uses the vanilla fallback if it can't be resolved. */
@@ -171,6 +186,19 @@ public class AdvancementManager {
     public void showTo(Player player) {
         if (tab != null && tab.isInitialised() && player != null) {
             tab.showTab(player);
+        }
+    }
+
+    /** Re-grant the root and re-show the tab to every online player after a rebuild. reload() = dispose() +
+     *  load() recreates the UAA tab, which drops it from online clients; without this, players already online
+     *  lose the tab until they rejoin or earn something. Mirrors AchievementListener.onPlayerJoin. */
+    public void resyncOnlinePlayers() {
+        if (tab == null || !tab.isInitialised()) {
+            return;
+        }
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            award(player, "root");
+            showTo(player);
         }
     }
 

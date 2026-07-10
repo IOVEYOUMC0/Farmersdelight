@@ -36,6 +36,11 @@ public class CuttingBoardBlockEntity {
     private int displayedCount;
     private CuttingBoardDisplayConfig.DisplayOverride displayedOverride;
 
+    /** Adds this cutting board's live proxy display ids to out (for orphan-only /fd cleanup). */
+    void collectDisplayIds(java.util.Set<Integer> out) {
+        out.addAll(displayEntityIds);
+    }
+
     public CuttingBoardBlockEntity(BlockPosKey posKey, World world) {
         this.posKey = posKey;
         this.world = world;
@@ -228,8 +233,12 @@ public class CuttingBoardBlockEntity {
             yRotation += 180.0f;
         }
         if (displayOverride.rotationDegrees() != null) {
+            // The configured rotation is the item's LOCAL pose; the board's facing yaw still applies on
+            // top so the item turns with the board (X/Z are pitch/roll — facing-independent — so they
+            // replace outright, but Y composes: yRotation already holds the facing yaw + carved flip).
+            // Previously Y was overwritten, which pinned the item to one absolute yaw regardless of facing.
             xRotation = displayOverride.rotationDegrees().x();
-            yRotation = displayOverride.rotationDegrees().y();
+            yRotation += displayOverride.rotationDegrees().y();
             zRotation = displayOverride.rotationDegrees().z();
         }
 
@@ -294,26 +303,6 @@ public class CuttingBoardBlockEntity {
         seed = 31L * seed + (item == null ? 0 : item.getType().ordinal());
         seed = 31L * seed + (item != null && item.hasItemMeta() ? item.getItemMeta().hashCode() : 0);
         return seed;
-    }
-
-    @SuppressWarnings("unused")
-    private boolean isCarvedTool(ItemStack item) {
-        if (item == null || item.getType().isAir()) {
-            return false;
-        }
-
-        Material type = item.getType();
-        if (type.name().endsWith("_PICKAXE") || type.name().endsWith("_HOE") || type.name().endsWith("_AXE")) {
-            return true;
-        }
-        if (type == Material.TRIDENT) {
-            return true;
-        }
-        if (type.name().contains("KNIFE")) {
-            return true;
-        }
-        String customItemId = ItemUtils.getCustomItemId(item);
-        return customItemId != null && customItemId.contains("knife");
     }
 
     private float getCarvedToolZRotation(ItemStack item) {

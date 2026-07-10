@@ -1,5 +1,6 @@
 package com.huidu.farmersdelight.block.behavior;
 
+import com.huidu.farmersdelight.util.BehaviorArgParser;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.SoilRuleSupport;
 import com.huidu.farmersdelight.util.SoilRuleSupport.SoilRules;
@@ -149,37 +150,12 @@ public class WildPlantBlockBehavior extends BlockBehavior {
         @Override
         public WildPlantBlockBehavior create(BlockDefinition block, net.momirealms.craftengine.core.plugin.config.ConfigSection section) {
             Map<String, Object> arguments = section != null ? section.values() : Map.of();
-            boolean isBoneMealTarget = getBoolean(arguments, "is-bone-meal-target", true);
-            double successChance = getDouble(arguments, "bone-meal-success-chance", 0.8);
-            int spreadLimit = Math.max(1, getInt(arguments, "spread-limit", 10));
+            boolean isBoneMealTarget = BehaviorArgParser.getBoolean(arguments, "is-bone-meal-target", true);
+            double successChance = BehaviorArgParser.getDouble(arguments, "bone-meal-success-chance", 0.8);
+            int spreadLimit = Math.max(1, BehaviorArgParser.getInt(arguments, "spread-limit", 10));
             SoilRules soilRules = SoilRuleSupport.parseSoilRules(arguments);
             return new WildPlantBlockBehavior(block, isBoneMealTarget, successChance, spreadLimit, soilRules);
         }
     };
 
-    private static boolean getBoolean(Map<String, Object> arguments, String key, boolean defaultValue) {
-        Object value = arguments.get(key);
-        if (value instanceof Boolean b) return b;
-        return value != null ? Boolean.parseBoolean(value.toString()) : defaultValue;
-    }
-
-    private static int getInt(Map<String, Object> arguments, String key, int defaultValue) {
-        Object value = arguments.get(key);
-        if (value instanceof Number n) return n.intValue();
-        try {
-            return value != null ? Integer.parseInt(value.toString()) : defaultValue;
-        } catch (NumberFormatException ignored) {
-            return defaultValue;
-        }
-    }
-
-    private static double getDouble(Map<String, Object> arguments, String key, double defaultValue) {
-        Object value = arguments.get(key);
-        if (value instanceof Number n) return n.doubleValue();
-        try {
-            return value != null ? Double.parseDouble(value.toString()) : defaultValue;
-        } catch (NumberFormatException ignored) {
-            return defaultValue;
-        }
-    }
 }

@@ -8,6 +8,7 @@ import com.huidu.farmersdelight.api.recipe.RecipeType;
 import com.huidu.farmersdelight.api.recipe.ViewableRecipe;
 import com.huidu.farmersdelight.gui.GuiConfig;
 import com.huidu.farmersdelight.i18n.I18n;
+import com.huidu.farmersdelight.recipe.RecipeDiscoveryManager;
 import com.huidu.farmersdelight.util.Text;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -31,7 +32,7 @@ import java.util.Set;
  * recipe list per category, and a recipe detail view. Type-agnostic — it only consumes the api
  * abstractions, so it never touches FarmersDelight's own recipe types or the legacy RecipeViewGui.
  *
- * <p>Layout/title/buttons are config-driven via gui.yml -> recipe-book-gui (see
+ * Layout/title/buttons are config-driven via gui.yml -> recipe-book-gui (see
  * RecipeBookGuiConfig); the list page size follows the number of recipe slots.
  */
 public final class RecipeBookGui implements InventoryHolder {
@@ -48,11 +49,15 @@ public final class RecipeBookGui implements InventoryHolder {
     private Inventory inventory;
     // When only one recipe type is registered, skip the category chooser and open its list directly.
     private boolean singleType;
+    // Optional "craftable only" filter (toggled by a 'filter' button); needs the viewer to test inventories.
+    private boolean filterCraftable;
+    private Player viewer;
 
     public static void openMenu(Player player, RecipeFiller filler) {
         RecipeBookListener.ensureRegistered();
         RecipeBookGui gui = new RecipeBookGui();
         gui.filler = filler;
+        gui.viewer = player;
         List<RecipeType> types = FarmersDelightApi.get().recipeTypes();
         if (types.size() == 1) {
             gui.singleType = true;
@@ -72,6 +77,7 @@ public final class RecipeBookGui implements InventoryHolder {
         RecipeBookListener.ensureRegistered();
         RecipeBookGui gui = new RecipeBookGui();
         gui.filler = filler;
+        gui.viewer = player;
         gui.singleType = true;
         gui.drawList(type, 0);
         player.openInventory(gui.inventory);
@@ -79,7 +85,7 @@ public final class RecipeBookGui implements InventoryHolder {
 
     // Roles whose slots are filled dynamically/conditionally by the GUI (not static chrome).
     private static final Set<String> DYNAMIC_ROLES = Set.of(
-            "category", "recipe", "ingredient", "result", "prev_page", "next_page", "fill");
+            "category", "recipe", "ingredient", "result", "prev_page", "next_page", "fill", "filter", "switch");
 
     /** A page's renderable spec — backed either by the shared RecipeBookGuiConfig.ViewConfig or by a
      * type's own RecipeBookLayout. Lets list/detail/click logic stay layout-source-agnostic. */
@@ -213,6 +219,38 @@ public final class RecipeBookGui implements InventoryHolder {
         }
     }
 
+    /** The recipes shown for target, narrowed to craftable ones when the filter is on and dropping
+     * locked recipes when discovery is on in "hidden" mode. */
+    private List<ViewableRecipe> visibleRecipes(RecipeType target) {
+        List<ViewableRecipe> all = target.recipes();
+        RecipeDiscoveryManager discovery = discovery();
+        boolean hideLocked = discovery != null && discovery.isEnabled() && discovery.hidesLocked() && viewer != null;
+        if ((!filterCraftable || viewer == null) && !hideLocked) {
+            return all;
+        }
+        List<ViewableRecipe> shown = new ArrayList<>();
+        for (ViewableRecipe recipe : all) {
+            if (filterCraftable && viewer != null && !recipe.craftableBy(viewer)) {
+                continue;
+            }
+            if (hideLocked && isLocked(discovery, target, recipe)) {
+                continue;
+            }
+            shown.add(recipe);
+        }
+        return shown;
+    }
+
+    private RecipeDiscoveryManager discovery() {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        return plugin == null ? null : plugin.getRecipeDiscoveryManager();
+    }
+
+    private boolean isLocked(RecipeDiscoveryManager discovery, RecipeType target, ViewableRecipe recipe) {
+        return discovery != null && discovery.isEnabled() && viewer != null
+                && !discovery.isUnlocked(viewer.getUniqueId(), target.id(), recipe.id());
+    }
+
     void drawList(RecipeType target, int targetPage) {
         view = View.LIST;
         type = target;
@@ -220,20 +258,42 @@ public final class RecipeBookGui implements InventoryHolder {
         RenderSpec spec = listSpec(target);
         List<Integer> recipeSlots = spec.slotsByType("recipe");
         int pageSize = Math.max(1, recipeSlots.size());
-        List<ViewableRecipe> recipes = target.recipes();
+        List<ViewableRecipe> recipes = visibleRecipes(target);
         int pages = Math.max(1, (recipes.size() + pageSize - 1) / pageSize);
         page = Math.max(0, Math.min(targetPage, pages - 1));
         inventory = Bukkit.createInventory(this, spec.size(), spec.title());
         spec.renderChrome(inventory);
         int start = page * pageSize;
+        RecipeDiscoveryManager discovery = discovery();
         for (int i = 0; i < recipeSlots.size() && start + i < recipes.size(); i++) {
-            inventory.setItem(recipeSlots.get(i), clone(recipes.get(start + i).icon(), Material.PAPER));
+            ViewableRecipe recipe = recipes.get(start + i);
+            ItemStack icon = isLocked(discovery, target, recipe)
+                    ? discovery.lockedPlaceholder(viewer)
+                    : clone(recipe.icon(), Material.PAPER);
+            inventory.setItem(recipeSlots.get(i), icon);
         }
         if (page > 0) {
             placeButton(spec, "prev_page");
         }
         if (page < pages - 1) {
             placeButton(spec, "next_page");
+        }
+        // Optional "switch" button (e.g. toggle keg fermenting <-> pouring recipes), shown when this type
+        // declares a sibling via switchTarget().
+        int switchSlot = spec.firstSlotByType("switch");
+        if (switchSlot >= 0 && target.switchTarget() != null) {
+            placeButton(spec, "switch");
+        }
+        // Optional "craftable only" toggle: shows the 'filter_active' item when on, else 'filter'.
+        int filterSlot = spec.firstSlotByType("filter");
+        if (filterSlot >= 0) {
+            ItemStack button = spec.button(filterCraftable ? "filter_active" : "filter");
+            if (button == null) {
+                button = spec.button("filter");
+            }
+            if (button != null) {
+                inventory.setItem(filterSlot, button);
+            }
         }
     }
 
@@ -286,6 +346,7 @@ public final class RecipeBookGui implements InventoryHolder {
     }
 
     void handleClick(Player player, int rawSlot) {
+        this.viewer = player;
         RecipeBookGuiConfig config = config();
         switch (view) {
             case MENU -> {
@@ -308,7 +369,10 @@ public final class RecipeBookGui implements InventoryHolder {
                 RenderSpec cfg = listSpec(type);
                 if (rawSlot == cfg.firstSlotByType("back")) {
                     if (singleType) {
-                        player.closeInventory();
+                        // Opened from a station (e.g. a keg): let its filler reopen that GUI; else just close.
+                        if (filler == null || !filler.onBack(player)) {
+                            player.closeInventory();
+                        }
                     } else {
                         drawMenu();
                         player.openInventory(inventory);
@@ -319,15 +383,30 @@ public final class RecipeBookGui implements InventoryHolder {
                 } else if (rawSlot == cfg.firstSlotByType("next_page")) {
                     drawList(type, page + 1);
                     player.openInventory(inventory);
+                } else if (rawSlot == cfg.firstSlotByType("filter")) {
+                    filterCraftable = !filterCraftable;
+                    drawList(type, 0);
+                    player.openInventory(inventory);
+                } else if (rawSlot == cfg.firstSlotByType("switch") && type.switchTarget() != null) {
+                    RecipeType sibling = FarmersDelightApi.get().recipeType(type.switchTarget());
+                    if (sibling != null) {
+                        drawList(sibling, 0);
+                        player.openInventory(inventory);
+                    }
                 } else {
                     List<Integer> recipeSlots = cfg.slotsByType("recipe");
                     int slotIndex = recipeSlots.indexOf(rawSlot);
                     if (slotIndex >= 0) {
                         int index = page * Math.max(1, recipeSlots.size()) + slotIndex;
-                        List<ViewableRecipe> recipes = type.recipes();
+                        List<ViewableRecipe> recipes = visibleRecipes(type);
                         if (index < recipes.size()) {
-                            drawDetail(type, recipes.get(index).id(), player);
-                            player.openInventory(inventory);
+                            ViewableRecipe clicked = recipes.get(index);
+                            if (isLocked(discovery(), type, clicked)) {
+                                player.sendMessage(I18n.getComponent("recipe-discovery.locked-click", player));
+                            } else {
+                                drawDetail(type, clicked.id(), player);
+                                player.openInventory(inventory);
+                            }
                         }
                     }
                 }

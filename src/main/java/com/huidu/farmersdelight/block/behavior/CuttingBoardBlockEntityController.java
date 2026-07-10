@@ -4,6 +4,7 @@ import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
+import com.huidu.farmersdelight.util.ItemUtils;
 import net.momirealms.craftengine.bukkit.world.BukkitContainer;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
@@ -70,7 +71,7 @@ public final class CuttingBoardBlockEntityController extends BlockEntityControll
         if (this.item == null || this.item.isEmpty()) return;
 
         CompoundTag data = new CompoundTag();
-        Tag itemTag = ItemStackUtils.saveBukkitItemAsTag(asBukkitStack(this.item));
+        Tag itemTag = ItemUtils.saveBukkitItemAsTag(asBukkitStack(this.item));
         if (itemTag != null) {
             data.put(STORED_ITEM, itemTag);
         }

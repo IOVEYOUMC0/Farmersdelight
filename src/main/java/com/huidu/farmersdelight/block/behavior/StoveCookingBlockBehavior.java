@@ -3,11 +3,11 @@ package com.huidu.farmersdelight.block.behavior;
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.manager.StoveManager;
+import com.huidu.farmersdelight.util.BehaviorArgParser;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
-import com.huidu.farmersdelight.util.InteractionDebouncer;
-import com.huidu.farmersdelight.util.WorldGuardCompat;
+import com.huidu.farmersdelight.util.ProtectionCompat;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
@@ -46,23 +46,38 @@ public class StoveCookingBlockBehavior extends BlockBehavior implements EntityBl
 
     public static final int SLOT_COUNT = 6;
     private final String crackleSound;
+    private final boolean burnEnabled;
+    private final double burnDamage;
 
-    private StoveCookingBlockBehavior(BlockDefinition block, String crackleSound) {
+    private StoveCookingBlockBehavior(BlockDefinition block, String crackleSound,
+                                       boolean burnEnabled, double burnDamage) {
         super(block);
         this.crackleSound = crackleSound;
+        this.burnEnabled = burnEnabled;
+        this.burnDamage = burnDamage;
     }
 
     public static final BlockBehaviorFactory<StoveCookingBlockBehavior> FACTORY = new BlockBehaviorFactory<>() {
         @Override
         public StoveCookingBlockBehavior create(BlockDefinition block, net.momirealms.craftengine.core.plugin.config.ConfigSection section) {
             Map<String, Object> arguments = section != null ? section.values() : Map.of();
-            String crackleSound = getArgumentString(arguments, "crackle-sound", Constants.SOUND_STOVE_CRACKLE);
-            return new StoveCookingBlockBehavior(block, crackleSound);
+            String crackleSound = BehaviorArgParser.getArgumentString(arguments, "crackle-sound", Constants.SOUND_STOVE_CRACKLE);
+            boolean burnEnabled = BehaviorArgParser.getBoolean(arguments, "burn-enabled", true);
+            double burnDamage = Math.max(0D, (double) BehaviorArgParser.getFloat(arguments, "burn-damage", 1.0F));
+            return new StoveCookingBlockBehavior(block, crackleSound, burnEnabled, burnDamage);
         }
     };
 
     public String getCrackleSound() {
         return crackleSound;
+    }
+
+    public boolean isBurnEnabled() {
+        return burnEnabled;
+    }
+
+    public double getBurnDamage() {
+        return burnDamage;
     }
 
     @Override
@@ -83,21 +98,6 @@ public class StoveCookingBlockBehavior extends BlockBehavior implements EntityBl
             return null;
         }
         return CustomBlockUtils.getBehavior(state, StoveCookingBlockBehavior.class);
-    }
-
-    private static String getArgumentString(Map<String, Object> arguments, String key, String defaultValue) {
-        if (arguments == null) {
-            return defaultValue;
-        }
-        Object value = arguments.get(key);
-        if (value == null) {
-            return defaultValue;
-        }
-        String text = String.valueOf(value).trim();
-        if (text.isEmpty()) {
-            return defaultValue;
-        }
-        return text;
     }
 
     @Override
@@ -124,7 +124,8 @@ public class StoveCookingBlockBehavior extends BlockBehavior implements EntityBl
         if (plugin.isDebugEnabled("stove")) {
             logDebug(player, block, mainHand, manager.findRecipeId(mainHand));
         }
-        if (!WorldGuardCompat.canUse(player, block) || !WorldGuardCompat.canBuild(player, block)) {
+        if (!ProtectionCompat.canUse(player, block, ProtectionCompat.Feature.STOVE)
+                || !ProtectionCompat.canBuild(player, block, ProtectionCompat.Feature.STOVE)) {
             return InteractionResult.PASS;
         }
 
@@ -149,11 +150,6 @@ public class StoveCookingBlockBehavior extends BlockBehavior implements EntityBl
             return InteractionResult.PASS;
         }
 
-        // This CraftEngine behavior and StoveInteractListener may both receive the same right-click;
-        // share one debounce token (the listener already uses it) so a single click fills only one slot.
-        if (!InteractionDebouncer.tryAcquire(player.getUniqueId(), block.getLocation())) {
-            return InteractionResult.SUCCESS_AND_CANCEL;
-        }
         if (manager.handleInteract(player, block, mainHand)) {
             player.updateInventory();
             return InteractionResult.SUCCESS_AND_CANCEL;
@@ -192,7 +188,9 @@ public class StoveCookingBlockBehavior extends BlockBehavior implements EntityBl
             return;
         }
         Location location = new Location(world, pos.x(), pos.y(), pos.z());
-        manager.saveWorldData(world);
+        // breakStove already persists/dirties exactly the broken location; the previous
+        // saveWorldData(world) re-dirtied every stove in the world (O(N) block-entity lookups) on
+        // each single break, and on Folia reached chunks owned by other region threads.
         manager.breakStove(location, location.clone().add(0.5, 0.5, 0.5), false);
     }
 

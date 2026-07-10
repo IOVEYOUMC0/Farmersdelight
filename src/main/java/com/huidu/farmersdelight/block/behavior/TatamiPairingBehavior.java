@@ -1,5 +1,6 @@
 package com.huidu.farmersdelight.block.behavior;
 
+import com.huidu.farmersdelight.util.BehaviorArgParser;
 import com.huidu.farmersdelight.util.CraftEngineAdapter;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.core.block.BlockDefinition;
@@ -9,8 +10,10 @@ import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
 import net.momirealms.craftengine.core.block.property.Property;
 import net.momirealms.craftengine.core.entity.player.InteractionResult;
 import net.momirealms.craftengine.core.entity.player.Player;
+import net.momirealms.craftengine.core.util.Direction;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.world.BlockPos;
+import net.momirealms.craftengine.core.world.context.BlockPlaceContext;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -62,10 +65,10 @@ public class TatamiPairingBehavior extends BlockBehavior {
         @Override
         public TatamiPairingBehavior create(BlockDefinition block, net.momirealms.craftengine.core.plugin.config.ConfigSection section) {
             Map<String, Object> arguments = section != null ? section.values() : Map.of();
-            tatamiBlockId = getString(arguments, "block-id", tatamiBlockId);
-            facingPropertyName = getString(arguments, "facing-property", facingPropertyName);
-            pairedPropertyName = getString(arguments, "paired-property", pairedPropertyName);
-            boolean pairWhileSneaking = getBoolean(arguments, "pair-while-sneaking", false);
+            tatamiBlockId = BehaviorArgParser.getString(arguments, "block-id", tatamiBlockId);
+            facingPropertyName = BehaviorArgParser.getString(arguments, "facing-property", facingPropertyName);
+            pairedPropertyName = BehaviorArgParser.getString(arguments, "paired-property", pairedPropertyName);
+            boolean pairWhileSneaking = BehaviorArgParser.getBoolean(arguments, "pair-while-sneaking", false);
 
             Property<?> facingProperty = block.getProperty(facingPropertyName);
             Property<Boolean> pairedProperty = (Property<Boolean>) block.getProperty(pairedPropertyName);
@@ -74,12 +77,34 @@ public class TatamiPairingBehavior extends BlockBehavior {
         }
     };
 
+    /**
+     * Sets facing from the clicked face on placement, mirroring vanilla
+     * TatamiBlock.getStateForPlacement (facing = clickedFace.opposite). Without this the
+     * block would keep its default facing and placeMultiState would pair in the wrong direction.
+     * Floor placement clicks the ground's up-face → facing=down (a lone flat mat); placing against another
+     * tatami's side gives a horizontal facing, which is what orients the paired even/odd weave.
+     *
+     * <p>Note: sneak-to-suppress-pairing is handled by placeMultiState's player check, but the
+     * placeMultiState player arg is an NMS handle (not a CraftEngine Player), so pairing currently always
+     * happens regardless of sneak — a known minor deviation from vanilla.
+     */
+    @Override
+    public ImmutableBlockState updateStateForPlacement(BlockPlaceContext context, ImmutableBlockState state) {
+        if (facingProperty == null) {
+            return state;
+        }
+        Direction facing = context.getClickedFace().opposite();
+        return withPropertyValue(state, facingProperty, facing.name().toLowerCase(java.util.Locale.ROOT));
+    }
+
     @Override
     public void placeMultiState(Object thisBlock, Object[] args) {
         if (args.length >= 5) {
             World world = CraftEngineAdapter.toWorld(args[0]);
-            if (!(args[1] instanceof BlockPos pos) || world == null) {
-                
+            // args[1] is the placement position CraftEngine passes as a native Minecraft BlockPos, not the
+            // CraftEngine BlockPos type, so convert through the adapter instead of an instanceof cast.
+            BlockPos pos = CraftEngineAdapter.toBlockPos(args[1]);
+            if (pos == null || world == null) {
                 return;
             }
 
@@ -87,7 +112,6 @@ public class TatamiPairingBehavior extends BlockBehavior {
             Block block = world.getBlockAt(pos.x(), pos.y(), pos.z());
             ImmutableBlockState state = CraftEngineBlocks.getCustomBlockState(block);
             if (state == null || state.isEmpty() || (player != null && player.isSecondaryUseActive() && !pairWhileSneaking)) {
-                
                 return;
             }
 
@@ -96,7 +120,6 @@ public class TatamiPairingBehavior extends BlockBehavior {
                 CraftEngineBlocks.place(block.getLocation(), state.with(pairedProperty, true), false);
             }
         }
-        
     }
 
     private boolean pairWithNeighbor(World world, BlockPos pos, ImmutableBlockState state) {
@@ -255,23 +278,5 @@ public class TatamiPairingBehavior extends BlockBehavior {
         }
     }
 
-    private static String getString(Map<String, Object> arguments, String key, String defaultValue) {
-        Object value = arguments != null ? arguments.get(key) : null;
-        if (value != null) {
-            return String.valueOf(value);
-        }
-        return defaultValue;
-    }
-
-    private static boolean getBoolean(Map<String, Object> arguments, String key, boolean defaultValue) {
-        Object value = arguments != null ? arguments.get(key) : null;
-        if (value instanceof Boolean bool) {
-            return bool;
-        }
-        if (value instanceof String string) {
-            return Boolean.parseBoolean(string);
-        }
-        return defaultValue;
-    }
 }
 

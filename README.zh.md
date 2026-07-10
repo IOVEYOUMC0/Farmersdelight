@@ -57,7 +57,7 @@ plugins/FarmersDelight/recipes/cooking_pot_recipes.yml
 plugins/FarmersDelight/recipes/cutting_board_recipes.yml
 ```
 
-厨锅、砧板、炉灶和煎锅的方块运行数据都保存在 CraftEngine BlockEntity 数据中。旧版本生成过的 `block_storage.yml` 只作为迁移源读取；对应区块加载后，旧数据会写入 CE 方块实体并从旧文件中移除。新安装不会生成 `block_storage.yml`。
+厨锅、砧板、炉灶和煎锅的方块运行数据都保存在 CraftEngine BlockEntity 数据中。
 
 默认 `config.yml` 按功能归属组织：厨锅相关选项在 `cooking-pot`，砧板在 `cutting-board`，煎锅在 `skillet`，炉灶在 `stove`。旧版本的分散路径仍会被读取作为兼容 fallback，但新配置建议使用默认文件里的新路径。
 

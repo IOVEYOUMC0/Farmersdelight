@@ -14,7 +14,7 @@ import java.util.logging.Logger;
 public class PetFoodConfig {
 
     private static Logger LOGGER;
-    private final Map<String, PetFoodDefinition> petFoods = new HashMap<>();
+    private final Map<String, PetFoodDefinition> petFoods = new java.util.concurrent.ConcurrentHashMap<>();
 
     public static void setLogger(Logger logger) {
         LOGGER = logger;

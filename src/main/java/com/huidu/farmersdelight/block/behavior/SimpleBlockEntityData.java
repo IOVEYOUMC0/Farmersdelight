@@ -1,6 +1,7 @@
 package com.huidu.farmersdelight.block.behavior;
 
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
+import com.huidu.farmersdelight.util.ItemUtils;
 import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.libraries.nbt.CompoundTag;
 import net.momirealms.craftengine.libraries.nbt.NumericTag;
@@ -31,7 +32,7 @@ final class SimpleBlockEntityData {
                 if (itemStack.getType().isAir()) {
                     continue;
                 }
-                Tag itemTag = ItemStackUtils.saveBukkitItemAsTag(itemStack);
+                Tag itemTag = ItemUtils.saveBukkitItemAsTag(itemStack);
                 if (itemTag != null) {
                     tag.put(key, itemTag);
                 }

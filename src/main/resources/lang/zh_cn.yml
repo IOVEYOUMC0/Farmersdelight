@@ -8,9 +8,24 @@ crop:
   invalid_soil: "&c该作物貌似需要种在指定方块上..."
   need_water: "&c该作物貌似需要种在水中..."
 general:
-  no_permission: "&c你没有权限这样做。"
-  config_reloaded: "&a配置已重新加载。"
-  hot_reload_warning: "&e注意：只重载了 FarmersDelight 配置。不要用 Bukkit / PlugMan 热重载 CraftEngine 或本插件；jar 或资源改动后请完整重启服务器。"
+  no_permission: "<red>你没有权限这样做。"
+  config_reloaded: "<dark_gray>» </dark_gray><gradient:gold:yellow><b>FarmersDelight</b></gradient> <gray>•</gray> <white>配置已重新加载</white>"
+  hot_reload_warning: "<gold>⚠ </gold><gray>仅重载了 FarmersDelight 配置。修改 jar 或资源后请完整重启服务器 —— 不要用 Bukkit / PlugMan 热重载 CraftEngine 或本插件。</gray>"
+recipe-discovery:
+  unlocked: "&a已解锁配方：&f{recipe}"
+  unlocked-multi: "&a已解锁 &f{count} &a个新配方。"
+  locked-name: "&c??? &7（未解锁）"
+  locked-lore: "&7发现此配方后即可解锁。"
+  locked-click: "&c你还没有解锁这个配方。"
+effects:
+  comfort:
+    start: "&a一股舒适的暖意萦绕在你身上。（&f{time}&a）"
+    fade: "&e舒适的暖意正在消退……（剩余 &f{time}&e）"
+    end: "&7舒适的暖意渐渐消散。"
+  nourishment:
+    start: "&a你感到滋养充盈。（&f{time}&a）"
+    fade: "&e滋养感正在消退……（剩余 &f{time}&e）"
+    end: "&7滋养感渐渐消散。"
 gui:
   recipe:
     title: "&8配方查看"
@@ -57,6 +72,7 @@ gui:
   cooking_pot:
     pending_container_hint: "&7容器: &f{container}"
     pending_container_hint_prefix: "&7容器: &f"
+    servings: "&7{count} 份"
   editor:
     usage: "&e/fd recipe edit <pot|board> <id> [自定义组]"
     feedback:
@@ -80,6 +96,8 @@ gui:
       member_excluded: "&c已排除 &7(点击恢复)"
 console:
   prefix: "[FarmersDelight]"
+  recipe-discovery:
+    save_failed: "保存配方解锁数据失败：{error}"
   i18n:
     loaded: "已加载 {count} 个语言文件，当前使用：{locale}"
     saved_default: "已保存默认语言文件：{locale}"
@@ -115,6 +133,8 @@ console:
     datapack_reason_apply_advancement_changes: "应用 FarmersDelight 进度变更"
     datapack_reason_world_sync: "同步世界 {world} 的 FarmersDelight 进度"
     craftengine_reload: "检测到 CraftEngine 重载，正在刷新 FarmersDelight 的 CE 缓存和配方..."
+    warmup_done: "已预热 {items} 个 CraftEngine 物品并预建 GUI/行为缓存，耗时 {ms}ms。"
+    warmup_failed: "缓存预热失败；首次交互可能会短暂卡顿。"
     configuration_reloaded: "配置已重新加载。"
     main_configuration_reloaded: "主配置已重新加载。"
     gui_configuration_reloaded: "GUI 配置已重新加载：{file}"
@@ -143,8 +163,38 @@ console:
     debug_tools_missing: "构建标记要求启用调试工具，但调试工具类不存在。"
     craftengine_world_flush_failed: "刷新世界 {world} 的 CraftEngine 数据失败"
     server_properties_read_failed: "读取 server.properties 的 level-name 失败：{error}"
+    papi_bridge_registered: "PlaceholderAPI 桥接已注册（标识符：farmersdelight）"
+    papi_bridge_failed: "PlaceholderAPI 桥接注册失败：{error}"
+    config_restored_unreadable: "已从内置默认值恢复无法读取的配置文件：{file}"
+    config_prepare_failed: "准备内置配置文件失败：{error}"
+    rug_migrate_place_failed: "rug-migrate：在 {anchor} 放置新地毯方块失败：{error}"
+    config_key_migrated: "已将配置键 '{old}' 迁移为 '{new}'。"
+    loot_datapack_disabled: "配置中已禁用战利品注入数据包安装；跳过。"
+    loot_datapack_written: "已写入 {count} 个数据包文件到 {dir}"
+    loot_datapack_install_failed: "向世界 {world} 安装战利品数据包失败：{error}"
+    handle_place_failed: "在 {anchor} 放置 cooking_pot_handle 家具失败：{error}"
+    recipe_save_failed: "保存配方文件 {file} 失败：{error}"
+    recipe_bundled_save_failed: "保存内置配方文件 {file} 失败：{error}"
+    recipe_load_failed: "以 UTF-8 YAML 加载配方文件 {file} 失败；已跳过。{error}"
+    bac:
+      enabled: "Brewin' And Chewin'（CraftEngine 附属）已启用。"
+      reloaded: "Brewin' And Chewin' 已随 FarmersDelight 重载。"
+      booze_profiles_loaded: "已加载 {count} 个醉酒效果饮品档案"
+      keg_recipes_loaded: "已加载 {count} 个酒桶配方。"
+      keg_pouring_recipes_loaded: "已加载 {count} 个酒桶倾倒配方，覆盖 {fluids} 种流体。"
+      cooking_pot_recipes_registered: "已向 FarmersDelight 注册 {count} 个陶锅配方。"
+      keg_item_unreadable: "跳过无法读取的酒桶物品，位于 {key} 槽位 {slot}：{error}"
+      keg_recipe_invalid_base: "酒桶配方 '{id}' 的基础流体槽放的物品不是有效的可倾倒基础液体；未保存。"
+      keg_recipes_save_failed: "保存 keg_recipes.yml 失败：{error}"
+      tipsy_effect_unknown: "config.yml tipsy.effects 中的微醺效果 '{effect}' 未知"
+      resources_released: "已释放 {count} 个 CraftEngine 资源文件到 {target}"
+      resources_release_failed: "释放 CraftEngine 资源失败：{error}"
+      advancements_disabled: "Brewin' 成就已禁用（UltimateAdvancementAPI 未加载）。"
+      advancements_registered: "Brewin' 成就已注册（{count} 个条件）。"
+      advancements_registration_failed: "Brewin' 成就注册失败。"
     disable_step_failed: "禁用插件时执行 {step} 失败；将继续关闭流程。"
     disable_step_stop_tick_manager: "停止 tick 管理器"
+    disable_step_save_recipe_discovery: "保存配方解锁数据"
     disable_step_stop_effect_listener: "停止效果监听器"
     disable_step_stop_horse_feed_tempt_listener: "停止宠物食物吸引监听器"
     disable_step_close_cooking_pot_guis: "关闭厨锅 GUI"
@@ -156,6 +206,7 @@ console:
     disable_step_cleanup_trays: "清理托盘"
     disable_step_cleanup_stoves: "清理炉灶"
     disable_step_cleanup_skillets: "清理煎锅"
+    disable_step_cleanup_bossbars: "清理 buff bossbar"
     disable_step_cleanup_item_displays: "清理物品展示"
     disable_step_cleanup_cooking_pot_block_entities: "清理厨锅方块实体"
     disable_step_cleanup_cutting_board_block_entities: "清理砧板方块实体"
@@ -176,6 +227,8 @@ console:
     award_failed: "授予进度 {id} 失败：{error}"
     award_criterion_failed: "授予进度条件 {id}/{criterion} 失败：{error}"
     revoke_failed: "撤销进度 {id} 失败：{error}"
+    addon_tab_built: "附属进度页 '{tab}' 已构建（{count} 个进度）。"
+    addon_tab_build_failed: "构建附属进度页 '{tab}' 失败；其进度将不会在游戏内显示。"
   heat_source:
     invalid_vanilla_block: "热源配置中的原版方块 ID 无效：{id}"
     invalid_vanilla_conductor: "原版导热方块材质无效：{id}"
@@ -211,6 +264,8 @@ console:
     remove_failed: "移除托盘家具失败：{error}"
     duplicates_cleaned: "已清理 {pos} 的重复自动托盘，原因={reason}"
     invalid_marker_key: "托盘 marker-key '{key}' 无效，已改用 auto_tray_marker"
+  handle:
+    invalid_marker_key: "把手 marker-key '{key}' 无效，已改用 auto_pot_handle"
   gui_runtime:
     create_item_failed: "根据 key 创建物品失败：{key}"
     unregister_tick_failed: "注销 GUI tick 回调失败：{error}"
@@ -220,7 +275,7 @@ console:
     tempt_loaded: "已加载宠物食物吸引配置：enabled={enabled}, foods={foods}, interval={interval}"
   craftengine_state:
     reason_suffix: "（{reason} 后）"
-    usage: "CraftEngine 服务端方块状态占用{reason}：已用 {used}/{total}，剩余 {free}，FarmersDelight 占用 {fd_states}。"
+    usage: "CraftEngine 服务端方块状态占用{reason}：已用 {used}/{total}，剩余 {free}，FarmersDelight 占用 {fd_states}，附属占用 {addon_states}。"
     exhausted: "CraftEngine 服务端方块状态已耗尽。如果 FarmersDelight 方块无法放置，这是 CraftEngine 方块状态容量问题，不是 FarmersDelight 放置逻辑问题。请提高 CraftEngine 的服务端方块状态上限，或移除未使用的自定义方块/缓存条目。"
     low_free: "CraftEngine 服务端方块状态几乎已满（剩余 {free}）。池耗尽后，新方块或重载后的自定义方块可能注册/放置失败。"
     inspect_failed: "检查 CraftEngine 方块状态占用失败：{error}"
@@ -264,13 +319,22 @@ console:
     cooking_pot_total: "世界 '{world}' 当前加载了 {count} 个厨锅，阈值为 {threshold}。如果 TPS 下降，建议减少活跃厨锅或调低 cooking-pot.tick-budget。"
     cooking_pot_density: "世界 '{world}' 的区块 {chunk_x},{chunk_z} 当前加载了 {count} 个厨锅，阈值为 {threshold}。过密厨锅区域可能增加 tick 和显示更新开销。"
 command:
-  player_only: "&c这个命令只能由玩家执行。"
-  help_title: "<gradient:gold:yellow>=== FarmersDelight ===</gradient>"
+  player_only: "<red>这个命令只能由玩家执行。"
+  help_title: "<dark_gray>» </dark_gray><gradient:gold:yellow><b>FarmersDelight</b></gradient> <gray>•</gray> <white>命令</white>"
   help_recipe: "打开配方查看界面"
   help_reload: "重新加载配置"
   help_help: "显示帮助信息"
   help_cleanup: "清理插件生成的物品展示实体"
-  cleanup_done: "&a清理完成，移除了 {count} 个实体。"
+  help_buff: "发放或清除自定义 buff"
+  buff_usage: "<yellow>/fd buff give <buff> [等级] [秒数] [玩家]</yellow> <gray>|</gray> <yellow>/fd buff clear [buff|all] [玩家]</yellow>"
+  buff_given: "<dark_gray>» </dark_gray><gradient:gold:yellow><b>FarmersDelight</b></gradient> <gray>•</gray> <white>已给 <white>{player}</white> <gray>发放</gray> <yellow>{buff}</yellow> <gray>等级</gray> <white>{level}</white><gray>，持续</gray> <white>{seconds} 秒</white></white>"
+  buff_cleared_all: "<dark_gray>» </dark_gray><gradient:gold:yellow><b>FarmersDelight</b></gradient> <gray>•</gray> <white>已清除 <white>{player}</white> <gray>的</gray> <white>{count}</white> <gray>个 buff</gray></white>"
+  buff_cleared_one: "<dark_gray>» </dark_gray><gradient:gold:yellow><b>FarmersDelight</b></gradient> <gray>•</gray> <white>已清除 <white>{player}</white> <gray>的</gray> <yellow>{buff}</yellow></white>"
+  buff_unknown: "<red>未知 buff「<white>{buff}</white>」。可用：<gray>{buffs}</gray>"
+  buff_not_grantable: "<red>buff「<white>{buff}</white>」无法通过命令发放。"
+  buff_player_not_found: "<red>玩家「<white>{player}</white>」不在线。"
+  cleanup_done: "<dark_gray>» </dark_gray><gradient:gold:yellow><b>FarmersDelight</b></gradient> <gray>•</gray> <white>清理完成 <gray>—</gray> <white>共 {count}</white> <gray>个展示实体：</gray> <white>{displays}</white> <gray>个代理展示、</gray> <white>{trays}</white> <gray>个自动托盘、</gray> <white>{addon}</white> <gray>个附属实体</gray></white>"
+  rug_migrate_done: "<dark_gray>» </dark_gray><gradient:gold:yellow><b>FarmersDelight</b></gradient> <gray>•</gray> <white>地毯迁移完成 <gray>（替换 {count} 个家具）</gray></white>"
 item:
   farmersdelight:
     raw_pasta: "生意面"

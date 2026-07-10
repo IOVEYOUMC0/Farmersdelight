@@ -118,8 +118,8 @@ public class SkilletBlockEntity {
     private static int getConfiguredMinimumCookingTime() {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         return plugin == null
-                ? SkilletBlockBehavior.MINIMUM_COOKING_TIME
-                : Math.max(1, plugin.getConfigInt(SkilletBlockBehavior.MINIMUM_COOKING_TIME,
+                ? Constants.MINIMUM_COOKING_TIME_SKILLET
+                : Math.max(1, plugin.getConfigInt(Constants.MINIMUM_COOKING_TIME_SKILLET,
                 "skillet.cooking.min-cook-time",
                 "skillet.min-cook-time"));
     }

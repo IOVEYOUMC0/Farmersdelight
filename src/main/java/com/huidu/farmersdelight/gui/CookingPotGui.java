@@ -6,8 +6,8 @@ import com.huidu.farmersdelight.block.behavior.CookingPotBlockEntity;
 import com.huidu.farmersdelight.block.behavior.CookingPotLayout;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.manager.TickManager;
+import com.huidu.farmersdelight.util.CookingPotPlaceholder;
 import com.huidu.farmersdelight.util.ItemUtils;
-import com.huidu.farmersdelight.util.Text;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -80,6 +80,11 @@ public class CookingPotGui implements InventoryHolder {
     private boolean syncQueued;
     // Inventory version seen at last input-slot rescan; skip rescan if unchanged.
     private long lastSeenInventoryVersion = Long.MIN_VALUE;
+    // Tracks which writable GUI slots have been mutated by a click/drag handler since the last
+    // syncToBlockEntity. Sync only writes back these slots — so an unchanged GUI slot can't clobber
+    // a concurrent cook tick that mutated the corresponding entity slot in the same window
+    // (multi-viewer dup vector).
+    private final Set<Integer> dirtyWritableSlots = new HashSet<>();
 
     public CookingPotGui(FarmersDelightPlugin plugin, CookingPotBlockEntity blockEntity,
                          CookingPotBlockBehavior blockBehavior, World world) {
@@ -200,8 +205,10 @@ public class CookingPotGui implements InventoryHolder {
             inventory.setItem(ingredientSlot, null);
         }
         for (int slot : containerSlots) inventory.setItem(slot, null);
-        for (int slot : bufferSlots) inventory.setItem(slot, null);
-        for (int slot : outputSlots) inventory.setItem(slot, null);
+        // Buffer + output start empty visually; paint the invisible background placeholder so the painted GUI
+        // background shows through these read-only slots instead of a bare slot (matches the keg's pattern).
+        for (int slot : bufferSlots) inventory.setItem(slot, placeholderItem());
+        for (int slot : outputSlots) inventory.setItem(slot, placeholderItem());
 
         for (Map.Entry<Integer, Integer> entry : slotMapping.entrySet()) {
             int guiSlot = entry.getKey();
@@ -356,8 +363,24 @@ public class CookingPotGui implements InventoryHolder {
         if (hasContainerHint && display != null) {
             appendContainerHint(display, container);
         }
+        // Empty buffer / output slot → paint the invisible background placeholder so the painted background shows
+        // through (matches the keg). The placeholder is PDC-tagged and never persisted (these slots aren't writable
+        // and the output-take / takeOutputFromSlot path reads the block entity, not the GUI inventory).
+        if (display == null && (config.isBufferSlot(guiSlot) || config.isOutputSlot(guiSlot))) {
+            display = placeholderItem();
+        }
         inventory.setItem(guiSlot, display);
         cachedDisplayItems.put(guiSlot, cloneOrNull(item));
+    }
+
+    /** Invisible PDC-tagged copy of the GUI's configured background filler, used to fill empty buffer / output
+     * cells so the painted background shows through. Returns null if no background filler is configured. */
+    private ItemStack placeholderItem() {
+        GuiConfig.GuiItem background = config.getItem("background");
+        if (background == null) {
+            return null;
+        }
+        return CookingPotPlaceholder.mark(background.createItem());
     }
 
     @SuppressWarnings("null")
@@ -419,18 +442,11 @@ public class CookingPotGui implements InventoryHolder {
         if (!inventory.getViewers().isEmpty() && inventory.getViewers().getFirst() instanceof Player player) {
             viewer = player;
         }
-        // Default the container name to white so it stands out from the gray hint prefix. The lang
-        // string places a trailing white code before {container}; MiniMessage collapses that empty
-        // segment, otherwise the appended name would inherit the prefix's gray.
+        // White container name on a gray label so the item stands out from the rest of the hint.
         Component containerName = ItemUtils.getDisplayComponent(container, viewer)
                 .colorIfAbsent(NamedTextColor.WHITE);
-        Component hintPrefix = I18n.getComponent("gui.cooking_pot.pending_container_hint_prefix", viewer);
-        String rawHint = viewer != null
-                ? I18n.get("gui.cooking_pot.pending_container_hint", viewer)
-                : I18n.get("gui.cooking_pot.pending_container_hint");
-        Component hint = rawHint.contains("{container}")
-                ? componentWithInsertedItemName(rawHint, "{container}", containerName)
-                : hintPrefix.append(containerName);
+        Component hint = Component.translatable("gui.cooking_pot.pending_container_hint", containerName)
+                .color(NamedTextColor.GRAY);
 
         lore.add(Component.empty());
         lore.add(hint.decoration(TextDecoration.ITALIC, false));
@@ -438,24 +454,28 @@ public class CookingPotGui implements InventoryHolder {
         item.setItemMeta(meta);
     }
 
-    private Component componentWithInsertedItemName(String template, String marker, Component itemName) {
-        int markerIndex = template.indexOf(marker);
-        if (markerIndex < 0) {
-            return Text.deserialize(template).append(itemName);
+    /** Writes item to rawSlot AND marks the slot dirty for the next sync. Use this
+     *  from every click/drag handler that mutates a writable GUI slot; never use it for periodic
+     *  display refresh (those don't represent player intent and would force a false write). */
+    private void writeWritableSlot(int rawSlot, ItemStack item) {
+        inventory.setItem(rawSlot, item);
+        if (writableSlotMapping.containsKey(rawSlot)) {
+            dirtyWritableSlots.add(rawSlot);
         }
-        String before = template.substring(0, markerIndex);
-        String after = template.substring(markerIndex + marker.length());
-        return Text.deserialize(before)
-                .append(itemName)
-                .append(Text.deserialize(after));
     }
 
     private void syncToBlockEntity() {
-        for (Map.Entry<Integer, Integer> entry : writableSlotMapping.entrySet()) {
-            int guiSlot = entry.getKey();
-            int entitySlot = entry.getValue();
-            ItemStack item = inventory.getItem(guiSlot);
-            blockEntity.setInventorySlot(entitySlot, cloneOrNull(item));
+        // Only write the slots the player actively mutated since the last sync. Skipping clean slots
+        // is what prevents the GUI's pre-modification snapshot from clobbering cook-tick mutations
+        // (e.g. ingredients consumed / result deposited) that happened during the click handler.
+        if (!dirtyWritableSlots.isEmpty()) {
+            for (int guiSlot : dirtyWritableSlots) {
+                Integer entitySlot = writableSlotMapping.get(guiSlot);
+                if (entitySlot == null) continue;
+                ItemStack item = inventory.getItem(guiSlot);
+                blockEntity.setInventorySlot(entitySlot, cloneOrNull(item));
+            }
+            dirtyWritableSlots.clear();
         }
         blockEntity.tryMovePendingToOutput();
         if (world != null && blockEntity.getPosKey() != null) {
@@ -464,7 +484,7 @@ public class CookingPotGui implements InventoryHolder {
                 if (blockEntity.hasStoredContents()) {
                     tickManager.markActive(world, blockEntity.getPosKey(), TickManager.BlockType.COOKING_POT);
                 } else {
-                    tickManager.unregisterActiveBlock(world, blockEntity.getPosKey(), TickManager.BlockType.COOKING_POT);
+                    tickManager.markInactive(world, blockEntity.getPosKey(), TickManager.BlockType.COOKING_POT);
                 }
             }
             // Heat-source detection reads the pot block, so it is dispatched to the pot's region via
@@ -572,6 +592,9 @@ public class CookingPotGui implements InventoryHolder {
             event.setCancelled(true);
             ItemStack current = event.getCurrentItem();
             if (current != null && !current.getType().isAir()) {
+                // Adopt authoritative state first so the deposit stacks onto the real slot contents, not a
+                // stale phantom from another viewer.
+                refreshInputSlotsFromBlockEntity();
                 smartMoveFromPlayerInventory(current);
                 event.setCurrentItem(current.getAmount() > 0 ? current : null);
                 syncToBlockEntity();
@@ -640,7 +663,7 @@ public class CookingPotGui implements InventoryHolder {
             }
             ItemStack placed = oldCursor.clone();
             placed.setAmount(finalAmount);
-            inventory.setItem(rawSlot, placed);
+            writeWritableSlot(rawSlot, placed);
             placedTotal += delta;
             anyPlaced = true;
         }
@@ -669,6 +692,10 @@ public class CookingPotGui implements InventoryHolder {
         if (rawSlot < 0 || rawSlot >= config.getSize() || !isPlayerInputSlot(rawSlot)) {
             return;
         }
+        // Adopt the authoritative entity state for the mapped slots before acting, so a second viewer can't
+        // take a phantom item that another viewer (or the cook tick) already removed in the ~1-tick window
+        // before the periodic refresh would have corrected this GUI.
+        refreshInputSlotsFromBlockEntity();
 
         if (event.isShiftClick()) {
             handleTopShiftClick(player, rawSlot);
@@ -691,10 +718,10 @@ public class CookingPotGui implements InventoryHolder {
                 ItemStack taken = slotItem.clone();
                 taken.setAmount(takeAmount);
                 slotItem.setAmount(slotItem.getAmount() - takeAmount);
-                inventory.setItem(rawSlot, slotItem.getAmount() > 0 ? slotItem : null);
+                writeWritableSlot(rawSlot, slotItem.getAmount() > 0 ? slotItem : null);
                 player.setItemOnCursor(taken);
             } else {
-                inventory.setItem(rawSlot, null);
+                writeWritableSlot(rawSlot, null);
                 player.setItemOnCursor(slotItem.clone());
             }
 
@@ -712,7 +739,7 @@ public class CookingPotGui implements InventoryHolder {
             } else {
                 player.setItemOnCursor(null);
             }
-            inventory.setItem(rawSlot, placed);
+            writeWritableSlot(rawSlot, placed);
             syncToBlockEntity();
             updateDisplayItems();
             return;
@@ -722,7 +749,7 @@ public class CookingPotGui implements InventoryHolder {
             int maxStack = Math.min(slotItem.getMaxStackSize(), inventory.getMaxStackSize());
             int space = maxStack - slotItem.getAmount();
             if (space <= 0) {
-                inventory.setItem(rawSlot, cursor.clone());
+                writeWritableSlot(rawSlot, cursor.clone());
                 player.setItemOnCursor(slotItem.clone());
                 syncToBlockEntity();
                 updateDisplayItems();
@@ -732,14 +759,14 @@ public class CookingPotGui implements InventoryHolder {
             int moved = Math.min(space, rightClick ? 1 : cursor.getAmount());
             slotItem.setAmount(slotItem.getAmount() + moved);
             cursor.setAmount(cursor.getAmount() - moved);
-            inventory.setItem(rawSlot, slotItem);
+            writeWritableSlot(rawSlot, slotItem);
             player.setItemOnCursor(cursor.getAmount() > 0 ? cursor : null);
             syncToBlockEntity();
             updateDisplayItems();
             return;
         }
 
-        inventory.setItem(rawSlot, cursor.clone());
+        writeWritableSlot(rawSlot, cursor.clone());
         player.setItemOnCursor(slotItem.clone());
         syncToBlockEntity();
         updateDisplayItems();
@@ -755,12 +782,12 @@ public class CookingPotGui implements InventoryHolder {
         ItemStack toMove = current.clone();
         Map<Integer, ItemStack> leftovers = playerInventory.addItem(toMove);
         if (leftovers.isEmpty()) {
-            inventory.setItem(rawSlot, null);
+            writeWritableSlot(rawSlot, null);
             return;
         }
 
         ItemStack leftover = leftovers.values().iterator().next();
-        inventory.setItem(rawSlot, leftover.clone());
+        writeWritableSlot(rawSlot, leftover.clone());
     }
 
     private void scheduleGuiSync(Player viewer) {
@@ -831,7 +858,44 @@ public class CookingPotGui implements InventoryHolder {
         }
     }
 
+    /** Force-closes every open cooking-pot GUI viewing the block at world/pos. Call this BEFORE
+     * tearing down the block entity on a player/explosion break: otherwise a viewer keeps a live Bukkit
+     * Inventory whose items the cook tick is no longer guarding, and clicking them out dupes (same shape as
+     * the keg break-while-open dupe). */
+    public static void closeOpenGuisAt(World world, int x, int y, int z) {
+        if (world == null) {
+            return;
+        }
+        java.util.UUID worldId = world.getUID();
+        for (Map.Entry<UUID, CookingPotGui> entry : new ArrayList<>(activeGuis.entrySet())) {
+            CookingPotGui gui = entry.getValue();
+            if (gui == null) {
+                continue;
+            }
+            Location loc = gui.cookingPotLocation;
+            if (loc == null || loc.getWorld() == null
+                    || !worldId.equals(loc.getWorld().getUID())
+                    || loc.getBlockX() != x || loc.getBlockY() != y || loc.getBlockZ() != z) {
+                continue;
+            }
+            if (!gui.closed) {
+                gui.close();
+            }
+            activeGuis.remove(entry.getKey());
+            Player player = Bukkit.getPlayer(entry.getKey());
+            if (player != null && player.isOnline()) {
+                player.closeInventory();
+            }
+        }
+    }
+
     private void ensureListenerRegistered() {
+        warm(plugin);
+    }
+
+    /** Registers the shared inventory listener up-front so the first cooking-pot open does not pay the
+     *  one-time InvUI/event-dispatch class-load + registerEvents on the interaction path. Idempotent. */
+    public static void warm(FarmersDelightPlugin plugin) {
         if (listenerRegistered) return;
         synchronized (CookingPotGui.class) {
             if (listenerRegistered) return;
@@ -944,7 +1008,7 @@ public class CookingPotGui implements InventoryHolder {
             ItemStack target = inventory.getItem(slot);
             if (target == null || target.getType().isAir()) {
                 ItemStack placed = item.clone();
-                inventory.setItem(slot, placed);
+                writeWritableSlot(slot, placed);
                 item.setAmount(0);
                 return;
             }
@@ -961,7 +1025,7 @@ public class CookingPotGui implements InventoryHolder {
             int toMove = Math.min(space, item.getAmount());
             target.setAmount(target.getAmount() + toMove);
             item.setAmount(item.getAmount() - toMove);
-            inventory.setItem(slot, target);
+            writeWritableSlot(slot, target);
         }
     }
 
@@ -989,7 +1053,7 @@ public class CookingPotGui implements InventoryHolder {
             int toMove = Math.min(space, item.getAmount());
             target.setAmount(target.getAmount() + toMove);
             item.setAmount(item.getAmount() - toMove);
-            inventory.setItem(slot, target);
+            writeWritableSlot(slot, target);
             if (item.getAmount() <= 0) {
                 return;
             }
@@ -1001,7 +1065,7 @@ public class CookingPotGui implements InventoryHolder {
                 continue;
             }
             ItemStack placed = item.clone();
-            inventory.setItem(slot, placed);
+            writeWritableSlot(slot, placed);
             item.setAmount(0);
             return;
         }

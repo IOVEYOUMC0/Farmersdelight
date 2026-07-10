@@ -14,7 +14,7 @@ import java.util.Set;
  * Converts the in-memory recipe model back into the YAML string form the recipe parser understands
  * (i.e. the inverse of RecipeParsingSupport and the managers' parseRecipe methods).
  *
- * <p>The string conversions here are pure functions (no Bukkit/CraftEngine state), so round-trip
+ * The string conversions here are pure functions (no Bukkit/CraftEngine state), so round-trip
  * consistency can be verified by unit tests. Item resolution (itemIdString(ItemStack)) is the only
  * method that touches CraftEngine, which is why it is split out separately.
  */

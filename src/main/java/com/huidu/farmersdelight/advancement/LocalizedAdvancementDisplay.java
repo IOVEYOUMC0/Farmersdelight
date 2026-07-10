@@ -11,6 +11,10 @@ import org.jetbrains.annotations.NotNull;
  * Advancement display whose title/description use resource-pack translation keys rather than
  * server-side fixed strings, so each client renders them in its own language. Only the (non-NMS)
  * Component getters are overridden here; the patched UltimateAdvancementAPI reads them for the GUI, toast, and chat.
+ *
+ * BaseComponent / TranslatableComponent are Bungee Chat API and deprecated upstream; UAA's
+ * AdvancementDisplay.getChatTitle/Description signatures lock us into BaseComponent[] return
+ * types, so deprecation is suppressed at each use site.
  */
 public class LocalizedAdvancementDisplay extends AdvancementDisplay {
 
@@ -35,17 +39,20 @@ public class LocalizedAdvancementDisplay extends AdvancementDisplay {
 
     @Override
     @NotNull
+    @SuppressWarnings("deprecation")
     public BaseComponent[] getChatTitle() {
         return new BaseComponent[]{colored(titleKey)};
     }
 
     @Override
     @NotNull
+    @SuppressWarnings("deprecation")
     public BaseComponent[] getChatDescription() {
         return new BaseComponent[]{colored(descriptionKey)};
     }
 
     // Matches upstream UAA: it colors the title/description with frame.getColor(); an uncolored Component renders white.
+    @SuppressWarnings("deprecation")
     private TranslatableComponent colored(String key) {
         TranslatableComponent component = new TranslatableComponent(key);
         component.setColor(frame.getColor());
