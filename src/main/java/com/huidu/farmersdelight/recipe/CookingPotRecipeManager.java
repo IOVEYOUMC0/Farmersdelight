@@ -40,6 +40,11 @@ public class CookingPotRecipeManager {
                 }
             });
     private static final int MAX_CACHE_SIZE = 100;
+    // Bumped inside the same synchronized(recipeCache) block that clears the cache on every (re)publish.
+    // matchRecipe snapshots it before reading the volatile maps and only stores a computed match if it is
+    // still current, so a match computed against pre-reload maps can't repopulate the just-cleared cache.
+    // volatile so the unsynchronized snapshot read is ordered before the volatile map reads and is visible.
+    private volatile long recipeGeneration = 0;
     private volatile Set<String> validContainerKeys = Set.of();
     // Recipes registered at runtime by addons via the public API. Kept separate so they survive a
     // /fd reload (which rebuilds the file-backed maps); merged into the published maps in loadRecipes().
@@ -102,6 +107,7 @@ public class CookingPotRecipeManager {
         vanillaItemIdsByTagCache.clear();
         synchronized (recipeCache) {
             recipeCache.clear();
+            recipeGeneration++;
         }
         // Invalidate the recipe-list GUI display cache: this republish path (incl. addon register/
         // unregister) bypasses RecipeViewGui.clearConfigCache.
@@ -315,6 +321,9 @@ public class CookingPotRecipeManager {
 
         String normalizedGroupId = normalizeRecipeGroupId(customRecipeGroupId);
         String cacheKey = buildCacheKey(nonEmptyInputs, container, normalizedGroupId);
+        // Snapshot the publish generation BEFORE reading the volatile maps below. Two volatile reads keep
+        // program order, so this pairs the match we are about to compute with the map version it saw.
+        long generationAtStart = recipeGeneration;
         CookingPotRecipe cached;
         synchronized (recipeCache) {
             cached = recipeCache.get(cacheKey);
@@ -334,7 +343,11 @@ public class CookingPotRecipeManager {
 
         if (result != null) {
             synchronized (recipeCache) {
-                recipeCache.put(cacheKey, result);
+                // Skip caching if a (re)publish cleared the cache and bumped the generation while we were
+                // matching: this result may be against now-stale maps and would poison the fresh cache.
+                if (recipeGeneration == generationAtStart) {
+                    recipeCache.put(cacheKey, result);
+                }
             }
         }
 

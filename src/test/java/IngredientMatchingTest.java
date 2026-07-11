@@ -114,4 +114,36 @@ class IngredientMatchingTest {
         assertFalse(IngredientMatching.matchesIngredients(
                 List.of("rice", "rice"), List.of("rice", "kelp"), false, EQ, amount));
     }
+
+    // A slot satisfies the broad "fish" ingredient if it is any fish, but the narrow "cod"/"salmon"
+    // ingredients only match their own item. This mirrors a tag-or-choice ingredient listed alongside a
+    // specific item, where the specific item is a subset of the broad one.
+    private static final BiPredicate<String, String> FISH = (slot, ingredient) -> switch (ingredient) {
+        case "fish" -> slot.equals("cod") || slot.equals("salmon");
+        default -> slot.equals(ingredient);
+    };
+
+    @Test
+    void overlappingIngredientsMatchRegardlessOfSlotOrder() {
+        // Greedy first-fit fails one of these orderings: the broad "fish" grabs the only cod, leaving the
+        // narrow "cod" ingredient unmatched. A proper bipartite matching succeeds for BOTH orderings.
+        assertTrue(IngredientMatching.matchesIngredients(
+                List.of("fish", "cod"), List.of("cod", "salmon"), true, FISH, ONE));
+        assertTrue(IngredientMatching.matchesIngredients(
+                List.of("fish", "cod"), List.of("salmon", "cod"), true, FISH, ONE));
+    }
+
+    @Test
+    void overlappingIngredientsBroadFirstLenient() {
+        // Same overlap trap under the lenient pass (extra usable slots allowed).
+        assertTrue(IngredientMatching.matchesIngredients(
+                List.of("fish", "cod"), List.of("cod", "salmon", "salmon"), false, FISH, ONE));
+    }
+
+    @Test
+    void overlappingIngredientsStillRejectWhenNarrowItemAbsent() {
+        // No cod present, so "cod" can never be satisfied even though two slots match "fish".
+        assertFalse(IngredientMatching.matchesIngredients(
+                List.of("fish", "cod"), List.of("salmon", "salmon"), true, FISH, ONE));
+    }
 }

@@ -382,6 +382,7 @@ blocks:
         grow-speed: 0.25
         light-requirement: 9
         is-bone-meal-target: false
+        bone-meal-age-bonus: 0
       - type: bush_block
         bottom-blocks:
           - minecraft:farmland
