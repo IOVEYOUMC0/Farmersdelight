@@ -21,6 +21,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
@@ -376,7 +377,54 @@ public class I18n {
             }
         }
 
+        // Last resort: the plugin's own bundled language (this build). Covers a stale or partially-merged
+        // deployed lang file, or a lookup before init completes, so a raw key never leaks to the console / UI.
+        String bundled = bundledValue(key, locale);
+        if (bundled != null) {
+            return bundled;
+        }
+
         return key;
+    }
+
+    // Jar-bundled language fallback. The jar content is immutable at runtime, so parsed configs are cached for
+    // the process lifetime; BUNDLED_ABSENT marks a locale whose bundled file does not exist (cache the miss).
+    private static final Map<String, YamlConfiguration> BUNDLED_LANG = new ConcurrentHashMap<>();
+    private static final YamlConfiguration BUNDLED_ABSENT = new YamlConfiguration();
+
+    private static String bundledValue(String key, String locale) {
+        if (plugin == null || key == null) {
+            return null;
+        }
+        String value = bundledValueForLocale(key, locale);
+        if (value == null && !FALLBACK_LOCALE.equalsIgnoreCase(locale)) {
+            value = bundledValueForLocale(key, FALLBACK_LOCALE);
+        }
+        if (value == null && !"en_us".equalsIgnoreCase(locale) && !"en_us".equalsIgnoreCase(FALLBACK_LOCALE)) {
+            value = bundledValueForLocale(key, "en_us");
+        }
+        return value;
+    }
+
+    private static String bundledValueForLocale(String key, String locale) {
+        if (locale == null || locale.isEmpty()) {
+            return null;
+        }
+        YamlConfiguration cfg = BUNDLED_LANG.computeIfAbsent(locale.toLowerCase(Locale.ROOT), loc -> {
+            try (InputStream stream = plugin.getResource("lang/" + loc + ".yml")) {
+                if (stream == null) {
+                    return BUNDLED_ABSENT;
+                }
+                YamlConfiguration bundled = new YamlConfiguration();
+                try (InputStreamReader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
+                    bundled.load(reader);
+                }
+                return bundled;
+            } catch (Exception e) {
+                return BUNDLED_ABSENT;
+            }
+        });
+        return cfg == BUNDLED_ABSENT ? null : cfg.getString(key);
     }
 
     public static String get(String key, Player player) {
