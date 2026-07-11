@@ -47,7 +47,7 @@ public final class PresentationUtils {
     /** Resolves CraftEngine <shift:N> and <image:ns:id> tags into image-font MiniMessage output. */
     public static String resolveGlyphTags(String input) {
         if (input == null || input.isEmpty()) {
-            return input == null ? "" : input;
+            return "";
         }
         return replaceImageTags(replaceShiftTags(input));
     }

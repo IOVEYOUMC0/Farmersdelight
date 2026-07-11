@@ -201,13 +201,6 @@ public final class ItemUtils {
         return built;
     }
 
-    /** Materializes the vanilla item-tag membership for tagKey into the resolve cache off the hot path. */
-    public static void warmVanillaTag(Key tagKey) {
-        if (tagKey != null) {
-            vanillaItemTagResolveCache.computeIfAbsent(tagKey, ItemUtils::resolveVanillaItemTag);
-        }
-    }
-
     private static volatile Method saveItemAsTagMethod;
 
     /**

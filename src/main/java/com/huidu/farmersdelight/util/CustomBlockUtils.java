@@ -215,11 +215,6 @@ public final class CustomBlockUtils {
                 && hasBehavior(location.getBlock(), behaviorClass);
     }
 
-    public static boolean idContains(Block block, String fragment) {
-        String blockId = getId(block);
-        return blockId != null && blockId.contains(normalizeId(fragment));
-    }
-
     public static String normalizeId(String rawId) {
         if (rawId == null) {
             return null;

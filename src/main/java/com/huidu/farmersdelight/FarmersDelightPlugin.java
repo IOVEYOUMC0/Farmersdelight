@@ -1653,10 +1653,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         return itemDisplayManager;
     }
 
-    public ItemDisplayManager getProxyItemDisplayManager() {
-        return getItemDisplayManager();
-    }
-
     public float getSkilletDisplayScale() {
         return skilletDisplayScale;
     }
