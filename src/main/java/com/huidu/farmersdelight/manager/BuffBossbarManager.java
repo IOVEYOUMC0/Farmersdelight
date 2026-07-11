@@ -22,13 +22,19 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Renders per-player buff bossbars pushed via {@link com.huidu.farmersdelight.api.buff.BuffBossbar}.
- * Two layout modes (config-driven):
+ * Renders per-player buff state pushed via {@link com.huidu.farmersdelight.api.buff.BuffBossbar} to one
+ * or more display {@link Channel}s (config {@code bossbar.channels}), so an admin can route around a
+ * plugin that already occupies a given channel: {@code bossbar} (boss bar), {@code actionbar} (action
+ * bar line), {@code tab_footer} (player-list footer). Any combination may run at once; default is
+ * boss bar only.
+ *
+ * <p>The boss bar channel has two layout modes (config-driven):
  * <ul>
  *   <li>{@code stacked} — every active buff shows its own bossbar simultaneously (vanilla style).</li>
  *   <li>{@code rotating} — only one bar visible at a time, advances every
  *       {@code bossbar.rotation-interval-ticks}.</li>
  * </ul>
+ * The action bar / tab footer always list every active buff (joined on one line / one per line).
  *
  * <p>Lifecycle: created in {@link FarmersDelightPlugin#onEnable}; {@link #start} kicks off the
  * rotation tick (no-op in stacked mode). {@link #stop} hides every bar then clears state.
@@ -49,11 +55,46 @@ public final class BuffBossbarManager implements Listener {
         }
     }
 
+    /**
+     * A place the active-buff state can be rendered. Any combination may be enabled at once via
+     * {@code bossbar.channels}, so an admin can route around another plugin that already occupies a
+     * given channel (that plugin's boss bar / action bar / tab footer).
+     * <ul>
+     *   <li>{@code BOSSBAR} — one boss bar per buff, laid out per {@link LayoutMode}.</li>
+     *   <li>{@code ACTIONBAR} — every active buff joined onto the action bar line, auto-refreshed so
+     *       it does not fade.</li>
+     *   <li>{@code TAB_FOOTER} — active buffs listed in the player-list (TAB) footer; only the footer
+     *       is touched, never the header.</li>
+     * </ul>
+     */
+    public enum Channel {
+        BOSSBAR, ACTIONBAR, TAB_FOOTER;
+
+        static Channel parse(String s) {
+            if (s == null) return null;
+            return switch (s.trim().toLowerCase(Locale.ROOT).replace('-', '_')) {
+                case "bossbar", "boss_bar", "boss", "bar" -> BOSSBAR;
+                case "actionbar", "action_bar", "action" -> ACTIONBAR;
+                case "tab_footer", "tabfooter", "tab_list", "tablist", "footer", "tab" -> TAB_FOOTER;
+                default -> null;
+            };
+        }
+    }
+
+    // Action bar messages fade after ~3s, so the rotation tick re-sends them this often when the
+    // ACTIONBAR channel is active. Boss bar / tab footer persist and need no refresh.
+    private static final long ACTIONBAR_REFRESH_TICKS = 30L;
+
     private final FarmersDelightPlugin plugin;
     private final Map<UUID, PlayerBars> players = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     private volatile LayoutMode layoutMode = LayoutMode.STACKED;
     private volatile long rotationIntervalTicks = 80L;
+    // Enabled render channels. EnumSet, replaced wholesale on reload (never mutated in place) so readers
+    // see a consistent snapshot. Defaults to BOSSBAR to preserve pre-channels behaviour.
+    private volatile java.util.Set<Channel> channels = java.util.EnumSet.of(Channel.BOSSBAR);
+    // Joins the buff titles on the action bar line. Configurable so admins can widen/narrow the gap.
+    private volatile Component actionbarSeparator = Component.text("   ");
     private volatile PluginTask tickTask;
     private volatile long currentTick;
     private volatile boolean started;
@@ -76,33 +117,66 @@ public final class BuffBossbarManager implements Listener {
      *  current players. */
     public void applyConfig(ConfigurationSection section) {
         boolean wasEnabled = this.enabled;
+        java.util.Set<Channel> oldChannels = this.channels;
         if (section == null) {
             this.enabled = true;
             this.layoutMode = LayoutMode.STACKED;
             this.rotationIntervalTicks = 80L;
+            this.channels = java.util.EnumSet.of(Channel.BOSSBAR);
+            this.actionbarSeparator = Component.text("   ");
         } else {
             this.enabled = section.getBoolean("enabled", true);
             this.layoutMode = LayoutMode.parse(section.getString("layout-mode", "stacked"));
             this.rotationIntervalTicks = Math.max(20L,
                     section.getLong("rotation-interval-ticks", 80L));
+            this.channels = parseChannels(section.getStringList("channels"));
+            this.actionbarSeparator = Component.text(section.getString("actionbar-separator", "   "));
         }
         if (wasEnabled && !this.enabled) {
             hideAndClearAll();
             ensureTickTask();
             return;
         }
+        java.util.Set<Channel> newChannels = this.channels;
         for (Map.Entry<UUID, PlayerBars> entry : players.entrySet()) {
             Player p = Bukkit.getPlayer(entry.getKey());
             if (p != null) {
                 PlayerBars state = entry.getValue();
-                // Every other syncVisibility caller holds the per-player state monitor; this reload path must too,
+                // Every other render caller holds the per-player state monitor; this reload path must too,
                 // else a concurrent per-tick update() (state.bars.put) races the LinkedHashMap iteration -> CME.
                 synchronized (state) {
-                    syncVisibility(p, state);
+                    clearDroppedChannels(p, state, oldChannels, newChannels);
+                    render(p, state);
                 }
             }
         }
         ensureTickTask();
+    }
+
+    private static java.util.Set<Channel> parseChannels(java.util.List<String> raw) {
+        java.util.EnumSet<Channel> parsed = java.util.EnumSet.noneOf(Channel.class);
+        if (raw != null) {
+            for (String s : raw) {
+                Channel c = Channel.parse(s);
+                if (c != null) parsed.add(c);
+            }
+        }
+        // Empty / missing / all-unknown -> boss bar, preserving the pre-channels default.
+        return parsed.isEmpty() ? java.util.EnumSet.of(Channel.BOSSBAR) : parsed;
+    }
+
+    /** A channel switched off on reload must retract what it drew, or its last frame lingers on screen. */
+    private void clearDroppedChannels(Player player, PlayerBars state,
+                                      java.util.Set<Channel> oldCh, java.util.Set<Channel> newCh) {
+        if (oldCh.contains(Channel.BOSSBAR) && !newCh.contains(Channel.BOSSBAR)) {
+            hideBossbars(player, state);
+        }
+        if (oldCh.contains(Channel.ACTIONBAR) && !newCh.contains(Channel.ACTIONBAR)) {
+            player.sendActionBar(Component.empty());
+        }
+        if (oldCh.contains(Channel.TAB_FOOTER) && !newCh.contains(Channel.TAB_FOOTER)) {
+            player.sendPlayerListFooter(Component.empty());
+        }
     }
 
     public void start() {
@@ -128,7 +202,11 @@ public final class BuffBossbarManager implements Listener {
      * double-schedule (R-CONC-002).
      */
     private synchronized void ensureTickTask() {
-        boolean want = started && enabled && layoutMode == LayoutMode.ROTATING;
+        // The tick drives boss bar rotation AND the action bar's periodic re-send. Stacked boss bar and
+        // the tab footer both persist without a tick, so neither keeps the task alive on its own.
+        boolean want = started && enabled
+                && ((channels.contains(Channel.BOSSBAR) && layoutMode == LayoutMode.ROTATING)
+                    || channels.contains(Channel.ACTIONBAR));
         if (want && tickTask == null) {
             tickTask = plugin.scheduler().runRepeating(this::tick, 1L, 1L);
         } else if (!want && tickTask != null) {
@@ -160,10 +238,10 @@ public final class BuffBossbarManager implements Listener {
                 bar = BossBar.bossBar(t, clamped, c, o);
                 state.bars.put(key, bar);
                 state.snapshots.put(key, new BarSnapshot(t, clamped, c, o));
-                // Only resync visibility when a new bar appears — existing bars are already attached
-                // to the player (stacked) or in the rotation pool (rotating), and Adventure mutations
-                // propagate to viewers automatically without a re-show packet.
-                syncVisibility(player, state);
+                // A new buff appeared: render every enabled channel. For an EXISTING bar the boss bar
+                // auto-propagates its Adventure mutation without a re-show packet (see the else branch),
+                // but the action bar / tab footer are push-only and must be rebuilt on every change.
+                render(player, state);
             } else {
                 BarSnapshot last = state.snapshots.get(key);
                 if (last != null && last.matches(t, clamped, c, o)) {
@@ -174,6 +252,8 @@ public final class BuffBossbarManager implements Listener {
                 bar.color(c);
                 bar.overlay(o);
                 state.snapshots.put(key, new BarSnapshot(t, clamped, c, o));
+                // Boss bar already mutated in place above; refresh the push-only channels with the new text.
+                renderAuxiliary(player, state);
             }
         }
     }
@@ -183,27 +263,25 @@ public final class BuffBossbarManager implements Listener {
         PlayerBars state = players.get(player.getUniqueId());
         if (state == null) return;
         BossBar removed;
-        boolean emptied;
         synchronized (state) {
             removed = state.bars.remove(key);
             if (removed == null) {
                 // Hot path for the BAC bossbar feed: every tick it calls hide() for inactive buffs,
                 // most of which were never shown for this player. Early-return before resyncing
-                // anything — nothing changed, no point re-issuing showBossBar packets.
+                // anything — nothing changed, no point re-issuing packets.
                 return;
             }
             state.snapshots.remove(key);
             if (key.equals(state.currentVisible)) {
                 state.currentVisible = null;
             }
-            emptied = state.bars.isEmpty();
         }
         if (player.isOnline()) {
             player.hideBossBar(removed);
-            if (!emptied) {
-                synchronized (state) {
-                    syncVisibility(player, state);
-                }
+            // Re-render: the boss bar re-shows the survivors, and the push-only channels rebuild from
+            // the remaining buffs (or clear themselves when this was the last active one).
+            synchronized (state) {
+                render(player, state);
             }
         }
         // NOTE: do NOT players.remove(id, state) when emptied — earlier version did, but races with a
@@ -224,7 +302,15 @@ public final class BuffBossbarManager implements Listener {
                     player.hideBossBar(bar);
                 }
             }
+            clearAuxiliary(player);
         }
+    }
+
+    /** Retract the push-only channels (action bar / tab footer) for a player whose buffs were all cleared. */
+    private void clearAuxiliary(Player player) {
+        java.util.Set<Channel> ch = channels;
+        if (ch.contains(Channel.ACTIONBAR)) player.sendActionBar(Component.empty());
+        if (ch.contains(Channel.TAB_FOOTER)) player.sendPlayerListFooter(Component.empty());
     }
 
     @EventHandler
@@ -250,13 +336,61 @@ public final class BuffBossbarManager implements Listener {
                         player.hideBossBar(bar);
                     }
                 }
+                clearAuxiliary(player);
             }
             it.remove();
         }
     }
 
-    private void syncVisibility(Player player, PlayerBars state) {
+    /** Draw the active-buff state to every enabled channel. Caller must hold the per-player monitor. */
+    private void render(Player player, PlayerBars state) {
         if (!enabled) return;
+        java.util.Set<Channel> ch = channels;
+        if (ch.contains(Channel.BOSSBAR)) {
+            syncBossbars(player, state);
+        }
+        renderAuxiliary(player, state, ch);
+    }
+
+    /** Refresh only the push-only channels (action bar / tab footer) — used when a boss bar was mutated
+     *  in place (that mutation already auto-propagated). Caller must hold the per-player monitor. */
+    private void renderAuxiliary(Player player, PlayerBars state) {
+        if (!enabled) return;
+        renderAuxiliary(player, state, channels);
+    }
+
+    private void renderAuxiliary(Player player, PlayerBars state, java.util.Set<Channel> ch) {
+        if (ch.contains(Channel.ACTIONBAR)) {
+            player.sendActionBar(joinTitles(state, actionbarSeparator));
+        }
+        if (ch.contains(Channel.TAB_FOOTER)) {
+            player.sendPlayerListFooter(joinTitles(state, Component.newline()));
+        }
+    }
+
+    /** Joins the active buffs' titles with {@code separator} (insertion order, matching the boss bars).
+     *  Empty component when the player has no buffs, which clears the action bar / footer. */
+    private static Component joinTitles(PlayerBars state, Component separator) {
+        Component out = Component.empty();
+        boolean first = true;
+        for (BarSnapshot snap : state.snapshots.values()) {
+            if (!first) out = out.append(separator);
+            out = out.append(snap.title());
+            first = false;
+        }
+        return out;
+    }
+
+    /** Hide every boss bar shown for the player without dropping it from state, so a later re-enable of
+     *  the BOSSBAR channel can re-show them. */
+    private void hideBossbars(Player player, PlayerBars state) {
+        for (BossBar bar : state.bars.values()) {
+            player.hideBossBar(bar);
+        }
+        state.currentVisible = null;
+    }
+
+    private void syncBossbars(Player player, PlayerBars state) {
         if (state.bars.isEmpty()) {
             state.currentVisible = null;
             return;
@@ -284,26 +418,43 @@ public final class BuffBossbarManager implements Listener {
 
     private void tick() {
         currentTick++;
-        if (!enabled || layoutMode != LayoutMode.ROTATING || players.isEmpty()) {
+        if (!enabled || players.isEmpty()) {
+            return;
+        }
+        java.util.Set<Channel> ch = channels;
+        boolean rotate = ch.contains(Channel.BOSSBAR) && layoutMode == LayoutMode.ROTATING;
+        boolean refreshActionBar = ch.contains(Channel.ACTIONBAR)
+                && currentTick % ACTIONBAR_REFRESH_TICKS == 0;
+        if (!rotate && !refreshActionBar) {
             return;
         }
         for (Map.Entry<UUID, PlayerBars> entry : players.entrySet()) {
             PlayerBars state = entry.getValue();
-            // Single-bar players have nothing to rotate to — skip without locking.
-            if (state.bars.size() <= 1) continue;
-            if (currentTick - state.lastRotationTick < rotationIntervalTicks) continue;
+            // Cheap unlocked pre-check: rotation needs >1 bar past the interval; action-bar refresh needs
+            // any active buff. Skip the lock entirely when neither applies.
+            boolean canRotate = rotate && state.bars.size() > 1
+                    && currentTick - state.lastRotationTick >= rotationIntervalTicks;
+            boolean canRefresh = refreshActionBar && !state.snapshots.isEmpty();
+            if (!canRotate && !canRefresh) continue;
             Player player = Bukkit.getPlayer(entry.getKey());
             if (player == null || !player.isOnline()) continue;
             synchronized (state) {
-                if (state.bars.size() <= 1) continue;
-                // Advance currentVisible to the next key in insertion order; wrap.
-                NamespacedKey next = findNext(state);
-                if (next == null) continue;
-                BossBar oldBar = state.currentVisible == null ? null : state.bars.get(state.currentVisible);
-                if (oldBar != null) player.hideBossBar(oldBar);
-                state.currentVisible = next;
-                state.lastRotationTick = currentTick;
-                player.showBossBar(state.bars.get(next));
+                if (rotate && state.bars.size() > 1
+                        && currentTick - state.lastRotationTick >= rotationIntervalTicks) {
+                    // Advance currentVisible to the next key in insertion order; wrap.
+                    NamespacedKey next = findNext(state);
+                    if (next != null) {
+                        BossBar oldBar = state.currentVisible == null ? null : state.bars.get(state.currentVisible);
+                        if (oldBar != null) player.hideBossBar(oldBar);
+                        state.currentVisible = next;
+                        state.lastRotationTick = currentTick;
+                        player.showBossBar(state.bars.get(next));
+                    }
+                }
+                // Re-send the action bar so it doesn't fade; it always shows all active buffs.
+                if (refreshActionBar && !state.snapshots.isEmpty()) {
+                    player.sendActionBar(joinTitles(state, actionbarSeparator));
+                }
             }
         }
     }
