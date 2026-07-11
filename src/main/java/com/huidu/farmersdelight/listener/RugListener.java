@@ -140,6 +140,13 @@ public final class RugListener implements Listener {
         for (Location cell : cellsOf(furn)) {
             cellToRug.put(posKey(cell), furn);
             Bukkit.getRegionScheduler().runDelayed(plugin, cell, t -> {
+                // The rug can be removed within this delay window — only FurnitureBreakEvent can fire that
+                // early, since every other removal path keys off the not-yet-placed underlying block. If it
+                // was removed, its tracking entry is gone; skip the place so we don't strand an orphan
+                // collision block (a free vanilla carpet) with no furniture over it.
+                if (!furn.isValid() || cellToRug.get(posKey(cell)) != furn) {
+                    return;
+                }
                 Block b = world.getBlockAt(cell);
                 if (b.getType().isAir()) {
                     b.setType(underlying, false);

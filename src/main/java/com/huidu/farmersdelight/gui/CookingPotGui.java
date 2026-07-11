@@ -84,7 +84,10 @@ public class CookingPotGui implements InventoryHolder {
     // syncToBlockEntity. Sync only writes back these slots — so an unchanged GUI slot can't clobber
     // a concurrent cook tick that mutated the corresponding entity slot in the same window
     // (multi-viewer dup vector).
-    private final Set<Integer> dirtyWritableSlots = new HashSet<>();
+    // Slots are added from the viewer's click region; syncToBlockEntity iterates and clears them on the
+    // pot's region during a break-triggered close. A concurrent set keeps that cross-region access from
+    // corrupting the backing table or throwing under iteration.
+    private final Set<Integer> dirtyWritableSlots = ConcurrentHashMap.newKeySet();
 
     public CookingPotGui(FarmersDelightPlugin plugin, CookingPotBlockEntity blockEntity,
                          CookingPotBlockBehavior blockBehavior, World world) {
@@ -889,7 +892,7 @@ public class CookingPotGui implements InventoryHolder {
             }
             activeGuis.remove(entry.getKey());
             if (player != null && player.isOnline()) {
-                player.closeInventory();
+                closeViewerInventory(player);
             }
         }
     }
@@ -920,7 +923,22 @@ public class CookingPotGui implements InventoryHolder {
             activeGuis.remove(entry.getKey());
             Player player = Bukkit.getPlayer(entry.getKey());
             if (player != null && player.isOnline()) {
+                closeViewerInventory(player);
+            }
+        }
+    }
+
+    /** Closes a viewer's inventory on the viewer's own region. On Folia a Player is region-owned, so a bare
+     *  closeInventory() called from the broken pot's region throws a cross-region access error and aborts the
+     *  caller before it drops the pot's stored contents. The EntityScheduler runs synchronously on Paper and
+     *  routes to the entity's region on Folia; the try/catch keeps break cleanup going even if dispatch fails. */
+    private static void closeViewerInventory(Player player) {
+        try {
+            player.getScheduler().run(FarmersDelightPlugin.getInstance(), t -> player.closeInventory(), null);
+        } catch (Throwable t) {
+            try {
                 player.closeInventory();
+            } catch (Throwable ignored) {
             }
         }
     }

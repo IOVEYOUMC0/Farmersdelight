@@ -29,9 +29,11 @@ import java.util.concurrent.ThreadLocalRandom;
  * <ul>
  *   <li>farmersdelight:budding_tomatoes (age 0-3) — BuddingTomatoBlock equivalent. No rope
  *       climbing. random tick at age 3 + light &ge; minLight → swap to ground tomatoes age 0
- *       (tryGrowPastMaxAge). Sibling crop_block has is-bone-meal-target: false;
- *       bonemeal is owned by this behavior, replicating original
- *       BuddingTomatoBlock.performBonemeal overflow rules.</li>
+ *       (tryGrowPastMaxAge). The sibling crop_block has bone-meal-age-bonus: 0, so its
+ *       own performBonemeal is a no-op (after == before) and bonemeal age growth is owned entirely by
+ *       this behavior, replicating original BuddingTomatoBlock.performBonemeal overflow rules. Note
+ *       is-bone-meal-target: false alone is NOT enough: CE crop_block.performBonemeal ignores
+ *       that flag and always adds its bonus, so the bonus must be zeroed to avoid a double application.</li>
  *   <li>farmersdelight:tomatoes (age 0-3) — ground TomatoBlock equivalent. Any age attempts
  *       rope climb on random tick / 30% on bonemeal. Right-click at age 3 harvests + resets age 0.</li>
  *   <li>farmersdelight:tomato_crop_on_rope (age 0-3) — HangingTomatoBlock equivalent. Any
@@ -90,9 +92,9 @@ public class TomatoVineBlockBehavior extends BlockBehavior implements RandomTick
         // bridge contract (mirrors NMS BonemealableBlock.performBonemeal(level, random, pos, state)).
         //
         // 3-block dispatch mirroring original FD 1.21:
-        //   - budding (sibling crop_block has is-bone-meal-target=false): owns the age math directly.
-        //     bonusAge = 2 + rand(3) matches CropBlock default; overflow past maxAge=3 transitions to
-        //     ground tomatoes at age (newAge - 4), clamped to [0, 3] — mirrors original
+        //   - budding (sibling crop_block has bone-meal-age-bonus=0, so its performBonemeal is a no-op):
+        //     owns the age math directly. bonusAge = bonemealBonusMin..Max; overflow past maxAge=3
+        //     transitions to ground tomatoes at age (newAge - 4), clamped to [0, 3] — mirrors original
         //     BuddingTomatoBlock.performBonemeal.
         //   - hanging (cropOnRope): sibling crop_block already advanced age. 30% chance to climb,
         //     matching original TomatoBlock.performBonemeal "normal increment" branch (HangingTomato
