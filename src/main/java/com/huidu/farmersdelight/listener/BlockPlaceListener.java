@@ -228,7 +228,7 @@ public class BlockPlaceListener implements Listener {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         AdvancementManager am = plugin.getAdvancementManager();
 
-        if (isCookingPotPlacement(customBlockId, blockLocation)) {
+        if (isCookingPotPlacement(blockLocation)) {
             CookingPotBlockBehavior.markRecentlyPlaced(blockLocation);
             CookingPotBlockEntity entity = CookingPotBlockBehavior.getOrCreateBlockEntity(blockLocation);
             restoreCookingPotDataFromPlacedItem(entity, blockLocation.getWorld(), placedItem);
@@ -279,7 +279,7 @@ public class BlockPlaceListener implements Listener {
         );
     }
 
-    private boolean isCookingPotPlacement(String customBlockId, org.bukkit.Location blockLocation) {
+    private boolean isCookingPotPlacement(org.bukkit.Location blockLocation) {
         return CookingPotBlockBehavior.getBlockBehavior(blockLocation) != null;
     }
 

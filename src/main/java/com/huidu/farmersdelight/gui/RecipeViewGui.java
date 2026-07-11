@@ -952,18 +952,6 @@ public class RecipeViewGui implements InventoryHolder {
         lore.add(tr("gui.recipe.click_to_view_materials", NamedTextColor.YELLOW));
     }
 
-    private void appendIndentedIngredientLore(List<Component> lore, RecipeIngredient ingredient, Player player) {
-        List<Component> ingredientLines = formatIngredientLoreLines(ingredient, player);
-        if (ingredientLines.isEmpty()) {
-            return;
-        }
-
-        lore.add(colored("&8- ").append(ingredientLines.get(0).colorIfAbsent(NamedTextColor.WHITE)));
-        for (int i = 1; i < ingredientLines.size(); i++) {
-            lore.add(colored("&8  ").append(ingredientLines.get(i).colorIfAbsent(NamedTextColor.WHITE)));
-        }
-    }
-
     ItemStack createIngredientDisplay(RecipeIngredient ingredient, Player player, int slot) {
         if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
             List<Component> lore = new ArrayList<>();
@@ -1101,26 +1089,6 @@ public class RecipeViewGui implements InventoryHolder {
     }
 
 
-    private String formatIngredient(RecipeIngredient ingredient, Player player) {
-        if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
-            return getItemDisplayName(RecipeIngredientIcons.createItemFromKey(itemIngredient.key()), player);
-        }
-        if (ingredient instanceof RecipeIngredient.Choice choiceIngredient) {
-            return summarizeLabels(formatChoiceIngredientLabels(choiceIngredient, player), 4);
-        }
-        if (ingredient instanceof RecipeIngredient.Tag tagIngredient) {
-            return formatTagIngredientSummary(tagIngredient, player);
-        }
-        return unknownRecipeText(player);
-    }
-
-    private Component formatIngredientComponent(RecipeIngredient ingredient, Player player) {
-        if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
-            return itemNameComponent(RecipeIngredientIcons.createItemFromKey(itemIngredient.key()), player);
-        }
-        return Component.text(formatIngredient(ingredient, player));
-    }
-
     private List<Component> formatCompactIngredientLoreLines(RecipeIngredient ingredient, Player player) {
         if (ingredient instanceof RecipeIngredient.Item itemIngredient) {
             return List.of(itemNameComponent(RecipeIngredientIcons.createItemFromKey(itemIngredient.key()), player));
@@ -1214,53 +1182,6 @@ public class RecipeViewGui implements InventoryHolder {
         }
         lines.add(tr("gui.recipe.unknown", NamedTextColor.WHITE));
         return lines;
-    }
-
-    private String summarizeLabels(List<String> labels, int remainingCount) {
-        if (labels.isEmpty()) {
-            return "";
-        }
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < labels.size(); i++) {
-            if (i > 0) {
-                builder.append(", ");
-            }
-            builder.append(labels.get(i));
-        }
-        if (remainingCount > 0) {
-            builder.append(", +").append(remainingCount);
-        }
-        return builder.toString();
-    }
-
-    private List<String> wrapPlainText(String text, int maxLength) {
-        if (text == null || text.isBlank()) {
-            return List.of("");
-        }
-        if (maxLength <= 0 || text.length() <= maxLength) {
-            return List.of(text);
-        }
-
-        List<String> lines = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        for (String token : text.split(",\\s*")) {
-            if (token.isBlank()) {
-                continue;
-            }
-            int extra = current.isEmpty() ? token.length() : token.length() + 2;
-            if (!current.isEmpty() && current.length() + extra > maxLength) {
-                lines.add(current.toString());
-                current.setLength(0);
-            }
-            if (!current.isEmpty()) {
-                current.append(", ");
-            }
-            current.append(token);
-        }
-        if (!current.isEmpty()) {
-            lines.add(current.toString());
-        }
-        return lines.isEmpty() ? List.of(text) : lines;
     }
 
     private Component formatToolListComponent(List<CuttingBoardRecipe.ToolRequirement> tools, Player player) {
@@ -1357,32 +1278,6 @@ public class RecipeViewGui implements InventoryHolder {
             return;
         }
         lore.add(tr("gui.recipe.more_items", NamedTextColor.GRAY, remainingCount));
-    }
-
-    private List<String> formatChoiceIngredientLabels(RecipeIngredient.Choice choiceIngredient, Player player) {
-        List<String> labels = new ArrayList<>();
-        for (RecipeIngredient option : choiceIngredient.options()) {
-            labels.add(formatIngredient(option, player));
-        }
-        return labels;
-    }
-
-    private String formatTagIngredientSummary(RecipeIngredient.Tag tagIngredient, Player player) {
-        List<ItemStack> options = RecipeIngredientIcons.resolveTagIngredientOptions(tagIngredient);
-        if (options.isEmpty()) {
-            return noMatchingItemsText(player);
-        }
-
-        List<String> labels = new ArrayList<>();
-        int previewCount = Math.min(options.size(), 4);
-        for (int i = 0; i < previewCount; i++) {
-            labels.add(getItemDisplayName(options.get(i), player));
-        }
-        return summarizeLabels(labels, options.size() - previewCount);
-    }
-
-    private String noMatchingItemsText(Player player) {
-        return I18n.get("gui.recipe.no_matching_items", player);
     }
 
     private String unknownRecipeText(Player player) {
@@ -2021,61 +1916,6 @@ public class RecipeViewGui implements InventoryHolder {
         }
         if (recipe.getIngredients().size() > entity.getLayout().inputSlots().length) {
             return false;
-        }
-        return true;
-    }
-
-    private void returnLeftoverToPlayer(Player player, ItemStack leftover) {
-        if (leftover == null || leftover.getType().isAir()) {
-            return;
-        }
-        Map<Integer, ItemStack> returned = player.getInventory().addItem(leftover);
-        for (ItemStack item : returned.values()) {
-            player.getWorld().dropItemNaturally(player.getLocation(), item);
-        }
-    }
-
-    private boolean canFitItemsInInventory(Player player, List<ItemStack> items) {
-        if (items == null || items.isEmpty()) {
-            return true;
-        }
-        ItemStack[] simulated = player.getInventory().getStorageContents();
-        for (int i = 0; i < simulated.length; i++) {
-            simulated[i] = simulated[i] == null ? null : simulated[i].clone();
-        }
-        for (ItemStack item : items) {
-            if (item == null || item.getType().isAir()) {
-                continue;
-            }
-            ItemStack remaining = item.clone();
-            for (ItemStack slotItem : simulated) {
-                if (remaining.getAmount() <= 0) {
-                    break;
-                }
-                if (slotItem == null || slotItem.getType().isAir() || !slotItem.isSimilar(remaining)) {
-                    continue;
-                }
-                int space = slotItem.getMaxStackSize() - slotItem.getAmount();
-                if (space <= 0) {
-                    continue;
-                }
-                int moved = Math.min(space, remaining.getAmount());
-                slotItem.setAmount(slotItem.getAmount() + moved);
-                remaining.setAmount(remaining.getAmount() - moved);
-            }
-            for (int i = 0; i < simulated.length && remaining.getAmount() > 0; i++) {
-                ItemStack slotItem = simulated[i];
-                if (slotItem != null && !slotItem.getType().isAir()) {
-                    continue;
-                }
-                ItemStack placed = remaining.clone();
-                placed.setAmount(Math.min(remaining.getAmount(), placed.getMaxStackSize()));
-                simulated[i] = placed;
-                remaining.setAmount(remaining.getAmount() - placed.getAmount());
-            }
-            if (remaining.getAmount() > 0) {
-                return false;
-            }
         }
         return true;
     }

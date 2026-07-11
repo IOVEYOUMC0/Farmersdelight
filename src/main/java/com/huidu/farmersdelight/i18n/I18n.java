@@ -251,10 +251,6 @@ public class I18n {
         return FALLBACK_LOCALE;
     }
 
-    private static String normalizeLocale(String locale) {
-        return normalizeLocale(locale, true);
-    }
-
     private static String normalizeLocale(String locale, boolean warn) {
         if (locale == null || locale.isBlank()) {
             return null;

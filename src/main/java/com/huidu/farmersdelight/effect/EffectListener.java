@@ -84,10 +84,6 @@ public class EffectListener implements Listener {
         });
     }
 
-    public static void trackPlayer(UUID playerId) {
-        playersWithEffects.add(playerId);
-    }
-
     public static void trackPlayer(Player player) {
         if (player == null) {
             return;
@@ -101,10 +97,6 @@ public class EffectListener implements Listener {
         playersWithEffects.remove(playerId);
         trackedPlayers.remove(playerId);
         scheduledTicks.remove(playerId);
-    }
-
-    public static boolean isTracked(UUID playerId) {
-        return playersWithEffects.contains(playerId);
     }
 
     public void start() {
