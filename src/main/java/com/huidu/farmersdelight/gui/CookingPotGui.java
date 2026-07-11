@@ -644,9 +644,11 @@ public class CookingPotGui implements InventoryHolder {
             return;
         }
 
-        int placedTotal = 0;
-        boolean anyPlaced = false;
         int maxStack = Math.min(oldCursor.getMaxStackSize(), inventory.getMaxStackSize());
+        // The amount vanilla's drag distribution intends to deposit into each writable input slot, computed
+        // from the pre-apply GUI snapshot. Applied to the authoritative entity value below, not written
+        // absolutely, so a concurrent cook-tick consume cannot be clobbered.
+        java.util.Map<Integer, Integer> shares = new java.util.LinkedHashMap<>();
         for (Map.Entry<Integer, ItemStack> entry : event.getNewItems().entrySet()) {
             int rawSlot = entry.getKey();
             if (rawSlot < 0 || rawSlot >= config.getSize() || !isPlayerInputSlot(rawSlot)) {
@@ -661,24 +663,47 @@ public class CookingPotGui implements InventoryHolder {
             if (existingAmount > 0 && !newItem.isSimilar(existing)) {
                 continue; // slot already holds a different item; do not mix
             }
-            int finalAmount = Math.min(newItem.getAmount(), maxStack);
-            int delta = finalAmount - existingAmount;
-            if (delta <= 0) {
-                continue;
+            int share = Math.min(newItem.getAmount(), maxStack) - existingAmount;
+            if (share > 0) {
+                shares.put(rawSlot, share);
             }
-            ItemStack placed = oldCursor.clone();
-            placed.setAmount(finalAmount);
-            writeWritableSlot(rawSlot, placed);
-            placedTotal += delta;
-            anyPlaced = true;
         }
 
-        if (!anyPlaced) {
+        if (shares.isEmpty()) {
             return; // no applicable input slots; cursor unchanged (event already cancelled)
         }
 
+        // Add each share on top of the CURRENT entity contents under the block entity's inventory lock (adopting
+        // the authoritative state first), so a cook tick that consumes ingredients under the same lock cannot
+        // interleave and be overwritten by the pre-drag GUI amount — the same Folia cross-region dupe as the
+        // click paths.
+        int[] placedTotal = {0};
+        blockEntity.withInventoryLock(() -> {
+            refreshInputSlotsFromBlockEntity();
+            for (Map.Entry<Integer, Integer> e : shares.entrySet()) {
+                int rawSlot = e.getKey();
+                int share = e.getValue();
+                ItemStack existing = inventory.getItem(rawSlot);
+                int existingAmount = (existing == null || existing.getType().isAir()) ? 0 : existing.getAmount();
+                // The slot may now hold a different item (another viewer / the cook tick); only stack onto a match.
+                if (existingAmount > 0 && !oldCursor.isSimilar(existing)) {
+                    continue;
+                }
+                int place = Math.min(existingAmount + share, maxStack);
+                int actual = place - existingAmount;
+                if (actual <= 0) {
+                    continue;
+                }
+                ItemStack placed = oldCursor.clone();
+                placed.setAmount(place);
+                writeWritableSlot(rawSlot, placed);
+                placedTotal[0] += actual;
+            }
+            syncToBlockEntity();
+        });
+
         // Cursor remainder = original cursor amount - total actually placed; shares not applied to read-only slots/inventory stay on the cursor.
-        int remaining = oldCursor.getAmount() - placedTotal;
+        int remaining = oldCursor.getAmount() - placedTotal[0];
         if (remaining > 0) {
             ItemStack leftover = oldCursor.clone();
             leftover.setAmount(remaining);
@@ -687,7 +712,6 @@ public class CookingPotGui implements InventoryHolder {
             player.setItemOnCursor(null);
         }
 
-        syncToBlockEntity();
         updateDisplayItems();
     }
 
