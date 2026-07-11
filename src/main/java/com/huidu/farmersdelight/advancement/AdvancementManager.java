@@ -89,7 +89,8 @@ public class AdvancementManager {
 
     private void buildTree() {
         RootAdvancement root = new RootAdvancement(tab, "root",
-                display("root", icon("farmersdelight:cooking_pot", Material.BRICKS), AdvancementFrameType.TASK, 0, 0), ROOT_BACKGROUND);
+                // Root shows no toast and makes no chat broadcast, matching the original mod's root advancement.
+                display("root", icon("farmersdelight:cooking_pot", Material.BRICKS), AdvancementFrameType.TASK, 0, 0, false, false), ROOT_BACKGROUND);
 
         BaseAdvancement craftKnife = base("craft_knife", icon("farmersdelight:flint_knife", Material.WOODEN_SWORD), AdvancementFrameType.TASK, root, 1, 0);
         BaseAdvancement placeCampfire = base("place_campfire", icon(null, Material.CAMPFIRE), AdvancementFrameType.TASK, root, 1, 3);
@@ -159,9 +160,14 @@ public class AdvancementManager {
     }
 
     private LocalizedAdvancementDisplay display(String key, ItemStack icon, AdvancementFrameType frame, float x, float y) {
+        return display(key, icon, frame, x, y, true, true);
+    }
+
+    private LocalizedAdvancementDisplay display(String key, ItemStack icon, AdvancementFrameType frame, float x, float y,
+                                                boolean showToast, boolean announceChat) {
         // The patched UltimateAdvancementAPI uses this display to render the toast + chat message per client.
         return new LocalizedAdvancementDisplay(icon, KEY_PREFIX + key, KEY_PREFIX + key + ".desc",
-                frame, true, true, x, y);
+                frame, showToast, announceChat, x, y);
     }
 
     private BaseAdvancement base(String key, ItemStack icon, AdvancementFrameType frame, Advancement parent, float x, float y) {

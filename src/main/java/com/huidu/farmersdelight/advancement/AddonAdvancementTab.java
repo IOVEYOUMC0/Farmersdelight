@@ -154,8 +154,11 @@ public final class AddonAdvancementTab {
         ItemStack icon = def.icon() != null && !def.icon().getType().isAir()
                 ? def.icon()
                 : new ItemStack(org.bukkit.Material.BOOK);
+        // The tab root shows no toast and makes no chat broadcast, matching the original mod's root
+        // advancement (announce_to_chat / show_toast both false); other advancements announce as usual.
+        boolean announce = !def.isRoot();
         return new LocalizedAdvancementDisplay(icon, def.title(), def.description(),
-                frameOf(def.frame()), true, true, def.x(), def.y());
+                frameOf(def.frame()), announce, announce, def.x(), def.y());
     }
 
     private static AdvancementFrameType frameOf(String frame) {
