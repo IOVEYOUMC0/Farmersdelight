@@ -573,6 +573,10 @@ public class TickManager {
         
         if (!CookingPotBlockBehavior.hasCookingPotBehavior(world, posKey)) {
             unregisterCookingPotBlock(activeBlock, world, posKey);
+            // The block is no longer a cooking pot (replaced by a different block that bypassed the CE break
+            // callbacks); retire its floating progress display + recipe-name cache instead of leaving them to
+            // linger until the periodic sweep.
+            CookingPotBlockBehavior.removeProgressDisplay(world, posKey);
             return;
         }
         
@@ -649,6 +653,11 @@ public class TickManager {
                 progressDisplayLastUpdateTicks.remove(activeBlock);
                 CookingPotBlockBehavior.removeProgressDisplay(world, posKey);
             } else if (shouldUpdateCookingPotProgressDisplay(activeBlock)) {
+                // Populate the recipe-name cache the progress display reads, but only when the
+                // show-recipe-name option is enabled so it stays empty (and allocation-free) otherwise.
+                if (plugin.isShowRecipeNameInProgressDisplay()) {
+                    CookingPotBlockBehavior.setCookingRecipeItem(world, posKey, recipe.getResult());
+                }
                 CookingPotBlockBehavior.updateProgressDisplay(world, posKey, entity.getProgressPercent());
             }
         } else {
@@ -908,7 +917,7 @@ public class TickManager {
     private static final int SOUND_RESOLUTION_CACHE_MAX = 512;
 
     private ResolvedSound resolveSound(String configured, Sound defaultSound) {
-        String cacheKey = (configured == null ? "" : configured) + ' ' + defaultSound;
+        String cacheKey = (configured == null ? "" : configured) + ' ' + defaultSound;
         ResolvedSound cached = SOUND_RESOLUTION_CACHE.get(cacheKey);
         if (cached != null) {
             return cached;
