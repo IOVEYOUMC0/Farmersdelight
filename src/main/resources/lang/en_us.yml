@@ -30,10 +30,8 @@ gui:
   recipe:
     title: "&8Recipe Viewer"
     cooking_pot: "&6Cooking Pot Recipes"
-    cooking_pot_title: "&8Cooking Pot Recipes"
     cooking_pot_lore: "&7Click to view cooking pot recipes"
     cutting_board: "&eCutting Board Recipes"
-    cutting_board_title: "&8Cutting Board Recipes"
     cutting_board_lore: "&7Click to view cutting board recipes"
     close: "&cClose"
     back: "&7Back"
@@ -71,14 +69,12 @@ gui:
     unknown: "Unknown"
   cooking_pot:
     pending_container_hint: "&7Container: &f{container}"
-    pending_container_hint_prefix: "&7Container: &f"
     servings: "&7{count} servings"
   editor:
     usage: "&e/fd recipe edit <pot|board> <id> [customGroup]"
     feedback:
       invalid_id: "&cRecipe id must use only lowercase letters, digits and underscores."
       not_configured: "&cThe recipe editor GUI is not configured in gui.yml."
-      board_coming: "&eThe cutting-board editor is coming in a follow-up phase."
       advanced_coming: "&eAdvanced ingredient editing (tag / choice / exclusions) is coming in a follow-up phase."
       no_ingredients: "&cThe recipe needs at least one ingredient."
       no_input: "&cThe recipe needs an input item."
@@ -144,10 +140,7 @@ console:
     datapack_reload_failed: "Failed to reload data packs to {reason}"
     datapack_reason_remove_disabled_advancements: "remove disabled FarmersDelight advancements"
     datapack_reason_remove_legacy_advancements: "remove the legacy FarmersDelight advancement datapack (now handled by UltimateAdvancementAPI)"
-    datapack_reason_apply_advancement_config: "apply FarmersDelight advancement config changes"
-    datapack_reason_apply_advancements: "apply FarmersDelight advancements"
     datapack_reason_apply_advancement_changes: "apply FarmersDelight advancement changes"
-    datapack_reason_world_sync: "sync FarmersDelight advancements for world {world}"
     craftengine_reload: "CraftEngine reload detected, refreshing FarmersDelight CE caches and recipes..."
     warmup_done: "Warmed {items} CraftEngine item(s) and primed GUI/behavior caches in {ms}ms."
     warmup_failed: "Cache warmup failed; the first interaction may briefly lag."
@@ -157,7 +150,6 @@ console:
     language_files_reloaded: "Language files reloaded."
     recipe_files_reloaded: "Recipe files reloaded."
     advancement_data_reloaded: "Advancement data reloaded."
-    config_unreadable_restored: "Detected an unreadable {file}; backed up the original as {file}.<timestamp>.bak and restored the bundled UTF-8 default."
     config_prepare_failed: "Failed to prepare configuration files: {error}"
     gui_missing_defaults: "gui.yml is missing, using bundled defaults in memory until reload writes it back."
     gui_load_failed: "Failed to load gui.yml: {error}"
@@ -183,7 +175,6 @@ console:
     papi_bridge_failed: "PlaceholderAPI bridge failed to register: {error}"
     config_restored_unreadable: "Restored unreadable config file from bundled defaults: {file}"
     config_prepare_failed: "Failed to prepare bundled config files: {error}"
-    rug_migrate_place_failed: "rug-migrate: failed to place new rug block at {anchor}: {error}"
     config_key_migrated: "Migrated config key '{old}' to '{new}'."
     loot_datapack_disabled: "Loot-injection datapack install disabled in config; skipping."
     loot_datapack_written: "Wrote {count} datapack file(s) to {dir}"
@@ -259,7 +250,6 @@ console:
     missing_furniture: "Cannot find tray furniture: {id}"
     placed: "Auto-placed tray at {location} for cooking pot at {pot}"
     place_failed: "Failed to place tray furniture: {error}"
-    cleanup_invalid_failed: "Failed to cleanup invalid auto tray at {pos}: {error}"
     removed: "Removed auto-placed tray at {pos} reason={reason}"
     remove_failed: "Failed to remove tray furniture: {error}"
     duplicates_cleaned: "Cleaned duplicate auto trays at {pos} reason={reason}"
@@ -334,7 +324,6 @@ command:
   buff_not_grantable: "<red>Buff '<white>{buff}</white>' cannot be granted by command."
   buff_player_not_found: "<red>Player '<white>{player}</white>' is not online."
   cleanup_done: "<dark_gray>» </dark_gray><gradient:gold:yellow><b>FarmersDelight</b></gradient> <gray>•</gray> <white>Cleanup complete <gray>—</gray> <white>{count}</white> <gray>display entity(ies) cleared:</gray> <white>{displays}</white> <gray>proxy display(s),</gray> <white>{trays}</white> <gray>auto-tray(s),</gray> <white>{addon}</white> <gray>addon entity(ies)</gray></white>"
-  rug_migrate_done: "<dark_gray>» </dark_gray><gradient:gold:yellow><b>FarmersDelight</b></gradient> <gray>•</gray> <white>Rug migration complete <gray>({count} furniture replaced)</gray></white>"
 item:
   farmersdelight:
     raw_pasta: "Raw Pasta"
