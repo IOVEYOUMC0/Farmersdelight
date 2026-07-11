@@ -10,14 +10,14 @@ import org.bukkit.plugin.Plugin;
 /**
  * Per-player buff bossbar display API. Addons (or FD itself) push the live state of an active buff
  * — title, progress 0..1, color, overlay — keyed by a stable NamespacedKey. FD renders all
- * pushed bars per the user-configured layout (stacked, rotating, etc.); the addon doesn't choose
- * the layout, the server admin does.
+ * pushed buffs on the admin-configured display channels (boss bar / action bar / tab footer) and
+ * boss-bar layout; the addon doesn't choose the channel or layout, the server admin does.
  *
  * <p>Idempotent: calling update repeatedly for the same (player, key) mutates the
  * existing bossbar; pass a fresh title/progress to refresh. Call hide when the buff ends.
  * Player quit and FD disable both flush all bars; addons don't have to clean up on quit.
  *
- * <p>Layout / master toggle live in FD's config.yml under bossbar:. Per-buff
+ * <p>Channels / layout / master toggle live in FD's config.yml under bossbar:. Per-buff
  * enabled flags (e.g. "hide tipsy bar but show raging") are the addon's concern, not FD's.
  */
 public final class BuffBossbar {
