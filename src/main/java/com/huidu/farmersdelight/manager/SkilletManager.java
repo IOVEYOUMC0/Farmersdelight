@@ -89,7 +89,9 @@ public class SkilletManager {
     // fixed tick residue, so a Bukkit.getCurrentTick()-derived stagger would never rotate — it would
     // permanently silence 3/4 of chunks — so only the hard budget cap is used here.
     private int chunkEffectBudgetLimit = 50;
-    private final Map<Long, AtomicInteger> chunkEffectBudget = new ConcurrentHashMap<>();
+    // Keyed by world UID (like StoveManager.chunkFx) so two worlds' chunks sharing a chunkKey don't collide on
+    // one budget entry. The outer map is cleared wholesale once per Bukkit tick across the whole tick pass.
+    private final Map<java.util.UUID, Map<Long, AtomicInteger>> chunkEffectBudget = new ConcurrentHashMap<>();
     // volatile: Folia ticks skillets in different regions concurrently, so this per-tick budget-reset guard is
     // read/written across region threads (matches StoveManager and TickManager). Without it a stale read lets a
     // second region clear the per-chunk budget map again mid-tick, wiping another chunk's accumulated cap.
@@ -1018,7 +1020,8 @@ public class SkilletManager {
         }
         AtomicInteger chunkBudget = nearbyViewers.isEmpty()
                 ? null
-                : chunkEffectBudget.computeIfAbsent(chunkKey, k -> new AtomicInteger());
+                : chunkEffectBudget.computeIfAbsent(world.getUID(), w -> new ConcurrentHashMap<>())
+                        .computeIfAbsent(chunkKey, k -> new AtomicInteger());
         boolean canSpawnEffects = chunkBudget != null && chunkBudget.get() < chunkEffectBudgetLimit;
         if (canSpawnEffects && smokeEnabled && random.nextDouble() < smokeChance) {
             spawnCookingParticles(nearbyViewers, location);

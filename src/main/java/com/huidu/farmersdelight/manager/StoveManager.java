@@ -555,6 +555,11 @@ public class StoveManager {
     private StoveData putStove(Location location, StoveData stove) {
         Location normalized = ManagerSupport.normalize(location);
         StoveData previous = stoves.put(normalized, stove);
+        if (previous != null && previous != stove) {
+            // Overwriting a still-tracked stove (double chunk-load / reload re-scan): destroy the old stove's
+            // item displays so they don't orphan (the incoming stove already created its own visuals).
+            cleanupAllVisuals(previous);
+        }
         indexStove(normalized);
         markTickLocationsDirty();
         return previous;
