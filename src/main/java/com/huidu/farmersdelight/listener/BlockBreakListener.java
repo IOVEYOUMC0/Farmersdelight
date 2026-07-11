@@ -80,7 +80,7 @@ public class BlockBreakListener implements Listener {
     public void onBlockExplode(BlockExplodeEvent event) {
         for (var block : event.blockList()) {
             syncTraysAroundSupportChange(block);
-            cleanupBlockAt(block, false);
+            cleanupExplodedBlockAt(block);
         }
     }
 
@@ -88,7 +88,7 @@ public class BlockBreakListener implements Listener {
     public void onEntityExplode(EntityExplodeEvent event) {
         for (var block : event.blockList()) {
             syncTraysAroundSupportChange(block);
-            cleanupBlockAt(block, false);
+            cleanupExplodedBlockAt(block);
         }
     }
 
@@ -103,8 +103,10 @@ public class BlockBreakListener implements Listener {
         plugin.getTrayManager().syncAroundSupportChange(block.getLocation());
     }
 
-    private void cleanupBlockAt(org.bukkit.block.Block block, boolean preserveCookingPotContents) {
-        cleanupBlockAt(block, preserveCookingPotContents, true);
+    /** Cleanup for a block destroyed by an explosion: contents drop, but a base item that the block's own loot
+     * table also drops (the cooking pot) is left to that loot table to avoid dropping it twice. */
+    private void cleanupExplodedBlockAt(org.bukkit.block.Block block) {
+        cleanupBlockAt(block, CustomBlockUtils.getState(block), false, true, true);
     }
 
     private void cleanupBlockAt(org.bukkit.block.Block block, boolean preserveCookingPotContents, boolean shouldDropItems) {
@@ -112,13 +114,17 @@ public class BlockBreakListener implements Listener {
     }
 
     private void cleanupBlockAt(org.bukkit.block.Block block, ImmutableBlockState state, boolean preserveCookingPotContents, boolean shouldDropItems) {
+        cleanupBlockAt(block, state, preserveCookingPotContents, shouldDropItems, false);
+    }
+
+    private void cleanupBlockAt(org.bukkit.block.Block block, ImmutableBlockState state, boolean preserveCookingPotContents, boolean shouldDropItems, boolean explosion) {
         World world = block.getWorld();
         Location blockLocation = block.getLocation();
         Location dropLocation = blockLocation.clone().add(0.5, 0.5, 0.5);
         BlockPos pos = new BlockPos(block.getX(), block.getY(), block.getZ());
 
         if (isCookingPotBlock(state)) {
-            cleanupCookingPot(pos, world, dropLocation, state, preserveCookingPotContents, shouldDropItems);
+            cleanupCookingPot(pos, world, dropLocation, state, preserveCookingPotContents, shouldDropItems, explosion);
         } else if (CookingPotBlockBehavior.getBlockEntity(world, pos) != null) {
             CookingPotBlockBehavior.removeBlockEntity(world, pos);
         }
@@ -130,7 +136,7 @@ public class BlockBreakListener implements Listener {
         }
     }
 
-    private void cleanupCookingPot(BlockPos pos, World world, Location dropLocation, ImmutableBlockState state, boolean preserveContents, boolean shouldDropItems) {
+    private void cleanupCookingPot(BlockPos pos, World world, Location dropLocation, ImmutableBlockState state, boolean preserveContents, boolean shouldDropItems, boolean explosion) {
         // Force-close any open viewers of this pot BEFORE dropping/removing. This runs inside the
         // CustomBlockBreakEvent (and explosion) path, which removes the block entity below; the removal-lifecycle
         // close (CookingPotBlockBehavior.handleStateRemoval) would then early-return on the now-null entity and
@@ -142,7 +148,9 @@ public class BlockBreakListener implements Listener {
         }
         CookingPotBlockEntity entity = CookingPotBlockBehavior.getBlockEntity(world, pos);
         if (entity == null) {
-            if (shouldDropItems) {
+            // On explosion the block's own loot table drops the pot item (like vanilla / the keg); only the
+            // player-break path (where that loot is suppressed via setDropItems(false)) drops it manually.
+            if (shouldDropItems && !explosion) {
                 dropCookingPotBaseItem(world, dropLocation, state, null);
             }
             CookingPotBlockBehavior.removeBlockEntity(world, pos);
@@ -150,7 +158,13 @@ public class BlockBreakListener implements Listener {
         }
 
         if (shouldDropItems) {
-            if (preserveContents) {
+            if (explosion) {
+                // The loot table drops the pot item on explosion (probabilistically, matching vanilla and the
+                // keg); dropping it manually too would duplicate it. Only the contents — which are not in the
+                // loot table — are spilled here. Packing contents into the item is not possible without
+                // suppressing that loot, so an exploded pot drops its contents loose.
+                dropCookingPotContents(world, dropLocation, entity);
+            } else if (preserveContents) {
                 dropCookingPotBaseItem(world, dropLocation, state, entity);
             } else {
                 dropCookingPotBaseItem(world, dropLocation);
