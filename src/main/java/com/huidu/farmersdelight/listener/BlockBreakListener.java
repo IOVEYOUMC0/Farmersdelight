@@ -215,7 +215,7 @@ public class BlockBreakListener implements Listener {
         }
         customData.put(behavior.getCustomDataKey(), packedData);
         wrapped.setSparrowTagComponent(DataComponentKeys.CUSTOM_DATA, customData);
-        if (meal != null && !meal.getType().isAir()) {
+        if (hasMeal) {
             // max_damage = 64, damage = 64 - servings (clamped >=1 so a full meal still shows a near-full bar;
             // vanilla hides the bar at damage 0). Bar width then scales with the meal count.
             int servings = Math.max(1, Math.min(64, meal.getAmount()));
