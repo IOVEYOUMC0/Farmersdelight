@@ -27,10 +27,12 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockBurnEvent;
+import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.event.block.BlockPhysicsEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.ItemSpawnEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
 import org.bukkit.event.world.WorldUnloadEvent;
@@ -272,6 +274,26 @@ public final class RugListener implements Listener {
         Set<BukkitFurniture> affected = collectAffectedRugs(event.getBlocks());
         if (affected.isEmpty()) return;
         event.setCancelled(true);
+        breakAffectedRugs(affected);
+    }
+
+    // Explosions destroy the low-blast-resistance underlying block directly: no BlockBreakEvent fires, and the
+    // furniture visual is blast-immune, so without this the rug would be left floating with no collision. The
+    // underlying block's own drop is only handled by onUnderlyingDropFromPhysics when the blast happens to roll a
+    // drop; this covers the common no-drop case. breakAffectedRugs defers removeRug to next tick, so the rug stays
+    // valid through the blast and onUnderlyingDropFromPhysics still suppresses the underlying block's item in the
+    // drop-rolled case (the deferred removeRug then no-ops on the already-removed rug).
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onUnderlyingBlockExplode(BlockExplodeEvent event) {
+        Set<BukkitFurniture> affected = collectAffectedRugs(event.blockList());
+        if (affected.isEmpty()) return;
+        breakAffectedRugs(affected);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onUnderlyingEntityExplode(EntityExplodeEvent event) {
+        Set<BukkitFurniture> affected = collectAffectedRugs(event.blockList());
+        if (affected.isEmpty()) return;
         breakAffectedRugs(affected);
     }
 

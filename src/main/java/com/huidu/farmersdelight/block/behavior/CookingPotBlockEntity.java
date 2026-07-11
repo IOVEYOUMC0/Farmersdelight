@@ -95,6 +95,15 @@ public class CookingPotBlockEntity {
         return inventoryLock;
     }
 
+    /** Runs action while holding the inventory lock, so a caller can make a compound read-modify-write
+     * (e.g. the GUI's authoritative-state refresh then write-back) atomic against the cook tick, which consumes
+     * ingredients under this same lock. Re-entrant: the block entity's own locked accessors nest safely. */
+    public void withInventoryLock(Runnable action) {
+        synchronized (inventoryLock) {
+            action.run();
+        }
+    }
+
     public void applyBehavior(CookingPotBlockBehavior behavior) {
         if (behavior == null) {
             return;

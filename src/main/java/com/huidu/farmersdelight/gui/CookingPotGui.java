@@ -592,12 +592,17 @@ public class CookingPotGui implements InventoryHolder {
             event.setCancelled(true);
             ItemStack current = event.getCurrentItem();
             if (current != null && !current.getType().isAir()) {
-                // Adopt authoritative state first so the deposit stacks onto the real slot contents, not a
-                // stale phantom from another viewer.
-                refreshInputSlotsFromBlockEntity();
-                smartMoveFromPlayerInventory(current);
-                event.setCurrentItem(current.getAmount() > 0 ? current : null);
-                syncToBlockEntity();
+                // Adopt authoritative state first so the deposit stacks onto the real slot contents, not a stale
+                // phantom from another viewer. Hold the block entity's inventory lock across the whole
+                // read-modify-write so a concurrent cook tick (which consumes ingredients under the same lock)
+                // cannot land between the refresh and the write-back and be clobbered by the pre-cook GUI value
+                // — a Folia cross-region ingredient dupe.
+                blockEntity.withInventoryLock(() -> {
+                    refreshInputSlotsFromBlockEntity();
+                    smartMoveFromPlayerInventory(current);
+                    event.setCurrentItem(current.getAmount() > 0 ? current : null);
+                    syncToBlockEntity();
+                });
                 updateDisplayItems();
             }
             return;
@@ -692,6 +697,13 @@ public class CookingPotGui implements InventoryHolder {
         if (rawSlot < 0 || rawSlot >= config.getSize() || !isPlayerInputSlot(rawSlot)) {
             return;
         }
+        // Hold the block entity's inventory lock across the whole read-modify-write (refresh + mutate + sync) so
+        // a concurrent cook tick (which consumes ingredients under the same lock) cannot interleave between the
+        // authoritative-state refresh and the write-back and get clobbered — a Folia cross-region dupe.
+        blockEntity.withInventoryLock(() -> handleTopInventoryInteractionLocked(event, player, rawSlot));
+    }
+
+    private void handleTopInventoryInteractionLocked(InventoryClickEvent event, Player player, int rawSlot) {
         // Adopt the authoritative entity state for the mapped slots before acting, so a second viewer can't
         // take a phantom item that another viewer (or the cook tick) already removed in the ~1-tick window
         // before the periodic refresh would have corrected this GUI.

@@ -90,7 +90,10 @@ public class SkilletManager {
     // permanently silence 3/4 of chunks — so only the hard budget cap is used here.
     private int chunkEffectBudgetLimit = 50;
     private final Map<Long, AtomicInteger> chunkEffectBudget = new ConcurrentHashMap<>();
-    private long effectBudgetResetTick = -1L;
+    // volatile: Folia ticks skillets in different regions concurrently, so this per-tick budget-reset guard is
+    // read/written across region threads (matches StoveManager and TickManager). Without it a stale read lets a
+    // second region clear the per-chunk budget map again mid-tick, wiping another chunk's accumulated cap.
+    private volatile long effectBudgetResetTick = -1L;
     // Reusable per-thread recipient list for targeted particle/sound sends (per-thread for Folia's
     // concurrent per-region skillet ticks; refilled per skillet and consumed synchronously).
     private static final ThreadLocal<List<Player>> NEARBY_VIEWER_SCRATCH = ThreadLocal.withInitial(ArrayList::new);
