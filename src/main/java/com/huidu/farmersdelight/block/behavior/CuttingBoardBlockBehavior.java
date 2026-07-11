@@ -182,7 +182,12 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         Map<BlockPosKey, CuttingBoardBlockEntity> worldEntities = worldBlockEntities.computeIfAbsent(
                 world.getUID(), k -> new ConcurrentHashMap<>());
         entity.setWorld(world);
-        worldEntities.put(posKey, entity);
+        CuttingBoardBlockEntity previous = worldEntities.put(posKey, entity);
+        if (previous != null && previous != entity) {
+            // Overwriting a still-tracked board entity (double load / reload): remove the old one's display
+            // entity so it doesn't orphan.
+            previous.removeDisplayEntity();
+        }
         // put always writes to the authoritative map, so update the index unconditionally.
         indexAdd(world.getUID(), posKey);
         return entity;

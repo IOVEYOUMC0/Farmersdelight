@@ -94,7 +94,12 @@ public final class BuffBossbarManager implements Listener {
         for (Map.Entry<UUID, PlayerBars> entry : players.entrySet()) {
             Player p = Bukkit.getPlayer(entry.getKey());
             if (p != null) {
-                syncVisibility(p, entry.getValue());
+                PlayerBars state = entry.getValue();
+                // Every other syncVisibility caller holds the per-player state monitor; this reload path must too,
+                // else a concurrent per-tick update() (state.bars.put) races the LinkedHashMap iteration -> CME.
+                synchronized (state) {
+                    syncVisibility(p, state);
+                }
             }
         }
         ensureTickTask();

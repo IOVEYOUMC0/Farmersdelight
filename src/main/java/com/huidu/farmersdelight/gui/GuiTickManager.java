@@ -94,14 +94,14 @@ public class GuiTickManager {
         scheduledCallbacks.clear();
     }
 
-    public void registerCallback(Consumer<Void> callback) {
+    public synchronized void registerCallback(Consumer<Void> callback) {
         globalTickCallbacks.put(callback, Boolean.TRUE);
         if (!running && getActiveCallbackCount() > 0) {
             start();
         }
     }
 
-    public void registerCallback(Player player, Consumer<Void> callback) {
+    public synchronized void registerCallback(Player player, Consumer<Void> callback) {
         if (player == null) {
             registerCallback(callback);
             return;
@@ -112,7 +112,7 @@ public class GuiTickManager {
         }
     }
 
-    public void unregisterCallback(Consumer<Void> callback) {
+    public synchronized void unregisterCallback(Consumer<Void> callback) {
         playerTickCallbacks.remove(callback);
         globalTickCallbacks.remove(callback);
         scheduledCallbacks.remove(callback);

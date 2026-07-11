@@ -104,6 +104,10 @@ public class ChunkLoadListener implements Listener {
         if (trayManager != null) {
             trayManager.cleanupInvalidAutoTraysInChunk(world, chunkX, chunkZ);
         }
+        var handleManager = plugin.getHandleManager();
+        if (handleManager != null) {
+            handleManager.sweepOrphansInChunk(world, chunkX, chunkZ);
+        }
     }
 
     private void loadCraftEngineBlockEntitiesInChunk(World world, int chunkX, int chunkZ) {
