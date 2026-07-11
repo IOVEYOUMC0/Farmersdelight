@@ -669,7 +669,6 @@ public class GuiConfig {
             }
 
             ItemStack item = resolveBaseItem();
-            boolean builtFromCustomItem = (customItemId != null && cachedCustomBaseIsReal != null && cachedCustomBaseIsReal);
 
             org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
             if (meta == null) {
@@ -680,16 +679,16 @@ public class GuiConfig {
             applyItemModel(meta, itemModel);
             applyHideTooltip(meta, hideTooltip);
 
-            if (!builtFromCustomItem && (name != null || nameKey != null)) {
+            // Prefer the configured name/lore; fall back to the base item's own (e.g. a CraftEngine custom
+            // item's built-in name/lore) only when the config omits them. A configured name/lore therefore
+            // overrides the custom item's.
+            if (name != null || nameKey != null) {
                 String processedName = applyPlaceholders(resolveText(name, nameKey), placeholders);
                 meta.displayName(Text.name(processedName));
             }
 
             if ((lore != null && !lore.isEmpty()) || !loreKeys.isEmpty()) {
                 List<net.kyori.adventure.text.Component> processedLore = new ArrayList<>();
-                if (builtFromCustomItem && meta.lore() != null) {
-                    processedLore.addAll(meta.lore());
-                }
                 if (lore != null) {
                     for (String line : lore) {
                         processedLore.add(Text.lore(applyPlaceholders(line, placeholders)));
