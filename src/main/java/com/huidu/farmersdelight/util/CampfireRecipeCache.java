@@ -21,7 +21,6 @@ import java.util.function.Supplier;
 public final class CampfireRecipeCache {
     private final String debugName;
     private final Consumer<Supplier<String>> debug;
-    private final AtomicReference<List<CampfireRecipe>> cache = new AtomicReference<>(List.of());
     // Material bucket: per accepted input material the recipes whose RecipeChoice already accepts it.
     // Per-find() lookup hits this bucket instead of iterating all N campfire recipes (vanilla ~50, +addons).
     // Built once per rebuild() by probing each recipe's RecipeChoice against every Material — O(N×M) at
@@ -73,7 +72,6 @@ public final class CampfireRecipeCache {
                 recipes.add(campfireRecipe);
             }
         }
-        cache.set(List.copyOf(recipes));
         byMaterial.set(buildMaterialBucket(recipes));
         built.set(true);
         debug.accept(() -> "Loaded " + recipes.size() + " cached campfire recipes for " + debugName);

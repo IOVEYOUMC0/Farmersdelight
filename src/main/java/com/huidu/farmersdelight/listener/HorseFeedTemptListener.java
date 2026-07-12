@@ -211,10 +211,6 @@ public class HorseFeedTemptListener implements Listener {
         tickCursor = size == 0 ? 0 : (start + Math.max(1, budget)) % size;
     }
 
-    private boolean isHoldingTemptFood(Player player) {
-        return getHeldTemptFood(player).isPresent();
-    }
-
     private Optional<PetFoodConfig.PetFoodDefinition> getHeldTemptFood(Player player) {
         return getTemptFood(player.getInventory().getItemInMainHand())
                 .or(() -> getTemptFood(player.getInventory().getItemInOffHand()));

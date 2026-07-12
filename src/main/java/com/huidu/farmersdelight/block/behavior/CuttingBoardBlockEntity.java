@@ -116,6 +116,18 @@ public class CuttingBoardBlockEntity {
     }
 
     private void updateDisplayEntity(World world, BlockPosKey posKey, BlockFace facing) {
+        try {
+            updateDisplayEntityInternal(world, posKey, facing);
+        } catch (Throwable t) {
+            // The item is already stored by the time the display is (re)built; a cosmetic display failure must
+            // not propagate into setStoredItem, or the cutting board's place-then-consume flow would leave the
+            // player's hand item unconsumed (a duplication) with no display.
+            FarmersDelightPlugin.getInstance().getLogger().log(java.util.logging.Level.WARNING,
+                    "Cutting board display update failed at " + posKey + " (item still stored)", t);
+        }
+    }
+
+    private void updateDisplayEntityInternal(World world, BlockPosKey posKey, BlockFace facing) {
         if (storedItem == null || world == null) {
             removeDisplayEntity();
             return;

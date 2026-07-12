@@ -35,6 +35,11 @@ dependencies {
     // isTransitive=false skips its compile-only annotations. Its per-plugin providers load only when the
     // matching land plugin is present, so bundling it adds no runtime coupling to absent plugins.
     implementation("net.momirealms:antigrieflib:1.0.11") { isTransitive = false }
+    // bStats metrics (Maven Central). Bundled by shadowJar un-relocated, same as antigrieflib above:
+    // Bukkit plugin classloaders are isolated so org.bstats cannot clash with another plugin's copy, and
+    // relocating triggers shadow 8.1.7's ASM remap bug. bStats' own relocation self-check is disabled at
+    // runtime via System.setProperty("bstats.relocatecheck", "false") before Metrics is constructed.
+    implementation("org.bstats:bstats-bukkit:3.1.0")
     // UltimateAdvancementAPI: separate server plugin; vendored only for offline compile against its API.
     compileOnly(files("libs/UltimateAdvancementAPI-Plugin-2.8.0-folia.jar"))
     testImplementation("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
@@ -187,6 +192,11 @@ fun registerObfuscationTask(
             public void execute(org.bukkit.command.CommandSender, java.lang.String, java.lang.String[]);
             public java.util.List tabComplete(org.bukkit.command.CommandSender, java.lang.String[]);
         }
+    """.trimIndent())
+        // Bundled bStats (un-relocated, stays at org.bstats): keep it intact so ProGuard's repackage +
+        // string adaptation can't break its runtime server-software detection or relocation self-check.
+        keep("""
+        class org.bstats.** { *; }
     """.trimIndent())
         keepattributes("SourceFile,LineNumberTable,RuntimeVisibleAnnotations,RuntimeInvisibleAnnotations,AnnotationDefault,Signature,InnerClasses,EnclosingMethod,Record,PermittedSubclasses,StackMap,StackMapTable")
 

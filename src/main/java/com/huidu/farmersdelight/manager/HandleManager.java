@@ -176,16 +176,34 @@ public final class HandleManager {
 
     // ── internals ───────────────────────────────────────────────────────────────────────────────
 
-    /** Scan every loaded ItemDisplay in the world; for any auto-placed handle whose pot is missing, remove it. */
+    /** Sweep orphaned auto-placed handles per loaded chunk rather than walking the whole-world entity index
+     * (that stalls the main thread in decoration-heavy worlds and crosses regions on Folia — R-PERF-006).
+     * Mirrors TrayManager's per-chunk model. */
     private void sweepOrphans(World world) {
         if (world == null) return;
-        for (ItemDisplay entity : world.getEntitiesByClass(ItemDisplay.class)) {
-            BukkitFurniture furniture = CraftEngineFurniture.getLoadedFurnitureByMetaEntity(entity);
+        for (org.bukkit.Chunk chunk : world.getLoadedChunks()) {
+            sweepOrphansInChunk(world, chunk.getX(), chunk.getZ());
+        }
+    }
+
+    /** Sweeps orphaned handles in one chunk on that chunk's owning region (Folia-safe). Called per loaded chunk
+     * on reload and on chunk load, so a handle whose pot vanished off-thread is cleaned when its chunk is next
+     * present, without a whole-world scan. */
+    public void sweepOrphansInChunk(World world, int chunkX, int chunkZ) {
+        if (world == null) return;
+        plugin.scheduler().runAt(world, chunkX, chunkZ, () -> sweepOrphansInChunkNow(world, chunkX, chunkZ));
+    }
+
+    private void sweepOrphansInChunkNow(World world, int chunkX, int chunkZ) {
+        if (world == null || !world.isChunkLoaded(chunkX, chunkZ)) return;
+        for (Entity entity : world.getChunkAt(chunkX, chunkZ).getEntities()) {
+            if (!(entity instanceof ItemDisplay display)) continue;
+            BukkitFurniture furniture = CraftEngineFurniture.getLoadedFurnitureByMetaEntity(display);
             if (furniture == null) continue;
             if (!furniture.id().equals(handleFurnitureKey)) continue;
             if (!isAutoPlacedHandle(furniture)) continue;
 
-            Location loc = entity.getLocation();
+            Location loc = display.getLocation();
             Block potBlock = world.getBlockAt(loc.getBlockX(), loc.getBlockY(), loc.getBlockZ());
             if (!Constants.BLOCK_COOKING_POT.equals(CustomBlockUtils.getId(potBlock))) {
                 CraftEngineFurniture.remove(furniture, true, true);
