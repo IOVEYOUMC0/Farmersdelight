@@ -1,6 +1,7 @@
 package com.huidu.farmersdelight.registry;
 
 import com.huidu.farmersdelight.block.behavior.*;
+import com.huidu.farmersdelight.effect.FoodBuffFunction;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.item.behavior.ConditionalBlockPlantingItemBehavior;
 import com.huidu.farmersdelight.util.Constants;
@@ -8,6 +9,11 @@ import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviors;
 import net.momirealms.craftengine.core.item.behavior.ItemBehaviorFactory;
 import net.momirealms.craftengine.core.item.behavior.ItemBehaviors;
+import net.momirealms.craftengine.core.plugin.context.CommonConditions;
+import net.momirealms.craftengine.core.plugin.context.CommonFunctions;
+import net.momirealms.craftengine.core.plugin.context.Context;
+import net.momirealms.craftengine.core.plugin.context.function.Function;
+import net.momirealms.craftengine.core.plugin.context.function.FunctionFactory;
 import net.momirealms.craftengine.core.registry.BuiltInRegistries;
 import net.momirealms.craftengine.core.util.Key;
 
@@ -47,6 +53,15 @@ public final class BehaviorRegistrar {
         registerItemBehavior(Constants.ITEM_BEHAVIOR_CONDITIONAL_PLANTING, ConditionalBlockPlantingItemBehavior.FACTORY);
     }
 
+    /** Registers FD's custom CraftEngine event functions so a food item can grant an FD buff directly in
+     *  its own config via {@code events: on: consume: functions: - type: farmersdelight:comfort|nourishment}. */
+    public static void registerFunctions() {
+        registerFunction("farmersdelight:comfort",
+                FoodBuffFunction.factory(FoodBuffFunction.Kind.COMFORT, CommonConditions::fromConfig));
+        registerFunction("farmersdelight:nourishment",
+                FoodBuffFunction.factory(FoodBuffFunction.Kind.NOURISHMENT, CommonConditions::fromConfig));
+    }
+
     private static void registerBehavior(String key, BlockBehaviorFactory<?> factory) {
         Key keyObj = Key.of(key);
         if (BuiltInRegistries.BLOCK_BEHAVIOR_TYPE.getValue(keyObj) == null) {
@@ -58,6 +73,13 @@ public final class BehaviorRegistrar {
         Key keyObj = Key.of(key);
         if (BuiltInRegistries.ITEM_BEHAVIOR_TYPE.getValue(keyObj) == null) {
             ItemBehaviors.register(keyObj, factory);
+        }
+    }
+
+    private static <T extends Function<Context>> void registerFunction(String key, FunctionFactory<Context, T> factory) {
+        Key keyObj = Key.of(key);
+        if (BuiltInRegistries.COMMON_FUNCTION_TYPE.getValue(keyObj) == null) {
+            CommonFunctions.register(keyObj, factory);
         }
     }
 }

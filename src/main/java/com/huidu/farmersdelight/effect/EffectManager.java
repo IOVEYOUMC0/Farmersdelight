@@ -60,6 +60,10 @@ public final class EffectManager {
     // overlapping dose is applied; removed alongside the duration map.
     private static final Map<UUID, Integer> comfortInitial = new ConcurrentHashMap<>();
     private static final Map<UUID, Integer> nourishmentInitial = new ConcurrentHashMap<>();
+    // Effect level (1-based; 1 = baseline / amp 0). Drives the vanilla-style stacking rule and the
+    // "II"/"III" suffix on the display. Absent entry == level 1. Removed alongside the duration map.
+    private static final Map<UUID, Integer> comfortLevels = new ConcurrentHashMap<>();
+    private static final Map<UUID, Integer> nourishmentLevels = new ConcurrentHashMap<>();
 
     public static final NamespacedKey KEY_NOURISHMENT = Objects.requireNonNull(NamespacedKey.fromString("farmersdelight:nourishment"));
     public static final NamespacedKey KEY_COMFORT = Objects.requireNonNull(NamespacedKey.fromString("farmersdelight:comfort"));
@@ -90,19 +94,52 @@ public final class EffectManager {
     }
 
     public static void applyComfort(Player player, int durationSeconds) {
+        applyComfort(player, durationSeconds, 1);
+    }
+
+    /**
+     * Applies the Comfort effect at {@code level} (1-based) for {@code durationSeconds}, using the vanilla
+     * potion stacking rule: a higher level replaces the active effect and refreshes its duration; an equal
+     * level extends to whichever remaining time is longer; a lower level is ignored while a stronger Comfort
+     * is active. (These effects aren't chainable, so a masked weaker dose isn't stored to resume later.)
+     */
+    public static void applyComfort(Player player, int durationSeconds, int level) {
         UUID playerId = player.getUniqueId();
+        int lvl = Math.max(1, level);
         int currentDuration = comfortDurations.getOrDefault(playerId, 0);
-        int newDuration = Math.max(currentDuration, durationSeconds * 20);
-        comfortDurations.put(playerId, newDuration);
-        comfortInitial.merge(playerId, newDuration, Math::max);
+        int currentLevel = currentDuration > 0 ? comfortLevels.getOrDefault(playerId, 1) : 0;
+        int[] result = stack(currentDuration, currentLevel, durationSeconds * 20, lvl);
+        if (result == null) {
+            return; // weaker dose while a stronger effect is active
+        }
+        comfortDurations.put(playerId, result[0]);
+        comfortLevels.put(playerId, result[1]);
+        if (currentDuration <= 0 || lvl > currentLevel) {
+            comfortInitial.put(playerId, result[0]); // fresh / stronger dose resets the progress bar
+        } else {
+            comfortInitial.merge(playerId, result[0], Math::max);
+        }
         if (currentDuration <= 0) {
             player.sendMessage(I18n.getComponent(
                     "effects.comfort.start",
                     player,
-                    durationPlaceholders(newDuration)
+                    durationPlaceholders(result[0])
             ));
         }
         EffectListener.trackPlayer(player);
+    }
+
+    /** Vanilla-style stack of an incoming (durationTicks, level) dose onto the active one. Returns the new
+     *  {@code [durationTicks, level]}, or {@code null} when the incoming dose is weaker than the active one
+     *  (and therefore ignored). */
+    private static int[] stack(int currentDuration, int currentLevel, int incomingTicks, int incomingLevel) {
+        if (currentDuration <= 0 || incomingLevel > currentLevel) {
+            return new int[]{incomingTicks, incomingLevel};
+        }
+        if (incomingLevel == currentLevel) {
+            return new int[]{Math.max(currentDuration, incomingTicks), currentLevel};
+        }
+        return null;
     }
 
     /**
@@ -112,16 +149,34 @@ public final class EffectManager {
      * @param durationSeconds duration in seconds
      */
     public static void applyNourishment(Player player, int durationSeconds) {
+        applyNourishment(player, durationSeconds, 1);
+    }
+
+    /**
+     * Applies or refreshes the nourishment effect at {@code level} (1-based), using the same vanilla stacking
+     * rule as {@link #applyComfort(Player, int, int)}.
+     */
+    public static void applyNourishment(Player player, int durationSeconds, int level) {
         UUID playerId = player.getUniqueId();
+        int lvl = Math.max(1, level);
         int currentDuration = nourishmentDurations.getOrDefault(playerId, 0);
-        int newDuration = Math.max(currentDuration, durationSeconds * 20);
-        nourishmentDurations.put(playerId, newDuration);
-        nourishmentInitial.merge(playerId, newDuration, Math::max);
+        int currentLevel = currentDuration > 0 ? nourishmentLevels.getOrDefault(playerId, 1) : 0;
+        int[] result = stack(currentDuration, currentLevel, durationSeconds * 20, lvl);
+        if (result == null) {
+            return;
+        }
+        nourishmentDurations.put(playerId, result[0]);
+        nourishmentLevels.put(playerId, result[1]);
+        if (currentDuration <= 0 || lvl > currentLevel) {
+            nourishmentInitial.put(playerId, result[0]);
+        } else {
+            nourishmentInitial.merge(playerId, result[0], Math::max);
+        }
         if (currentDuration <= 0) {
             player.sendMessage(I18n.getComponent(
                     "effects.nourishment.start",
                     player,
-                    durationPlaceholders(newDuration)
+                    durationPlaceholders(result[0])
             ));
         }
         EffectListener.trackPlayer(player);
@@ -285,6 +340,8 @@ public final class EffectManager {
             nourishmentDurations.remove(playerId);
             comfortInitial.remove(playerId);
             nourishmentInitial.remove(playerId);
+            comfortLevels.remove(playerId);
+            nourishmentLevels.remove(playerId);
             // Hide both bars — caller is typically PlayerQuit which would also clear via BuffBossbar's
             // own quit listener, but a manual remove() call (e.g. /effect clear) shouldn't leave a bar.
             if (player.isOnline()) {
@@ -299,6 +356,8 @@ public final class EffectManager {
         nourishmentDurations.clear();
         comfortInitial.clear();
         nourishmentInitial.clear();
+        comfortLevels.clear();
+        nourishmentLevels.clear();
     }
 
     // Each buff persists its own slice via the CustomBuff.saveState / restoreState hooks (wired in
