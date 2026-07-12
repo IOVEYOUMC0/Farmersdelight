@@ -713,11 +713,10 @@ public class StoveManager {
         if (world == null) return;
         // The stove is the block directly beneath the entity's feet (feet rest on the stove's top face).
         Block stoveBlock = world.getBlockAt(loc.getBlockX(), (int) Math.floor(loc.getY() - 0.05D), loc.getBlockZ());
-        // Material fast filter: every stove appearance maps to the note_block auto-state, so any other
-        // carrier material cannot be a stove. This kills the CE state lookup and the per-entity Bukkit
-        // calls for ~all polled entities; false positives (real note blocks) fall through to the exact
-        // CE check below.
-        if (stoveBlock.getType() != Material.NOTE_BLOCK) return;
+        // No Material fast-filter here: a CraftEngine custom block's Bukkit getType() is the configurable
+        // deceive-bukkit-material (often bricks), NOT the note_block auto-state, so getType() can neither
+        // identify a stove nor rule one out. The cheap entity gates below (valid / sneaking / gamemode) run
+        // first, then the CE custom-state + StoveCookingBlockBehavior lookup is the authoritative reject.
         if (!entity.isValid() || entity.isDead()) return;
         if (entity instanceof Player player) {
             if (player.isSneaking()) return;
