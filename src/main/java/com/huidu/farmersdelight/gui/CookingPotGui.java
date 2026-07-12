@@ -707,13 +707,19 @@ public class CookingPotGui implements InventoryHolder {
 
         // Cursor remainder = original cursor amount - total actually placed; shares not applied to read-only slots/inventory stay on the cursor.
         int remaining = oldCursor.getAmount() - placedTotal[0];
+        final ItemStack cursorAfter;
         if (remaining > 0) {
             ItemStack leftover = oldCursor.clone();
             leftover.setAmount(remaining);
-            player.setItemOnCursor(leftover);
+            cursorAfter = leftover;
         } else {
-            player.setItemOnCursor(null);
+            cursorAfter = null;
         }
+        // A cancelled InventoryDragEvent has its cursor restored to the pre-drag stack by the server AFTER
+        // this handler returns (unlike a cancelled click, which keeps the handler's cursor). Setting it here
+        // would be clobbered, leaving the whole stack in hand while the shares are already committed to the
+        // pot — a duplication. Apply the reduced cursor next tick, after that restore, on the player's region.
+        player.getScheduler().run(plugin, t -> player.setItemOnCursor(cursorAfter), null);
 
         updateDisplayItems();
     }
