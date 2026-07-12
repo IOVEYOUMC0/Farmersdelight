@@ -314,6 +314,10 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private static final String RELOAD_GUARD_PROPERTY = "farmersdelight.enabled.in.this.jvm";
     private boolean enabledSuccessfully = false;
 
+    // bStats plugin id from https://bstats.org (register the plugin there, then paste its numeric id here).
+    // TODO: replace the placeholder with FarmersDelight's real bStats id before publishing.
+    private static final int BSTATS_PLUGIN_ID = 0;
+
     @Override
     public void onEnable() {
         if (System.getProperty(RELOAD_GUARD_PROPERTY) != null) {
@@ -488,6 +492,19 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                 I18n.logInfo("papi_bridge_registered");
             } catch (Throwable t) {
                 I18n.logWarning("papi_bridge_failed", "error", t.getMessage());
+            }
+        }
+
+        // bStats metrics: anonymous server/plugin stats. Opt out globally via plugins/bStats/config.yml.
+        // bStats is bundled un-relocated (stays at org.bstats); Bukkit plugin classloaders are isolated so
+        // the package cannot clash with another plugin's copy. Disable bStats' relocation self-check, which
+        // would otherwise throw because the package still starts with org.bstats.
+        if (BSTATS_PLUGIN_ID > 0) {
+            try {
+                System.setProperty("bstats.relocatecheck", "false");
+                new org.bstats.bukkit.Metrics(this, BSTATS_PLUGIN_ID);
+            } catch (Throwable t) {
+                getLogger().warning("Failed to start bStats metrics: " + t.getMessage());
             }
         }
 
