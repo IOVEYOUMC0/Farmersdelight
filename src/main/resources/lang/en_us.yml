@@ -150,7 +150,6 @@ console:
     language_files_reloaded: "Language files reloaded."
     recipe_files_reloaded: "Recipe files reloaded."
     advancement_data_reloaded: "Advancement data reloaded."
-    config_prepare_failed: "Failed to prepare configuration files: {error}"
     gui_missing_defaults: "gui.yml is missing, using bundled defaults in memory until reload writes it back."
     gui_load_failed: "Failed to load gui.yml: {error}"
     craftengine_resources_released: "Synchronized bundled CraftEngine farmersdelight resources to {path} ({count} files)."
