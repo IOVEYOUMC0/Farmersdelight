@@ -74,7 +74,7 @@ public class RichSoilFarmlandBlockBehavior extends BlockBehavior {
         // directly above suffocates the farmland, which reverts to rich soil in place rather than dropping.
         // Melons/pumpkins (which grow on farmland) and fence gates / moving pistons are exempt, as in vanilla.
         Block above = world.getBlockAt(pos.x(), pos.y() + 1, pos.z());
-        if (!isSuffocatingCover(above.getType())) return;
+        if (!isSuffocatingCover(above)) return;
 
         BlockDefinition richSoil = CraftEngineBlocks.byId(richSoilBlockId);
         if (richSoil == null) return;
@@ -85,8 +85,18 @@ public class RichSoilFarmlandBlockBehavior extends BlockBehavior {
         }
     }
 
-    private static boolean isSuffocatingCover(Material type) {
-        if (!type.isSolid()) return false;
+    private static boolean isSuffocatingCover(Block above) {
+        // Use Block.isSolid() (the Block instance method), NOT Material.isSolid(). They are different checks:
+        // Block.isSolid() maps to the collision-based BlockState.blocksMotion() the vanilla FarmBlock.canSurvive
+        // tests (a block whose collision shape blocks entity motion). Material.isSolid() / BlockType.isSolid()
+        // is the unrelated "can be built upon" notion, which is true for pass-through plant states — sugar
+        // cane / tripwire / kelp / twisting vines. CraftEngine custom crops are backed by exactly those plant
+        // states, so a Material.isSolid() check reverted the soil on every planting. The collision-based check
+        // is false for all crop backings (they have empty collision) and true only for genuine solid covers,
+        // matching the reference mod where crops are non-solid CropBlocks. Do not switch this to a Material
+        // check.
+        if (!above.isSolid()) return false;
+        Material type = above.getType();
         if (type == Material.MELON || type == Material.PUMPKIN || type == Material.MOVING_PISTON) return false;
         return !type.name().endsWith("_FENCE_GATE");
     }
