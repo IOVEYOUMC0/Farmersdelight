@@ -94,11 +94,6 @@ public final class Text {
         return deserialize(raw);
     }
 
-    /** Forces italics off on an already-built Component, unless it explicitly sets italics. */
-    public static Component noItalic(Component component) {
-        return component.decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
-    }
-
     /** Strips all formatting and returns plain text (for console output and comparisons). */
     public static String plain(String raw) {
         if (raw == null || raw.isEmpty()) {

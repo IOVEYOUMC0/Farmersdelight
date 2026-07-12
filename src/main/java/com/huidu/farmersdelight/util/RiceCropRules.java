@@ -77,26 +77,6 @@ public final class RiceCropRules {
         return false;
     }
 
-    @SuppressWarnings("unlikely-arg-type")
-    public static boolean isSameCropBlock(Block block, Key cropId) {
-        if (block == null || cropId == null) {
-            return false;
-        }
-
-        ImmutableBlockState state = CraftEngineBlocks.getCustomBlockState(block);
-        if (state == null || state.isEmpty()) {
-            return false;
-        }
-
-        try {
-            return state.owner().keyOptional()
-                    .map(cropId::equals)
-                    .orElse(false);
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
     public static Block getWaterSourceBlock(Block plantingBlock, Block blockBelow, Key cropId) {
         if (isSourceWater(plantingBlock)) {
             return plantingBlock;

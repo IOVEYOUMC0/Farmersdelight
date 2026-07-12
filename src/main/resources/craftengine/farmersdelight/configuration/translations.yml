@@ -214,6 +214,7 @@
 
     # Effects
     effect.farmersdelight.nourishment: "Nourishment"
+    effect.farmersdelight.comfort: "Comfort"
 
     # Tooltips
     farmersdelight.tooltip.dog_food.when_feeding: "When fed to a tamed Wolf:"
@@ -447,6 +448,7 @@
 
     # Effects
     effect.farmersdelight.nourishment: "滋养"
+    effect.farmersdelight.comfort: "舒适"
 
     # Tooltips
     farmersdelight.tooltip.dog_food.when_feeding: "喂给已驯服的狗时："
@@ -680,6 +682,7 @@
 
     # Effects
     effect.farmersdelight.nourishment: "배부름"
+    effect.farmersdelight.comfort: "편안함"
 
     # Tooltips
     farmersdelight.tooltip.dog_food.when_feeding: "늑대에게 먹였을 때:"

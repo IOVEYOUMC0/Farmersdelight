@@ -95,6 +95,15 @@ public class CookingPotBlockEntity {
         return inventoryLock;
     }
 
+    /** Runs {@code action} while holding the inventory lock, so a caller can make a compound read-modify-write
+     * (e.g. the GUI's authoritative-state refresh then write-back) atomic against the cook tick, which consumes
+     * ingredients under this same lock. Re-entrant: the block entity's own locked accessors nest safely. */
+    public void withInventoryLock(Runnable action) {
+        synchronized (inventoryLock) {
+            action.run();
+        }
+    }
+
     public void applyBehavior(CookingPotBlockBehavior behavior) {
         if (behavior == null) {
             return;
@@ -383,10 +392,6 @@ public class CookingPotBlockEntity {
         syncWorldlyContainer();
     }
 
-    private ItemStack insertIntoSlots(ItemStack item, int startSlot, int endSlot) {
-        return insertIntoSlots(item, java.util.stream.IntStream.rangeClosed(startSlot, endSlot).toArray());
-    }
-
     private ItemStack insertIntoSlots(ItemStack item, int[] slots) {
         if (item == null || item.getType().isAir()) {
             return null;
@@ -431,37 +436,6 @@ public class CookingPotBlockEntity {
         return pending;
     }
 
-    private ItemStack insertIntoSlot(ItemStack item, int slot) {
-        if (item == null || item.getType().isAir()) {
-            return null;
-        }
-
-        ItemStack existing = inventory[slot];
-        if (existing == null || existing.getType().isAir()) {
-            setSlot(slot, item.clone());
-            slotExperience[slot] = 0.0D;
-            return null;
-        }
-
-        if (!isSimilarIgnoringStoredExperience(existing, item)) {
-            return item.clone();
-        }
-
-        int space = existing.getMaxStackSize() - existing.getAmount();
-        if (space <= 0) {
-            return item.clone();
-        }
-
-        ItemStack pending = item.clone();
-        int moved = Math.min(space, pending.getAmount());
-        existing.setAmount(existing.getAmount() + moved);
-        pending.setAmount(pending.getAmount() - moved);
-        if (pending.getAmount() > 0) {
-            return pending;
-        }
-        return null;
-    }
-    
     private ItemStack getCraftingRemainder(ItemStack item, int amount) {
         String customId = ItemUtils.getCustomItemId(item);
         ContainerReturnConfig config =
@@ -1147,10 +1121,6 @@ public class CookingPotBlockEntity {
             return 0;
         }
         return Math.max(0, existing.getMaxStackSize() - existing.getAmount());
-    }
-
-    private void addItemToSlot(int slot, ItemStack item) {
-        addItemToSlot(slot, item, 0.0D);
     }
 
     private void addItemToSlot(int slot, ItemStack item, double itemStoredExperience) {

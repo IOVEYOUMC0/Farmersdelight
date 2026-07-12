@@ -53,8 +53,13 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
     // This index must be maintained in lockstep with structural writes to worldBlockEntities, otherwise
     // missed entities won't be saved on chunk unload, losing cutting board contents.
     private static final Map<UUID, Map<Long, Set<BlockPosKey>>> chunkIndex = new ConcurrentHashMap<>();
-    private static final Map<UUID, Map<BlockPosKey, Long>> recentManualInsertions = new ConcurrentHashMap<>();
+    // Inner key is world-scoped (WorldPos) so the same player interacting at the identical x,y,z in two
+    // different worlds within the guard window does not have one interaction eaten by the other's guard.
+    private static final Map<UUID, Map<WorldPos, Long>> recentManualInsertions = new ConcurrentHashMap<>();
     private static final long MANUAL_INSERT_GUARD_MILLIS = 250L;
+
+    private record WorldPos(UUID worldId, BlockPosKey pos) {
+    }
 
     private final Property<?> facingProperty;
     private final List<Key> toolTags;
@@ -182,7 +187,12 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         Map<BlockPosKey, CuttingBoardBlockEntity> worldEntities = worldBlockEntities.computeIfAbsent(
                 world.getUID(), k -> new ConcurrentHashMap<>());
         entity.setWorld(world);
-        worldEntities.put(posKey, entity);
+        CuttingBoardBlockEntity previous = worldEntities.put(posKey, entity);
+        if (previous != null && previous != entity) {
+            // Overwriting a still-tracked board entity (double load / reload): remove the old one's display
+            // entity so it doesn't orphan.
+            previous.removeDisplayEntity();
+        }
         // put always writes to the authoritative map, so update the index unconditionally.
         indexAdd(world.getUID(), posKey);
         return entity;
@@ -254,23 +264,23 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
             return;
         }
         long now = System.currentTimeMillis();
-        Map<BlockPosKey, Long> guarded = recentManualInsertions.computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>());
+        Map<WorldPos, Long> guarded = recentManualInsertions.computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>());
         // Drop expired guard entries that were never consumed by a later event, so the map doesn't
         // accumulate stale position data.
         guarded.entrySet().removeIf(entry -> now - entry.getValue() > MANUAL_INSERT_GUARD_MILLIS);
-        guarded.put(posKey, now);
+        guarded.put(new WorldPos(world.getUID(), posKey), now);
     }
 
-    private static boolean consumeManualInsertionGuard(UUID playerId, BlockPosKey posKey) {
-        if (playerId == null || posKey == null) {
+    private static boolean consumeManualInsertionGuard(UUID playerId, World world, BlockPosKey posKey) {
+        if (playerId == null || world == null || posKey == null) {
             return false;
         }
-        Map<BlockPosKey, Long> guardedPositions = recentManualInsertions.get(playerId);
+        Map<WorldPos, Long> guardedPositions = recentManualInsertions.get(playerId);
         if (guardedPositions == null) {
             return false;
         }
 
-        Long timestamp = guardedPositions.remove(posKey);
+        Long timestamp = guardedPositions.remove(new WorldPos(world.getUID(), posKey));
         if (guardedPositions.isEmpty()) {
             recentManualInsertions.remove(playerId);
         }
@@ -444,7 +454,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         Player bukkitPlayer = Bukkit.getPlayer(context.getPlayer().uuid());
         if (bukkitPlayer == null) return InteractionResult.PASS;
 
-        if (consumeManualInsertionGuard(bukkitPlayer.getUniqueId(), posKey)) {
+        if (consumeManualInsertionGuard(bukkitPlayer.getUniqueId(), bukkitPlayer.getWorld(), posKey)) {
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
 

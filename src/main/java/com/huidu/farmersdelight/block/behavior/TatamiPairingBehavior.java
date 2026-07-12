@@ -78,15 +78,11 @@ public class TatamiPairingBehavior extends BlockBehavior {
     };
 
     /**
-     * Sets {@code facing} from the clicked face on placement, mirroring vanilla
-     * {@code TatamiBlock.getStateForPlacement} ({@code facing = clickedFace.opposite}). Without this the
-     * block would keep its default facing and {@link #placeMultiState} would pair in the wrong direction.
-     * Floor placement clicks the ground's up-face → facing=down (a lone flat mat); placing against another
-     * tatami's side gives a horizontal facing, which is what orients the paired even/odd weave.
-     *
-     * <p>Note: sneak-to-suppress-pairing is handled by {@link #placeMultiState}'s player check, but the
-     * placeMultiState player arg is an NMS handle (not a CraftEngine Player), so pairing currently always
-     * happens regardless of sneak — a known minor deviation from vanilla.
+     * Sets facing from the clicked face on placement, mirroring vanilla TatamiBlock.getStateForPlacement
+     * (facing = clickedFace.opposite). Without this the block would keep its default facing and pairing would
+     * go in the wrong direction. Floor placement clicks the ground's up-face, giving facing=down (a lone flat
+     * mat); placing against another tatami's side gives a horizontal facing, orienting the paired even/odd
+     * weave. Sneak-to-suppress-pairing is enforced in placeMultiState.
      */
     @Override
     public ImmutableBlockState updateStateForPlacement(BlockPlaceContext context, ImmutableBlockState state) {
@@ -108,10 +104,9 @@ public class TatamiPairingBehavior extends BlockBehavior {
                 return;
             }
 
-            Player player = args[3] instanceof Player cePlayer ? cePlayer : null;
             Block block = world.getBlockAt(pos.x(), pos.y(), pos.z());
             ImmutableBlockState state = CraftEngineBlocks.getCustomBlockState(block);
-            if (state == null || state.isEmpty() || (player != null && player.isSecondaryUseActive() && !pairWhileSneaking)) {
+            if (state == null || state.isEmpty() || (!pairWhileSneaking && isPlacerSneaking(args[3]))) {
                 return;
             }
 
@@ -120,6 +115,29 @@ public class TatamiPairingBehavior extends BlockBehavior {
                 CraftEngineBlocks.place(block.getLocation(), state.with(pairedProperty, true), false);
             }
         }
+    }
+
+    /**
+     * Whether the placing player is sneaking, so pairing can be suppressed like vanilla TatamiBlock.
+     * CraftEngine passes the placeMultiState player as a native Minecraft ServerPlayer, not a CraftEngine
+     * Player, so bridge it to its Bukkit entity to read the sneak state; a CraftEngine Player is still
+     * honored when one is passed.
+     */
+    private static boolean isPlacerSneaking(Object playerArg) {
+        if (playerArg == null) {
+            return false;
+        }
+        if (playerArg instanceof Player cePlayer) {
+            return cePlayer.isSecondaryUseActive();
+        }
+        try {
+            Object bukkitEntity = playerArg.getClass().getMethod("getBukkitEntity").invoke(playerArg);
+            if (bukkitEntity instanceof org.bukkit.entity.Player bukkitPlayer) {
+                return bukkitPlayer.isSneaking();
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        }
+        return false;
     }
 
     private boolean pairWithNeighbor(World world, BlockPos pos, ImmutableBlockState state) {
@@ -182,7 +200,7 @@ public class TatamiPairingBehavior extends BlockBehavior {
         World world = brokenLocation.getWorld();
         Block centerBlock = world.getBlockAt(brokenLocation);
         for (BlockFace face : ORTHOGONAL_FACES) {
-            refreshTatamiState(centerBlock.getRelative(face));
+            refreshTatamiState(centerBlock.getRelative(face), brokenLocation);
         }
     }
 
@@ -196,7 +214,7 @@ public class TatamiPairingBehavior extends BlockBehavior {
         return firstId.isPresent() && firstId.equals(secondId);
     }
 
-    private static void refreshTatamiState(Block block) {
+    private static void refreshTatamiState(Block block, Location brokenLocation) {
         ImmutableBlockState state = CraftEngineBlocks.getCustomBlockState(block);
         if (!isTatamiState(state)) {
             return;
@@ -209,8 +227,13 @@ public class TatamiPairingBehavior extends BlockBehavior {
 
         BlockFace facing = getFacingFromState(state);
         Block partnerBlock = block.getRelative(facing);
-        ImmutableBlockState partnerState = CraftEngineBlocks.getCustomBlockState(partnerBlock);
-        if (isTatamiState(partnerState)) {
+        // Reset when the facing partner is gone. Match the broken block's position directly instead of only
+        // testing whether the partner still reads as a tatami: CraftEngine may not have cleared the removed
+        // block's custom state by the time this runs, so a plain state check could still see the old tatami
+        // and skip the reset, leaving an orphaned half stuck as paired (and refusing to pair again).
+        boolean partnerGone = isSameBlock(partnerBlock, brokenLocation)
+                || !isTatamiState(CraftEngineBlocks.getCustomBlockState(partnerBlock));
+        if (!partnerGone) {
             return;
         }
 
@@ -221,6 +244,15 @@ public class TatamiPairingBehavior extends BlockBehavior {
 
         ImmutableBlockState unpairedState = state.with(pairedProperty, false);
         CraftEngineBlocks.place(block.getLocation(), unpairedState, false);
+    }
+
+    private static boolean isSameBlock(Block block, Location location) {
+        return location != null
+                && location.getWorld() != null
+                && block.getWorld().equals(location.getWorld())
+                && block.getX() == location.getBlockX()
+                && block.getY() == location.getBlockY()
+                && block.getZ() == location.getBlockZ();
     }
 
     private static boolean isTatamiState(ImmutableBlockState state) {

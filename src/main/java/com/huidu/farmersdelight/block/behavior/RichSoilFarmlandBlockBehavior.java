@@ -9,7 +9,9 @@ import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
 import net.momirealms.craftengine.core.block.property.Property;
+import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.world.BlockPos;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.World;
@@ -38,11 +40,14 @@ public class RichSoilFarmlandBlockBehavior extends BlockBehavior {
 
     private final float boostChance;
     private final Property<Integer> moistureProperty;
+    private final Key richSoilBlockId;
 
-    private RichSoilFarmlandBlockBehavior(BlockDefinition block, float boostChance, Property<Integer> moistureProperty) {
+    private RichSoilFarmlandBlockBehavior(BlockDefinition block, float boostChance, Property<Integer> moistureProperty,
+                                          Key richSoilBlockId) {
         super(block);
         this.boostChance = boostChance;
         this.moistureProperty = moistureProperty;
+        this.richSoilBlockId = richSoilBlockId;
     }
 
     @SuppressWarnings("unchecked")
@@ -53,9 +58,48 @@ public class RichSoilFarmlandBlockBehavior extends BlockBehavior {
             float chance = BehaviorArgParser.getFloat(arguments, "boost-chance", 0.08f);
             String moisturePropertyName = BehaviorArgParser.getString(arguments, "moisture-property", "moisture");
             Property<Integer> moistureProperty = (Property<Integer>) block.getProperty(moisturePropertyName);
-            return new RichSoilFarmlandBlockBehavior(block, chance, moistureProperty);
+            String richSoilId = BehaviorArgParser.getStringStrict(arguments, "rich-soil-block", "farmersdelight:rich_soil");
+            return new RichSoilFarmlandBlockBehavior(block, chance, moistureProperty, Key.of(richSoilId));
         }
     };
+
+    @Override
+    public void neighborChanged(Object thisBlock, Object[] args) {
+        if (args.length < 3) return;
+        World world = CraftEngineAdapter.toWorld(args[1]);
+        BlockPos pos = CraftEngineAdapter.toBlockPos(args[2]);
+        if (world == null || pos == null) return;
+
+        // Mirrors RichSoilFarmlandBlock.canSurvive + turnToRichSoil (1.21 reference): a solid block placed
+        // directly above suffocates the farmland, which reverts to rich soil in place rather than dropping.
+        // Melons/pumpkins (which grow on farmland) and fence gates / moving pistons are exempt, as in vanilla.
+        Block above = world.getBlockAt(pos.x(), pos.y() + 1, pos.z());
+        if (!isSuffocatingCover(above)) return;
+
+        BlockDefinition richSoil = CraftEngineBlocks.byId(richSoilBlockId);
+        if (richSoil == null) return;
+        try {
+            CraftEngineBlocks.place(new Location(world, pos.x() + 0.5, pos.y(), pos.z() + 0.5),
+                    richSoil.defaultState(), true);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static boolean isSuffocatingCover(Block above) {
+        // Use Block.isSolid() (the Block instance method), NOT Material.isSolid(). They are different checks:
+        // Block.isSolid() maps to the collision-based BlockState.blocksMotion() the vanilla FarmBlock.canSurvive
+        // tests (a block whose collision shape blocks entity motion). Material.isSolid() / BlockType.isSolid()
+        // is the unrelated "can be built upon" notion, which is true for pass-through plant states — sugar
+        // cane / tripwire / kelp / twisting vines. CraftEngine custom crops are backed by exactly those plant
+        // states, so a Material.isSolid() check reverted the soil on every planting. The collision-based check
+        // is false for all crop backings (they have empty collision) and true only for genuine solid covers,
+        // matching the reference mod where crops are non-solid CropBlocks. Do not switch this to a Material
+        // check.
+        if (!above.isSolid()) return false;
+        Material type = above.getType();
+        if (type == Material.MELON || type == Material.PUMPKIN || type == Material.MOVING_PISTON) return false;
+        return !type.name().endsWith("_FENCE_GATE");
+    }
 
     @Override
     public void randomTick(Object thisBlock, Object[] args) {
