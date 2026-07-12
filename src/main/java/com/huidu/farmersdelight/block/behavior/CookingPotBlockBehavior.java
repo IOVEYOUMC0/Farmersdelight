@@ -80,7 +80,9 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     // cookingRecipeItems is per-world-keyed (via DisplayStateKey) so two pots at the same x,y,z in
     // different worlds don't share recipe-name state.
     private static final Map<DisplayStateKey, ItemStack> cookingRecipeItems = new ConcurrentHashMap<>();
-    private static final Map<BlockPosKey, Long> recentPlacements = new ConcurrentHashMap<>();
+    // World-scoped (via DisplayStateKey) so a pot placed at some x,y,z does not suppress the first interaction
+    // with a different pot at the identical x,y,z in another world. BlockPosKey omits the world by design.
+    private static final Map<DisplayStateKey, Long> recentPlacements = new ConcurrentHashMap<>();
 
     private static int visibilityCheckIntervalTicks() {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
@@ -445,25 +447,29 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     }
 
     public static void markRecentlyPlaced(Location location) {
-        if (location == null) {
+        if (location == null || location.getWorld() == null) {
             return;
         }
         long now = System.currentTimeMillis();
         // Also evict expired entries here: isRecentlyPlaced() only cleans up on query, so a pot that is placed
         // but never interacted with would otherwise leak its entry until cleanup.
         recentPlacements.entrySet().removeIf(entry -> now - entry.getValue() > placeInteractionCooldownMs());
-        recentPlacements.put(new BlockPosKey(location), now);
+        recentPlacements.put(new DisplayStateKey(location.getWorld().getUID(), new BlockPosKey(location)), now);
     }
 
-    private static boolean isRecentlyPlaced(BlockPosKey posKey) {
-        Long placedAt = recentPlacements.get(posKey);
+    private static boolean isRecentlyPlaced(World world, BlockPosKey posKey) {
+        if (world == null) {
+            return false;
+        }
+        DisplayStateKey key = stateKey(world, posKey);
+        Long placedAt = recentPlacements.get(key);
         if (placedAt == null) {
             return false;
         }
 
         long now = System.currentTimeMillis();
         if (now - placedAt > placeInteractionCooldownMs()) {
-            recentPlacements.remove(posKey, placedAt);
+            recentPlacements.remove(key, placedAt);
             return false;
         }
         return true;
@@ -534,7 +540,9 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         }
         DisplayStateKey stateKey = stateKey(world, posKey);
         if (recipeItem != null && !recipeItem.getType().isAir()) {
-            cookingRecipeItems.put(stateKey, recipeItem);
+            // Clone: the caller passes the recipe's shared result stack; store a private copy so a later
+            // mutation of that stack elsewhere can't corrupt the cached display item.
+            cookingRecipeItems.put(stateKey, recipeItem.clone());
         } else {
             cookingRecipeItems.remove(stateKey);
         }
@@ -767,7 +775,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             return InteractionResult.PASS;
         }
 
-        if (isRecentlyPlaced(posKey)) {
+        if (isRecentlyPlaced(bukkitPlayer.getWorld(), posKey)) {
             return InteractionResult.PASS;
         }
 

@@ -4,7 +4,6 @@ import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
@@ -86,7 +85,7 @@ public class RugConfig {
     }
 
     private void rebuildMaterials() {
-        this.underlyingMaterials = Set.copyOf(new HashSet<>(underlyingByRug.values()));
+        this.underlyingMaterials = Set.copyOf(underlyingByRug.values());
     }
 
     /** True if id (a namespaced furniture id string) is a managed rug. */

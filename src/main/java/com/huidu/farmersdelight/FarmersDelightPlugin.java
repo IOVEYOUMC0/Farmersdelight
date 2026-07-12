@@ -303,6 +303,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         new com.huidu.farmersdelight.resource.ResourceInstaller(this, getFile()).installCraftEngineResourcesOnce();
         com.huidu.farmersdelight.registry.BehaviorRegistrar.registerBlockBehaviors(getLogger());
         com.huidu.farmersdelight.registry.BehaviorRegistrar.registerItemBehaviors();
+        com.huidu.farmersdelight.registry.BehaviorRegistrar.registerFunctions();
         // Register the WorldGuard custom region flag here (onLoad): WG locks its FlagRegistry once it
         // enables, so this must run during the load phase. No-op if WorldGuard is absent.
         ProtectionCompat.registerFlags();
@@ -312,6 +313,10 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
      *  recreation, so re-enabling within the same JVM session can be detected and refused. */
     private static final String RELOAD_GUARD_PROPERTY = "farmersdelight.enabled.in.this.jvm";
     private boolean enabledSuccessfully = false;
+
+    // bStats plugin id from https://bstats.org (register the plugin there, then paste its numeric id here).
+    // TODO: replace the placeholder with FarmersDelight's real bStats id before publishing.
+    private static final int BSTATS_PLUGIN_ID = 0;
 
     @Override
     public void onEnable() {
@@ -487,6 +492,19 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
                 I18n.logInfo("papi_bridge_registered");
             } catch (Throwable t) {
                 I18n.logWarning("papi_bridge_failed", "error", t.getMessage());
+            }
+        }
+
+        // bStats metrics: anonymous server/plugin stats. Opt out globally via plugins/bStats/config.yml.
+        // bStats is bundled un-relocated (stays at org.bstats); Bukkit plugin classloaders are isolated so
+        // the package cannot clash with another plugin's copy. Disable bStats' relocation self-check, which
+        // would otherwise throw because the package still starts with org.bstats.
+        if (BSTATS_PLUGIN_ID > 0) {
+            try {
+                System.setProperty("bstats.relocatecheck", "false");
+                new org.bstats.bukkit.Metrics(this, BSTATS_PLUGIN_ID);
+            } catch (Throwable t) {
+                getLogger().warning("Failed to start bStats metrics: " + t.getMessage());
             }
         }
 
@@ -936,13 +954,18 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         reloadAll();
     }
 
-    public void reloadAll() {
+    /** Shared reload body for reloadAll / reloadMainConfigOnly: config defaults, cache clears,
+     * and every manager reload. The only differences the callers layer on are whether language files reload
+     * (reloadLanguages) and whether recipe reload + the reload event follow. */
+    private void reloadCommon(boolean reloadLanguages) {
         configBootstrap.ensureConfigDefaults();
         reloadConfig();
         configBootstrap.migrateConfigKeys();
         boolean previousAdvancementsEnabled = advancementsEnabled;
         loadConfigs();
-        I18n.reload();
+        if (reloadLanguages) {
+            I18n.reload();
+        }
         com.huidu.farmersdelight.util.ItemUtils.clearItemCache();
         com.huidu.farmersdelight.util.SoundUtils.clearCache();
         RecipeViewGui.clearConfigCache();
@@ -992,6 +1015,10 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         if (previousAdvancementsEnabled != advancementsEnabled) {
             refreshAdvancementSystem(true);
         }
+    }
+
+    public void reloadAll() {
+        reloadCommon(true);
         reloadRecipesWhenReady("plugin.reloading_recipes");
 
         org.bukkit.Bukkit.getPluginManager().callEvent(
@@ -1000,60 +1027,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     }
 
     public void reloadMainConfigOnly() {
-        configBootstrap.ensureConfigDefaults();
-        reloadConfig();
-        configBootstrap.migrateConfigKeys();
-        boolean previousAdvancementsEnabled = advancementsEnabled;
-        loadConfigs();
-        com.huidu.farmersdelight.util.ItemUtils.clearItemCache();
-        com.huidu.farmersdelight.util.SoundUtils.clearCache();
-        RecipeViewGui.clearConfigCache();
-        com.huidu.farmersdelight.gui.recipebook.RecipeBookGui.clearConfigCache();
-        StoveCookingBlockBehavior.clearRecipeCache();
-        clearLegacySkilletRecipeCache();
-        BlockPlaceListener.reloadMushroomSupportCache(this);
-
-        if (knifeDropHandler != null) {
-            knifeDropHandler.loadConfig(false);
-        }
-        if (trayManager != null) {
-            trayManager.reload();
-        }
-        if (handleManager != null) {
-            handleManager.reload();
-        }
-        if (stoveManager != null) {
-            stoveManager.reloadConfig();
-            stoveManager.reloadRecipeCache();
-        }
-        if (tickManager != null) {
-            tickManager.reloadConfig();
-        }
-        if (itemDisplayManager instanceof ProxyItemDisplayManager proxyItemDisplayManager) {
-            proxyItemDisplayManager.reload();
-        }
-        CuttingBoardBlockBehavior.refreshDisplayEntities();
-        if (skilletManager != null) {
-            skilletManager.reloadConfig();
-            skilletManager.reloadRecipeCache();
-        }
-        if (buffBossbarManager != null) {
-            buffBossbarManager.applyConfig(getConfig().getConfigurationSection("bossbar"));
-        com.huidu.farmersdelight.effect.EffectManager.applyBossbarStyles(
-                getConfig().getConfigurationSection("bossbar.styles"));
-        }
-        if (foodEatListener != null) {
-            foodEatListener.reload();
-        }
-        if (recipeDiscoveryManager != null) {
-            recipeDiscoveryManager.reloadConfig();
-        }
-        if (horseFeedTemptListener != null) {
-            horseFeedTemptListener.reload();
-        }
-        if (previousAdvancementsEnabled != advancementsEnabled) {
-            refreshAdvancementSystem(true);
-        }
+        reloadCommon(false);
         I18n.logInfo("plugin.main_configuration_reloaded");
     }
 
@@ -1695,10 +1669,6 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     public ItemDisplayManager getItemDisplayManager() {
         return itemDisplayManager;
-    }
-
-    public ItemDisplayManager getProxyItemDisplayManager() {
-        return getItemDisplayManager();
     }
 
     public float getSkilletDisplayScale() {

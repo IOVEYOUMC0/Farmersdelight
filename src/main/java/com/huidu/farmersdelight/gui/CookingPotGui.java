@@ -84,7 +84,10 @@ public class CookingPotGui implements InventoryHolder {
     // syncToBlockEntity. Sync only writes back these slots — so an unchanged GUI slot can't clobber
     // a concurrent cook tick that mutated the corresponding entity slot in the same window
     // (multi-viewer dup vector).
-    private final Set<Integer> dirtyWritableSlots = new HashSet<>();
+    // Slots are added from the viewer's click region; syncToBlockEntity iterates and clears them on the
+    // pot's region during a break-triggered close. A concurrent set keeps that cross-region access from
+    // corrupting the backing table or throwing under iteration.
+    private final Set<Integer> dirtyWritableSlots = ConcurrentHashMap.newKeySet();
 
     public CookingPotGui(FarmersDelightPlugin plugin, CookingPotBlockEntity blockEntity,
                          CookingPotBlockBehavior blockBehavior, World world) {
@@ -592,12 +595,17 @@ public class CookingPotGui implements InventoryHolder {
             event.setCancelled(true);
             ItemStack current = event.getCurrentItem();
             if (current != null && !current.getType().isAir()) {
-                // Adopt authoritative state first so the deposit stacks onto the real slot contents, not a
-                // stale phantom from another viewer.
-                refreshInputSlotsFromBlockEntity();
-                smartMoveFromPlayerInventory(current);
-                event.setCurrentItem(current.getAmount() > 0 ? current : null);
-                syncToBlockEntity();
+                // Adopt authoritative state first so the deposit stacks onto the real slot contents, not a stale
+                // phantom from another viewer. Hold the block entity's inventory lock across the whole
+                // read-modify-write so a concurrent cook tick (which consumes ingredients under the same lock)
+                // cannot land between the refresh and the write-back and be clobbered by the pre-cook GUI value
+                // — a Folia cross-region ingredient dupe.
+                blockEntity.withInventoryLock(() -> {
+                    refreshInputSlotsFromBlockEntity();
+                    smartMoveFromPlayerInventory(current);
+                    event.setCurrentItem(current.getAmount() > 0 ? current : null);
+                    syncToBlockEntity();
+                });
                 updateDisplayItems();
             }
             return;
@@ -639,9 +647,11 @@ public class CookingPotGui implements InventoryHolder {
             return;
         }
 
-        int placedTotal = 0;
-        boolean anyPlaced = false;
         int maxStack = Math.min(oldCursor.getMaxStackSize(), inventory.getMaxStackSize());
+        // The amount vanilla's drag distribution intends to deposit into each writable input slot, computed
+        // from the pre-apply GUI snapshot. Applied to the authoritative entity value below, not written
+        // absolutely, so a concurrent cook-tick consume cannot be clobbered.
+        java.util.Map<Integer, Integer> shares = new java.util.LinkedHashMap<>();
         for (Map.Entry<Integer, ItemStack> entry : event.getNewItems().entrySet()) {
             int rawSlot = entry.getKey();
             if (rawSlot < 0 || rawSlot >= config.getSize() || !isPlayerInputSlot(rawSlot)) {
@@ -656,33 +666,61 @@ public class CookingPotGui implements InventoryHolder {
             if (existingAmount > 0 && !newItem.isSimilar(existing)) {
                 continue; // slot already holds a different item; do not mix
             }
-            int finalAmount = Math.min(newItem.getAmount(), maxStack);
-            int delta = finalAmount - existingAmount;
-            if (delta <= 0) {
-                continue;
+            int share = Math.min(newItem.getAmount(), maxStack) - existingAmount;
+            if (share > 0) {
+                shares.put(rawSlot, share);
             }
-            ItemStack placed = oldCursor.clone();
-            placed.setAmount(finalAmount);
-            writeWritableSlot(rawSlot, placed);
-            placedTotal += delta;
-            anyPlaced = true;
         }
 
-        if (!anyPlaced) {
+        if (shares.isEmpty()) {
             return; // no applicable input slots; cursor unchanged (event already cancelled)
         }
 
+        // Add each share on top of the CURRENT entity contents under the block entity's inventory lock (adopting
+        // the authoritative state first), so a cook tick that consumes ingredients under the same lock cannot
+        // interleave and be overwritten by the pre-drag GUI amount — the same Folia cross-region dupe as the
+        // click paths.
+        int[] placedTotal = {0};
+        blockEntity.withInventoryLock(() -> {
+            refreshInputSlotsFromBlockEntity();
+            for (Map.Entry<Integer, Integer> e : shares.entrySet()) {
+                int rawSlot = e.getKey();
+                int share = e.getValue();
+                ItemStack existing = inventory.getItem(rawSlot);
+                int existingAmount = (existing == null || existing.getType().isAir()) ? 0 : existing.getAmount();
+                // The slot may now hold a different item (another viewer / the cook tick); only stack onto a match.
+                if (existingAmount > 0 && !oldCursor.isSimilar(existing)) {
+                    continue;
+                }
+                int place = Math.min(existingAmount + share, maxStack);
+                int actual = place - existingAmount;
+                if (actual <= 0) {
+                    continue;
+                }
+                ItemStack placed = oldCursor.clone();
+                placed.setAmount(place);
+                writeWritableSlot(rawSlot, placed);
+                placedTotal[0] += actual;
+            }
+            syncToBlockEntity();
+        });
+
         // Cursor remainder = original cursor amount - total actually placed; shares not applied to read-only slots/inventory stay on the cursor.
-        int remaining = oldCursor.getAmount() - placedTotal;
+        int remaining = oldCursor.getAmount() - placedTotal[0];
+        final ItemStack cursorAfter;
         if (remaining > 0) {
             ItemStack leftover = oldCursor.clone();
             leftover.setAmount(remaining);
-            player.setItemOnCursor(leftover);
+            cursorAfter = leftover;
         } else {
-            player.setItemOnCursor(null);
+            cursorAfter = null;
         }
+        // A cancelled InventoryDragEvent has its cursor restored to the pre-drag stack by the server AFTER
+        // this handler returns (unlike a cancelled click, which keeps the handler's cursor). Setting it here
+        // would be clobbered, leaving the whole stack in hand while the shares are already committed to the
+        // pot — a duplication. Apply the reduced cursor next tick, after that restore, on the player's region.
+        player.getScheduler().run(plugin, t -> player.setItemOnCursor(cursorAfter), null);
 
-        syncToBlockEntity();
         updateDisplayItems();
     }
 
@@ -692,6 +730,13 @@ public class CookingPotGui implements InventoryHolder {
         if (rawSlot < 0 || rawSlot >= config.getSize() || !isPlayerInputSlot(rawSlot)) {
             return;
         }
+        // Hold the block entity's inventory lock across the whole read-modify-write (refresh + mutate + sync) so
+        // a concurrent cook tick (which consumes ingredients under the same lock) cannot interleave between the
+        // authoritative-state refresh and the write-back and get clobbered — a Folia cross-region dupe.
+        blockEntity.withInventoryLock(() -> handleTopInventoryInteractionLocked(event, player, rawSlot));
+    }
+
+    private void handleTopInventoryInteractionLocked(InventoryClickEvent event, Player player, int rawSlot) {
         // Adopt the authoritative entity state for the mapped slots before acting, so a second viewer can't
         // take a phantom item that another viewer (or the cook tick) already removed in the ~1-tick window
         // before the periodic refresh would have corrected this GUI.
@@ -853,7 +898,7 @@ public class CookingPotGui implements InventoryHolder {
             }
             activeGuis.remove(entry.getKey());
             if (player != null && player.isOnline()) {
-                player.closeInventory();
+                closeViewerInventory(player);
             }
         }
     }
@@ -884,7 +929,22 @@ public class CookingPotGui implements InventoryHolder {
             activeGuis.remove(entry.getKey());
             Player player = Bukkit.getPlayer(entry.getKey());
             if (player != null && player.isOnline()) {
+                closeViewerInventory(player);
+            }
+        }
+    }
+
+    /** Closes a viewer's inventory on the viewer's own region. On Folia a Player is region-owned, so a bare
+     *  closeInventory() called from the broken pot's region throws a cross-region access error and aborts the
+     *  caller before it drops the pot's stored contents. The EntityScheduler runs synchronously on Paper and
+     *  routes to the entity's region on Folia; the try/catch keeps break cleanup going even if dispatch fails. */
+    private static void closeViewerInventory(Player player) {
+        try {
+            player.getScheduler().run(FarmersDelightPlugin.getInstance(), t -> player.closeInventory(), null);
+        } catch (Throwable t) {
+            try {
                 player.closeInventory();
+            } catch (Throwable ignored) {
             }
         }
     }

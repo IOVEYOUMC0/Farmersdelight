@@ -3,6 +3,8 @@ templates:
     material: honey_bottle
     model: ${__NAMESPACE__}:item/${__ID__}
     data:
+      components:
+        minecraft:max_stack_size: 16
       food:
         nutrition: 0
         saturation: 0
@@ -16,6 +18,9 @@ templates:
   farmersdelight:soup_template:
     material: cooked_beef
     model: ${__NAMESPACE__}:item/${__ID__}
+    data:
+      components:
+        minecraft:max_stack_size: 16
     settings:
       consume-replacement: "minecraft:bowl"
   farmersdelight:pie_template:
@@ -213,6 +218,9 @@ items:
   farmersdelight:rotten_tomato:
     material: snowball
     model: ${__NAMESPACE__}:item/${__ID__}
+    data:
+      components:
+        minecraft:max_stack_size: 16
     settings:
       projectile:
         item: farmersdelight:rotten_tomato
@@ -821,6 +829,8 @@ items:
   farmersdelight:bacon_and_eggs:
     template: farmersdelight:food_template
     data:
+      components:
+        minecraft:max_stack_size: 16
       item-name: <!i><l10n:item.farmersdelight.bacon_and_eggs>
       lore: '<!i><blue><l10n:effect.farmersdelight.nourishment> (01:00)</blue>'
       food:
@@ -911,6 +921,8 @@ items:
   farmersdelight:roast_chicken_block:
     template: farmersdelight:pie_template
     data:
+      components:
+        minecraft:max_stack_size: 1
       item-name: <!i><l10n:block.farmersdelight.roast_chicken_block>
       lore: '<!i><dark_gray><l10n:farmersdelight.tooltip.placeable></dark_gray>'
   farmersdelight:roast_chicken:
@@ -925,6 +937,8 @@ items:
   farmersdelight:stuffed_pumpkin_block:
     template: farmersdelight:pie_template
     data:
+      components:
+        minecraft:max_stack_size: 1
       item-name: <!i><l10n:block.farmersdelight.stuffed_pumpkin_block>
       lore: '<!i><dark_gray><l10n:farmersdelight.tooltip.placeable></dark_gray>'
   farmersdelight:stuffed_pumpkin:
@@ -939,6 +953,8 @@ items:
   farmersdelight:honey_glazed_ham_block:
     template: farmersdelight:pie_template
     data:
+      components:
+        minecraft:max_stack_size: 1
       item-name: <!i><l10n:block.farmersdelight.honey_glazed_ham_block>
       lore: '<!i><dark_gray><l10n:farmersdelight.tooltip.placeable></dark_gray>'
   farmersdelight:honey_glazed_ham:
@@ -953,6 +969,8 @@ items:
   farmersdelight:shepherds_pie_block:
     template: farmersdelight:pie_template
     data:
+      components:
+        minecraft:max_stack_size: 1
       item-name: <!i><l10n:block.farmersdelight.shepherds_pie_block>
       lore: '<!i><dark_gray><l10n:farmersdelight.tooltip.placeable></dark_gray>'
   farmersdelight:shepherds_pie:
@@ -967,6 +985,8 @@ items:
   farmersdelight:gleaming_salad_block:
     template: farmersdelight:pie_template
     data:
+      components:
+        minecraft:max_stack_size: 1
       item-name: <!i><l10n:block.farmersdelight.gleaming_salad_block>
       lore: '<!i><dark_gray><l10n:farmersdelight.tooltip.placeable></dark_gray>'
   farmersdelight:gleaming_salad:
@@ -982,6 +1002,8 @@ items:
     template: farmersdelight:pie_template
     model: ${__NAMESPACE__}:item/${__ID__}
     data:
+      components:
+        minecraft:max_stack_size: 1
       item-name: <!i><l10n:block.farmersdelight.rice_roll_medley_block>
       lore: '<!i><dark_gray><l10n:farmersdelight.tooltip.placeable></dark_gray>'
   farmersdelight:dog_food:
@@ -1004,6 +1026,8 @@ items:
     material: wheat
     model: ${__NAMESPACE__}:item/${__ID__}
     data:
+      components:
+        minecraft:max_stack_size: 16
       item-name: <!i><l10n:item.farmersdelight.horse_feed>
       lore:
         - '<!i><gray><l10n:farmersdelight.tooltip.horse_feed.when_feeding></gray>'

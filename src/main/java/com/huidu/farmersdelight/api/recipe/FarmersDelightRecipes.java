@@ -35,7 +35,14 @@ public final class FarmersDelightRecipes {
             return null;
         }
         CookingPotRecipe recipe = plugin.getCookingPotRecipes().matchRecipe(inputs, container);
-        return recipe == null ? null : recipe.getResult();
+        if (recipe == null) {
+            return null;
+        }
+        // Clone the shared recipe result before handing it to a caller: getResult() returns the live stack
+        // stored inside the manager's recipe, so a caller mutating it (setAmount/setType) would corrupt
+        // every future cook of that recipe. Mirrors cuttingBoardResults / RecipeInfo defensive cloning.
+        ItemStack result = recipe.getResult();
+        return result == null ? null : result.clone();
     }
 
     /** True if any cutting board recipe accepts input. */

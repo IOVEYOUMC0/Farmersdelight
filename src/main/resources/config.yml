@@ -778,11 +778,21 @@ recipe-discovery:
   # Send the player a chat message when a recipe unlocks.
   notify: true
 
-# Buff bossbar — render per-player active-buff state as a bossbar. Addons (e.g. Brewin' And Chewin')
-# push their buffs into this via the BuffBossbar API; FD renders them per the layout-mode below.
-# Set enabled: false to suppress every buff bossbar globally regardless of per-addon toggles.
+# Buff display — render per-player active-buff state. Addons (e.g. Brewin' And Chewin') push their
+# buffs into this via the BuffBossbar API; FD renders them on the channels below.
+# Set enabled: false to suppress every buff display globally regardless of per-addon toggles.
 bossbar:
   enabled: true
+  # Display channels. List any combination — add/remove to route around another plugin that already
+  # occupies a channel, so FD's buffs don't crowd/overwrite it. Options:
+  #   bossbar    = one boss bar per active buff (laid out via layout-mode below). Stacks with other bars.
+  #   actionbar  = all active buffs joined on the action bar line (above the hotbar); auto-refreshed so
+  #                it never fades. Last writer wins, so avoid it if another plugin owns the action bar.
+  #   tab_footer = active buffs listed in the player-list (TAB) footer; only the footer is touched.
+  channels:
+    - bossbar
+  # Separator placed between buffs on the action bar (actionbar channel only).
+  actionbar-separator: "   "
   # stacked = every active buff gets its own bossbar simultaneously (vanilla style; up to ~4 simultaneous is fine).
   # rotating = exactly one bossbar visible at a time, cycles to the next active buff every rotation-interval-ticks.
   layout-mode: stacked

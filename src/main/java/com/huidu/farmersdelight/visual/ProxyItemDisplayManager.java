@@ -148,28 +148,37 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
             return -1;
         }
 
-        DisplaySpec normalizedSpec = normalize(spec);
-        int entityId = nextEntityId.getAndIncrement();
-        UUID entityUuid = fastRandomUuid();
-        Object spawnPacket = createItemSpawnPacket(entityId, entityUuid, normalizedSpec);
-        Object metadataPacket = createItemMetadataPacket(entityId, normalizedSpec);
-        Object destroyPacket = createDestroyPacket(entityId);
-        ProxyDisplay display = new ProxyDisplay(
-                entityId,
-                entityUuid,
-                normalizedSpec,
-                null,
-                spawnPacket,
-                metadataPacket,
-                destroyPacket
-        );
-        displays.put(entityId, display);
-        indexDisplay(display);
-        markDisplaySnapshotDirty();
-        ensureSyncTask();
-        queueSync(display);
-        itemSpawnCount.incrementAndGet();
-        return entityId;
+        try {
+            DisplaySpec normalizedSpec = normalize(spec);
+            int entityId = nextEntityId.getAndIncrement();
+            UUID entityUuid = fastRandomUuid();
+            Object spawnPacket = createItemSpawnPacket(entityId, entityUuid, normalizedSpec);
+            Object metadataPacket = createItemMetadataPacket(entityId, normalizedSpec);
+            Object destroyPacket = createDestroyPacket(entityId);
+            ProxyDisplay display = new ProxyDisplay(
+                    entityId,
+                    entityUuid,
+                    normalizedSpec,
+                    null,
+                    spawnPacket,
+                    metadataPacket,
+                    destroyPacket
+            );
+            displays.put(entityId, display);
+            indexDisplay(display);
+            markDisplaySnapshotDirty();
+            ensureSyncTask();
+            queueSync(display);
+            itemSpawnCount.incrementAndGet();
+            return entityId;
+        } catch (Throwable t) {
+            // A cosmetic item display must never abort the gameplay that spawns it. If building the display's
+            // packets fails (e.g. wrapping the item for the metadata packet throws), returning no-display keeps
+            // the caller's logic intact — otherwise a cutting board would store the item and spawn no display
+            // yet leave the player's hand item unconsumed (a duplication).
+            logDisplayBuildFailure("create", spec, t);
+            return -1;
+        }
     }
 
     @Override
@@ -243,9 +252,20 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
 
         DisplaySpec previousSpec = display.itemSpec;
         DisplaySpec normalizedSpec = normalize(spec);
+        Object newSpawnPacket;
+        Object newMetadataPacket;
+        try {
+            // Build the packets before mutating the display so a build failure leaves the old visual intact
+            // and cannot propagate into the caller (see createDisplay).
+            newSpawnPacket = createItemSpawnPacket(entityId, display.entityUuid, normalizedSpec);
+            newMetadataPacket = createItemMetadataPacket(entityId, normalizedSpec);
+        } catch (Throwable t) {
+            logDisplayBuildFailure("update", spec, t);
+            return false;
+        }
         display.itemSpec = normalizedSpec;
-        display.spawnPacket = createItemSpawnPacket(entityId, display.entityUuid, normalizedSpec);
-        display.metadataPacket = createItemMetadataPacket(entityId, normalizedSpec);
+        display.spawnPacket = newSpawnPacket;
+        display.metadataPacket = newMetadataPacket;
         display.spawnPackets = List.of(display.spawnPacket, display.metadataPacket);
         // Only send a position (teleport) packet when the display actually moved. FD's item displays are
         // stationary in-slot — a cutting-board carve/count change updates the item + metadata, never
@@ -860,6 +880,12 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         return packet;
     }
 
+    private void logDisplayBuildFailure(String op, DisplaySpec spec, Throwable t) {
+        String item = spec != null && spec.itemStack() != null ? spec.itemStack().getType().name() : "null";
+        plugin.getLogger().log(java.util.logging.Level.WARNING,
+                "Skipped item display " + op + " for " + item + " so the interaction is not aborted", t);
+    }
+
     private Object createItemMetadataPacket(int entityId, DisplaySpec spec) {
         List<Object> values = new ArrayList<>();
         BaseEntityData.NoGravity.addEntityData(true, values);
@@ -868,6 +894,11 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         var wrappedItem = BukkitItemManager.instance().wrap(spec.itemStack());
         if (wrappedItem != null && !wrappedItem.isEmpty()) {
             DisplayData.ItemDisplayData.ItemStack.addEntityData(wrappedItem.minecraftItem(), values);
+        } else if (spec.itemStack() != null && !spec.itemStack().getType().isAir()) {
+            // The display item could not be wrapped into a client item, so the entity would render empty.
+            // Surface it rather than showing a silently invisible display.
+            plugin.getLogger().warning("Item display for " + spec.itemStack().getType().name()
+                    + " has no renderable client item (wrap returned empty)");
         }
 
         var transformation = spec.transformation();

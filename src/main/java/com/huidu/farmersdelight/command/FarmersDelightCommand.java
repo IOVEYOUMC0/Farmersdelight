@@ -487,10 +487,6 @@ public class FarmersDelightCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    private void sendDebugUsage(CommandSender sender) {
-        sender.sendMessage(MINI_MESSAGE.deserialize("<yellow>/fd debugtools <place|activate|status|profile|undo> ...</yellow>"));
-    }
-
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (!sender.hasPermission(BASE_PERMISSION)) {
