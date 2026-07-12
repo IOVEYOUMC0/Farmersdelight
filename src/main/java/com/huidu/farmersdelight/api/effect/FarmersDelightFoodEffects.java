@@ -21,17 +21,29 @@ public final class FarmersDelightFoodEffects {
     private FarmersDelightFoodEffects() {
     }
 
-    /** Applies (or refreshes, keeping the longer) the Comfort effect for {@code durationSeconds}. */
+    /** Applies (or refreshes, keeping the longer) the Comfort effect for {@code durationSeconds} at level 1. */
     public static void applyComfort(Player player, int durationSeconds) {
+        applyComfort(player, durationSeconds, 1);
+    }
+
+    /** Applies the Comfort effect at {@code level} (1-based) for {@code durationSeconds}, stacking against any
+     *  active dose by the vanilla rule (stronger replaces + refreshes, equal extends, weaker is ignored). */
+    public static void applyComfort(Player player, int durationSeconds, int level) {
         if (player != null && durationSeconds > 0) {
-            EffectManager.applyComfort(player, durationSeconds);
+            EffectManager.applyComfort(player, durationSeconds, level);
         }
     }
 
-    /** Applies (or refreshes, keeping the longer) the Nourishment effect for {@code durationSeconds}. */
+    /** Applies (or refreshes, keeping the longer) the Nourishment effect for {@code durationSeconds} at level 1. */
     public static void applyNourishment(Player player, int durationSeconds) {
+        applyNourishment(player, durationSeconds, 1);
+    }
+
+    /** Applies the Nourishment effect at {@code level} (1-based) for {@code durationSeconds}, with the same
+     *  vanilla stacking rule as {@link #applyComfort(Player, int, int)}. */
+    public static void applyNourishment(Player player, int durationSeconds, int level) {
         if (player != null && durationSeconds > 0) {
-            EffectManager.applyNourishment(player, durationSeconds);
+            EffectManager.applyNourishment(player, durationSeconds, level);
         }
     }
 
