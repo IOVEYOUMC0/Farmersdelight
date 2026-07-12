@@ -9,7 +9,9 @@ import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
 import net.momirealms.craftengine.core.block.property.Property;
+import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.world.BlockPos;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.World;
@@ -38,11 +40,14 @@ public class RichSoilFarmlandBlockBehavior extends BlockBehavior {
 
     private final float boostChance;
     private final Property<Integer> moistureProperty;
+    private final Key richSoilBlockId;
 
-    private RichSoilFarmlandBlockBehavior(BlockDefinition block, float boostChance, Property<Integer> moistureProperty) {
+    private RichSoilFarmlandBlockBehavior(BlockDefinition block, float boostChance, Property<Integer> moistureProperty,
+                                          Key richSoilBlockId) {
         super(block);
         this.boostChance = boostChance;
         this.moistureProperty = moistureProperty;
+        this.richSoilBlockId = richSoilBlockId;
     }
 
     @SuppressWarnings("unchecked")
@@ -53,9 +58,38 @@ public class RichSoilFarmlandBlockBehavior extends BlockBehavior {
             float chance = BehaviorArgParser.getFloat(arguments, "boost-chance", 0.08f);
             String moisturePropertyName = BehaviorArgParser.getString(arguments, "moisture-property", "moisture");
             Property<Integer> moistureProperty = (Property<Integer>) block.getProperty(moisturePropertyName);
-            return new RichSoilFarmlandBlockBehavior(block, chance, moistureProperty);
+            String richSoilId = BehaviorArgParser.getStringStrict(arguments, "rich-soil-block", "farmersdelight:rich_soil");
+            return new RichSoilFarmlandBlockBehavior(block, chance, moistureProperty, Key.of(richSoilId));
         }
     };
+
+    @Override
+    public void neighborChanged(Object thisBlock, Object[] args) {
+        if (args.length < 3) return;
+        World world = CraftEngineAdapter.toWorld(args[1]);
+        BlockPos pos = CraftEngineAdapter.toBlockPos(args[2]);
+        if (world == null || pos == null) return;
+
+        // Mirrors RichSoilFarmlandBlock.canSurvive + turnToRichSoil (1.21 reference): a solid block placed
+        // directly above suffocates the farmland, which reverts to rich soil in place rather than dropping.
+        // Melons/pumpkins (which grow on farmland) and fence gates / moving pistons are exempt, as in vanilla.
+        Block above = world.getBlockAt(pos.x(), pos.y() + 1, pos.z());
+        if (!isSuffocatingCover(above.getType())) return;
+
+        BlockDefinition richSoil = CraftEngineBlocks.byId(richSoilBlockId);
+        if (richSoil == null) return;
+        try {
+            CraftEngineBlocks.place(new Location(world, pos.x() + 0.5, pos.y(), pos.z() + 0.5),
+                    richSoil.defaultState(), true);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static boolean isSuffocatingCover(Material type) {
+        if (!type.isSolid()) return false;
+        if (type == Material.MELON || type == Material.PUMPKIN || type == Material.MOVING_PISTON) return false;
+        return !type.name().endsWith("_FENCE_GATE");
+    }
 
     @Override
     public void randomTick(Object thisBlock, Object[] args) {
