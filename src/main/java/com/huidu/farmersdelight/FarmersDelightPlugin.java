@@ -303,6 +303,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         new com.huidu.farmersdelight.resource.ResourceInstaller(this, getFile()).installCraftEngineResourcesOnce();
         com.huidu.farmersdelight.registry.BehaviorRegistrar.registerBlockBehaviors(getLogger());
         com.huidu.farmersdelight.registry.BehaviorRegistrar.registerItemBehaviors();
+        com.huidu.farmersdelight.registry.BehaviorRegistrar.registerFunctions();
         // Register the WorldGuard custom region flag here (onLoad): WG locks its FlagRegistry once it
         // enables, so this must run during the load phase. No-op if WorldGuard is absent.
         ProtectionCompat.registerFlags();
