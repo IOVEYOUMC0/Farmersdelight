@@ -743,6 +743,10 @@ public class StoveManager {
     /** The custom {@code farmersdelight:stove_burn} damage type (from FD's datapack — gives the stove-specific
      * death message + mob panic + fire/no-knockback tags), resolved once and cached; falls back to
      * {@link DamageType#HOT_FLOOR} when the datapack isn't loaded so the burn always deals damage. */
+    // Registry.DAMAGE_TYPE is deprecated (since 1.20.6) but not for removal, so it stays stable. The suggested
+    // replacement goes through the ApiStatus.Experimental RegistryKey API; using the deprecated-but-stable
+    // accessor (already wrapped in try/catch with a HOT_FLOOR fallback) is the more version-robust choice.
+    @SuppressWarnings("deprecation")
     private DamageType stoveBurnDamageType() {
         DamageType type = this.stoveBurnType;
         if (type == null) {

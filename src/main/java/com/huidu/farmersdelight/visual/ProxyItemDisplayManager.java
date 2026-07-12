@@ -639,6 +639,15 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         if (world == null || !Objects.equals(player.getWorld(), world)) {
             return false;
         }
+        // On Folia this method runs on the PLAYER's region thread (scheduleDisplayForPlayers ->
+        // runForEntity(player)). The display's chunk may belong to a different region, and touching it there
+        // (isChunkLoaded / getChunkAt) trips Folia's region-owner check and throws. shouldViewerSeeDisplay,
+        // called right after this, already bounds visibility by distance without any chunk access and itself
+        // skips its isChunkLoaded probe on Folia — so on Folia skip the chunk-tracking gate and let that
+        // distance check be authoritative (the pre-#042 flat-distance behaviour, region-safe).
+        if (plugin.scheduler().isFolia()) {
+            return true;
+        }
         int chunkX = location.getBlockX() >> 4;
         int chunkZ = location.getBlockZ() >> 4;
         if (!world.isChunkLoaded(chunkX, chunkZ)) {
