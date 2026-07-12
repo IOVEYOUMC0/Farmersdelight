@@ -150,7 +150,6 @@ console:
     language_files_reloaded: "语言文件已重新加载。"
     recipe_files_reloaded: "配方文件已重新加载。"
     advancement_data_reloaded: "进度数据已重新加载。"
-    config_prepare_failed: "准备配置文件失败：{error}"
     gui_missing_defaults: "gui.yml 缺失，暂时在内存中使用内置默认值，直到下次重载写回。"
     gui_load_failed: "加载 gui.yml 失败：{error}"
     craftengine_resources_released: "已同步 CraftEngine farmersdelight 资源到 {path}（{count} 个文件）。"
