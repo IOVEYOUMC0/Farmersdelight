@@ -316,7 +316,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     // bStats plugin id from https://bstats.org (register the plugin there, then paste its numeric id here).
     // TODO: replace the placeholder with FarmersDelight's real bStats id before publishing.
-    private static final int BSTATS_PLUGIN_ID = 0;
+    private static final int BSTATS_PLUGIN_ID = 32571;
 
     @Override
     public void onEnable() {
