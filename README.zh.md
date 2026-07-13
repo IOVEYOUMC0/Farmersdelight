@@ -2,6 +2,10 @@
 
 [English](README.md) | **中文**
 
+[![bStats](https://bstats.org/signatures/bukkit/FarmersDelight.svg)](https://bstats.org/plugin/bukkit/FarmersDelight/32571)
+
+> 本插件通过 [bStats](https://bstats.org) 收集匿名统计数据（服务器数 / 玩家数、服务端软件与版本分布等）。服主可在 `plugins/bStats/config.yml` 中全局关闭。
+
 FarmersDelight 是一个基于 CraftEngine 26.5 的 Farmer's Delight 风格玩法插件。CraftEngine 负责自定义物品、方块、家具、模型、字体图片和标签，本插件负责把这些资源接成真正能玩的服务端逻辑。
 
 ## 1. 插件做了什么

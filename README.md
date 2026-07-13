@@ -2,6 +2,10 @@
 
 **English** | [中文](README.zh.md)
 
+[![bStats](https://bstats.org/signatures/bukkit/FarmersDelight.svg)](https://bstats.org/plugin/bukkit/FarmersDelight/32571)
+
+> This plugin uses [bStats](https://bstats.org) to collect anonymous usage statistics (server / player counts, server software and version distribution, and so on). Server owners can opt out globally in `plugins/bStats/config.yml`.
+
 FarmersDelight is a Farmer's Delight-style gameplay plugin built on CraftEngine 26.5. CraftEngine handles custom items, blocks, furniture, models, font images, and tags, while this plugin wires those resources into actual playable server-side logic.
 
 ## 1. What the Plugin Does
