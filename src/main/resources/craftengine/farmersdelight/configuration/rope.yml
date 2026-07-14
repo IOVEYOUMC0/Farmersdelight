@@ -1,7 +1,7 @@
 items:
   farmersdelight:rope:
     data:
-      item-name: <!i><l10n:block.farmersdelight.rope>
+      item-name: <!i><lang:block.farmersdelight.rope>
     model: farmersdelight:item/rope
     behavior:
       type: block_item

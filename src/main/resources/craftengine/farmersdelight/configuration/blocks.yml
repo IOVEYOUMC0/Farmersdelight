@@ -150,25 +150,25 @@ items:
   farmersdelight:stove:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.stove>
+      item-name: <!i><lang:block.farmersdelight.stove>
     behavior:
       type: block_item
       block: farmersdelight:stove
   farmersdelight:cooking_pot:
     data:
-      item-name: <!i><l10n:block.farmersdelight.cooking_pot>
+      item-name: <!i><lang:block.farmersdelight.cooking_pot>
     model: farmersdelight:block/cooking_pot
     behavior:
       type: ground_block_item
       block: farmersdelight:cooking_pot
   farmersdelight:cooking_pot_handle:
     data:
-      item-name: <!i><l10n:block.farmersdelight.cooking_pot>
+      item-name: <!i><lang:block.farmersdelight.cooking_pot>
     model: farmersdelight:block/cooking_pot_bail
   farmersdelight:skillet:
     material: iron_sword
     data:
-      item-name: <!i><l10n:block.farmersdelight.skillet>
+      item-name: <!i><lang:block.farmersdelight.skillet>
       hide-tooltip:
       - attribute_modifiers
       attribute-modifiers:
@@ -195,7 +195,7 @@ items:
     model: farmersdelight:item/skillet
   farmersdelight:cutting_board:
     data:
-      item-name: <!i><l10n:block.farmersdelight.cutting_board>
+      item-name: <!i><lang:block.farmersdelight.cutting_board>
     model: farmersdelight:block/cutting_board
     behavior:
       type: ground_block_item
@@ -203,11 +203,11 @@ items:
   farmersdelight:basket:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.basket>
+      item-name: <!i><lang:block.farmersdelight.basket>
       model: farmersdelight:block/basket
   farmersdelight:tray:
     data:
-      item-name: <!i><l10n:block.farmersdelight.tray>
+      item-name: <!i><lang:block.farmersdelight.tray>
       lore:
       - content:
         - <!i><red><l10n:farmersdelight.tooltip.no_collision></red>
@@ -222,49 +222,49 @@ items:
   farmersdelight:carrot_crate:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.carrot_crate>
+      item-name: <!i><lang:block.farmersdelight.carrot_crate>
   farmersdelight:potato_crate:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.potato_crate>
+      item-name: <!i><lang:block.farmersdelight.potato_crate>
   farmersdelight:beetroot_crate:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.beetroot_crate>
+      item-name: <!i><lang:block.farmersdelight.beetroot_crate>
   farmersdelight:cabbage_crate:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.cabbage_crate>
+      item-name: <!i><lang:block.farmersdelight.cabbage_crate>
   farmersdelight:tomato_crate:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.tomato_crate>
+      item-name: <!i><lang:block.farmersdelight.tomato_crate>
   farmersdelight:onion_crate:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.onion_crate>
+      item-name: <!i><lang:block.farmersdelight.onion_crate>
   farmersdelight:rice_bale:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.rice_bale>
+      item-name: <!i><lang:block.farmersdelight.rice_bale>
   farmersdelight:rice_bag:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.rice_bag>
+      item-name: <!i><lang:block.farmersdelight.rice_bag>
   farmersdelight:straw_bale:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.straw_bale>
+      item-name: <!i><lang:block.farmersdelight.straw_bale>
   farmersdelight:tatami:
     data:
-      item_name: <!i><l10n:block.farmersdelight.tatami>
+      item_name: <!i><lang:block.farmersdelight.tatami>
     model: ${__NAMESPACE__}:item/${__ID__}
     behavior:
       type: block_item
       block: ${__NAMESPACE__}:${__ID__}
   farmersdelight:full_tatami_mat:
     data:
-      item_name: <!i><l10n:block.farmersdelight.full_tatami_mat>
+      item_name: <!i><lang:block.farmersdelight.full_tatami_mat>
     model: ${__NAMESPACE__}:item/${__ID__}
     behavior:
       type: furniture_item
@@ -275,7 +275,7 @@ items:
       furniture: ${__NAMESPACE__}:${__ID__}
   farmersdelight:full_tatami_mat_elements:
     data:
-      item_name: <!i><l10n:block.farmersdelight.full_tatami_mat>
+      item_name: <!i><lang:block.farmersdelight.full_tatami_mat>
     model:
       type: minecraft:select
       property: minecraft:display_context
@@ -290,7 +290,7 @@ items:
         path: ${__NAMESPACE__}:block/full_tatami_mat
   farmersdelight:half_tatami_mat:
     data:
-      item_name: <!i><l10n:block.farmersdelight.half_tatami_mat>
+      item_name: <!i><lang:block.farmersdelight.half_tatami_mat>
     model: ${__NAMESPACE__}:item/${__ID__}
     behavior:
       type: furniture_item
@@ -301,7 +301,7 @@ items:
       furniture: ${__NAMESPACE__}:${__ID__}
   farmersdelight:half_tatami_mat_elements:
     data:
-      item_name: <!i><l10n:block.farmersdelight.half_tatami_mat>
+      item_name: <!i><lang:block.farmersdelight.half_tatami_mat>
     model:
       type: minecraft:select
       property: minecraft:display_context
@@ -316,7 +316,7 @@ items:
         path: ${__NAMESPACE__}:block/half_tatami_mat
   farmersdelight:canvas_rug:
     data:
-      item_name: <!i><l10n:block.farmersdelight.canvas_rug>
+      item_name: <!i><lang:block.farmersdelight.canvas_rug>
     model: ${__NAMESPACE__}:item/${__ID__}
     behavior:
       type: furniture_item
@@ -327,7 +327,7 @@ items:
       furniture: ${__NAMESPACE__}:${__ID__}
   farmersdelight:canvas_rug_elements:
     data:
-      item_name: <!i><l10n:block.farmersdelight.canvas_rug>
+      item_name: <!i><lang:block.farmersdelight.canvas_rug>
     model:
       type: minecraft:select
       property: minecraft:display_context
@@ -342,7 +342,7 @@ items:
         path: ${__NAMESPACE__}:block/canvas_rug
   farmersdelight:safety_net:
     data:
-      item-name: <!i><l10n:block.farmersdelight.safety_net>
+      item-name: <!i><lang:block.farmersdelight.safety_net>
     model: ${__NAMESPACE__}:item/${__ID__}
     behavior:
       type: block_item
@@ -350,51 +350,51 @@ items:
   farmersdelight:oak_cabinet:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.oak_cabinet>
+      item-name: <!i><lang:block.farmersdelight.oak_cabinet>
   farmersdelight:spruce_cabinet:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.spruce_cabinet>
+      item-name: <!i><lang:block.farmersdelight.spruce_cabinet>
   farmersdelight:birch_cabinet:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.birch_cabinet>
+      item-name: <!i><lang:block.farmersdelight.birch_cabinet>
   farmersdelight:jungle_cabinet:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.jungle_cabinet>
+      item-name: <!i><lang:block.farmersdelight.jungle_cabinet>
   farmersdelight:acacia_cabinet:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.acacia_cabinet>
+      item-name: <!i><lang:block.farmersdelight.acacia_cabinet>
   farmersdelight:dark_oak_cabinet:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.dark_oak_cabinet>
+      item-name: <!i><lang:block.farmersdelight.dark_oak_cabinet>
   farmersdelight:mangrove_cabinet:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.mangrove_cabinet>
+      item-name: <!i><lang:block.farmersdelight.mangrove_cabinet>
   farmersdelight:cherry_cabinet:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.cherry_cabinet>
+      item-name: <!i><lang:block.farmersdelight.cherry_cabinet>
   farmersdelight:bamboo_cabinet:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.bamboo_cabinet>
+      item-name: <!i><lang:block.farmersdelight.bamboo_cabinet>
   farmersdelight:pale_oak_cabinet:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.pale_oak_cabinet>
+      item-name: <!i><lang:block.farmersdelight.pale_oak_cabinet>
   farmersdelight:crimson_cabinet:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.crimson_cabinet>
+      item-name: <!i><lang:block.farmersdelight.crimson_cabinet>
   farmersdelight:warped_cabinet:
     template: farmersdelight:block_item_template
     data:
-      item-name: <!i><l10n:block.farmersdelight.warped_cabinet>
+      item-name: <!i><lang:block.farmersdelight.warped_cabinet>
 furniture:
   farmersdelight:full_tatami_mat:
     settings:
