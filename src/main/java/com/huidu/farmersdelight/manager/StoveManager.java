@@ -680,8 +680,12 @@ public class StoveManager {
         boolean folia = plugin.scheduler().isFolia();
         for (Player player : players) {
             if (folia) {
-                // On Folia the block/entity reads must happen on the region owning the player.
-                plugin.scheduler().runAt(player.getLocation(), () -> burnAroundPlayer(player, sweepMobs));
+                // Schedule on the PLAYER's own region (entity scheduler), not a fixed location. runForEntity
+                // follows the player to whatever region currently owns them, so reading the block at their feet
+                // stays same-region even if they moved or teleported since this poll was queued. runAt pinned the
+                // task to the schedule-time region and threw "Cannot read world asynchronously" once the player
+                // had crossed into another region by the time it ran.
+                plugin.scheduler().runForEntity(player, () -> burnAroundPlayer(player, sweepMobs));
             } else {
                 burnAroundPlayer(player, sweepMobs);
             }
@@ -696,8 +700,16 @@ public class StoveManager {
         // Mobs standing on a stove burn too (vanilla burns any LivingEntity). Bounded to near the player
         // so this stays cheap; a mob near two players is checked twice but the damage-invulnerability
         // window collapses that to one hit.
+        boolean folia = plugin.scheduler().isFolia();
         for (LivingEntity living : player.getWorld().getNearbyLivingEntities(player.getLocation(), BURN_MOB_RADIUS)) {
-            if (!(living instanceof Player)) {
+            if (living instanceof Player) {
+                continue;
+            }
+            if (folia) {
+                // Each mob's block read must run on the region that owns that mob — a mob just across a region
+                // boundary from the player would be a cross-region read from the player's region thread.
+                plugin.scheduler().runForEntity(living, () -> tryBurnEntityOnStove(living));
+            } else {
                 tryBurnEntityOnStove(living);
             }
         }
