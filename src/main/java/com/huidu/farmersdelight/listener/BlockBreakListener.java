@@ -13,7 +13,6 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
-import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.bukkit.api.event.CustomBlockBreakEvent;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.item.Item;
@@ -131,7 +130,7 @@ public class BlockBreakListener implements Listener {
         cleanupSkillet(blockLocation, dropLocation, shouldDropItems);
         cleanupCuttingBoard(pos, world, dropLocation, shouldDropItems);
         cleanupStove(blockLocation, dropLocation, shouldDropItems);
-        if (isTatamiBlock(block)) {
+        if (isTatamiBlock(state)) {
             cleanupTatami(blockLocation);
         }
     }
@@ -326,12 +325,7 @@ public class BlockBreakListener implements Listener {
         return CustomBlockUtils.hasBehavior(state, CookingPotBlockBehavior.class);
     }
 
-    private boolean isTatamiBlock(org.bukkit.block.Block block) {
-        if (block == null) {
-            return false;
-        }
-
-        ImmutableBlockState state = CraftEngineBlocks.getCustomBlockState(block);
+    private boolean isTatamiBlock(ImmutableBlockState state) {
         if (state == null || state.isEmpty()) {
             return false;
         }
