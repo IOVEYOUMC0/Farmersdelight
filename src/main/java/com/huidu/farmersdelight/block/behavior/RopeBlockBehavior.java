@@ -174,7 +174,67 @@ public class RopeBlockBehavior extends BlockBehavior {
 
     @Override
     public InteractionResult useWithoutItem(UseOnContext context, ImmutableBlockState state) {
+        if (context.getPlayer() == null) {
+            return InteractionResult.PASS;
+        }
+        Player bukkitPlayer = Bukkit.getPlayer(context.getPlayer().uuid());
+        // Non-sneaking empty hand rings a bell above (as in vanilla RopeBlock); sneaking empty hand is the reel
+        // path handled by RopeBlockListener, so leave it alone here.
+        if (bukkitPlayer == null || bukkitPlayer.isSneaking()) {
+            return InteractionResult.PASS;
+        }
+
+        World world = (World) context.getLevel().platformWorld();
+        BlockPos pos = context.getClickedPos();
+
+        // Mirror vanilla RopeBlock.useWithoutItem: walk up through a contiguous rope column (max 24 blocks) and
+        // ring the first bell found. Any gap, or any block that is neither a rope nor a bell, stops the search.
+        int x = pos.x();
+        int z = pos.z();
+        for (int i = 1, y = pos.y() + 1; i <= 24 && y <= world.getMaxHeight(); i++, y++) {
+            Block above = world.getBlockAt(x, y, z);
+            if (above.getType() == Material.BELL) {
+                ringBell(above, bukkitPlayer);
+                return InteractionResult.SUCCESS;
+            }
+            if (!CustomBlockUtils.hasBehavior(above, RopeBlockBehavior.class)) {
+                return InteractionResult.PASS;
+            }
+        }
         return InteractionResult.PASS;
+    }
+
+    /**
+     * Rings a bell as if a player pulled the rope, matching vanilla RopeBlock: the bell swings from its own
+     * facing rotated clockwise. Scheduled on the bell's location so the tile-entity read and ring run on the
+     * region thread that owns the bell.
+     */
+    private void ringBell(Block bell, Player player) {
+        Runnable ring = () -> {
+            if (bell.getType() != Material.BELL || !(bell.getState() instanceof org.bukkit.block.Bell bellState)) {
+                return;
+            }
+            BlockFace direction = bell.getBlockData() instanceof org.bukkit.block.data.Directional directional
+                    ? clockwise(directional.getFacing())
+                    : null;
+            bellState.ring(player, direction);
+        };
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        if (plugin != null) {
+            plugin.scheduler().runAt(bell.getLocation(), ring);
+        } else {
+            ring.run();
+        }
+    }
+
+    private static BlockFace clockwise(BlockFace face) {
+        return switch (face) {
+            case NORTH -> BlockFace.EAST;
+            case EAST -> BlockFace.SOUTH;
+            case SOUTH -> BlockFace.WEST;
+            case WEST -> BlockFace.NORTH;
+            default -> face;
+        };
     }
 
     public static ItemStack createItemForRopeBlock(Block block) {
