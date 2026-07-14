@@ -5,6 +5,7 @@ import com.huidu.farmersdelight.i18n.I18n;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -40,7 +41,10 @@ final class RecipeFileLoader {
         // Read explicitly as UTF-8 (consistent with config.yml / language files), rather than the deprecated
         // loadConfiguration(File) that uses the platform default charset, so non-ASCII recipe content is not
         // corrupted on servers whose default charset is not UTF-8 (common on Windows).
-        try (Reader reader = new InputStreamReader(Files.newInputStream(recipesFile.toPath()), StandardCharsets.UTF_8)) {
+        // Buffer the stream: yaml.load() issues many small read() calls; without buffering each call
+        // crosses into the OS/file-system layer (and on reload paths this runs on the main thread).
+        try (Reader reader = new BufferedReader(
+                new InputStreamReader(Files.newInputStream(recipesFile.toPath()), StandardCharsets.UTF_8), 8192)) {
             YamlConfiguration yaml = new YamlConfiguration();
             yaml.load(reader);
             return yaml;

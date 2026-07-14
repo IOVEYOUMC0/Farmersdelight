@@ -574,6 +574,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             // The editor listener is unregistered below via HandlerList; reset its flag so a soft restart
             // re-registers a fresh listener.
             com.huidu.farmersdelight.gui.editor.RecipeEditorListener.reset();
+            // 同理 reset RecipeBookListener 标志位，否则软重启后点击/拖拽事件不再被取消 → 物品 dupe。
+            com.huidu.farmersdelight.gui.recipebook.RecipeBookListener.reset();
         });
         runDisableStep("plugin.disable_step_save_block_data", this::saveAllBlockData);
 

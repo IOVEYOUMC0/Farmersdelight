@@ -186,26 +186,46 @@ public class HorseFeedTemptListener implements Listener {
         int size = snapshot.size();
         int budget = Math.min(tickBudget, size);
         int start = tickCursor >= size ? 0 : tickCursor;
+        // Resolve once per pass: on Paper/Spigot the repeating task is already on the main thread, so
+        // we can call tickTemptPlayer directly and skip the per-tempter runForEntity task allocation
+        // (which on Folia is needed for region-thread safety, on Paper is just overhead).
+        boolean folia = plugin.scheduler().isFolia();
 
         for (int processed = 0; processed < budget; processed++) {
             Map.Entry<UUID, Player> entry = snapshot.get((start + processed) % size);
             UUID playerId = entry.getKey();
             Player player = entry.getValue();
-            if (player == null || !scheduledTempterTicks.add(playerId)) {
+            if (player == null) {
                 continue;
             }
 
-            try {
-                plugin.scheduler().runForEntity(player, () -> {
-                    try {
-                        tickTemptPlayer(playerId, player);
-                    } finally {
+            if (folia) {
+                if (!scheduledTempterTicks.add(playerId)) {
+                    continue;
+                }
+                try {
+                    plugin.scheduler().runForEntity(player, () -> {
+                        try {
+                            tickTemptPlayer(playerId, player);
+                        } finally {
+                            scheduledTempterTicks.remove(playerId);
+                        }
+                    }, () -> {
+                        // 玩家 retired 时 finally 块不会执行，需在 retired 回调中清理守卫，否则
+                        // scheduledTempterTicks 永久持有该 UUID，诱饵功能对该玩家永久失效。
                         scheduledTempterTicks.remove(playerId);
-                    }
-                });
-            } catch (RuntimeException e) {
-                scheduledTempterTicks.remove(playerId);
-                removeTempter(playerId);
+                    });
+                } catch (RuntimeException e) {
+                    scheduledTempterTicks.remove(playerId);
+                    removeTempter(playerId);
+                }
+            } else {
+                // Paper/Spigot: already on the main thread — call directly, no task allocation.
+                try {
+                    tickTemptPlayer(playerId, player);
+                } catch (RuntimeException e) {
+                    removeTempter(playerId);
+                }
             }
         }
         tickCursor = size == 0 ? 0 : (start + Math.max(1, budget)) % size;
@@ -257,9 +277,20 @@ public class HorseFeedTemptListener implements Listener {
     }
 
     private void scheduleMobTempt(Mob mob, UUID playerId, Location targetLocation, PetFoodConfig.PetFoodDefinition definition) {
-        try {
-            plugin.scheduler().runForEntity(mob, () -> tryMoveToLocation(mob, playerId, targetLocation, definition));
-        } catch (RuntimeException ignored) {
+        if (plugin.scheduler().isFolia()) {
+            try {
+                plugin.scheduler().runForEntity(mob, () -> tryMoveToLocation(mob, playerId, targetLocation, definition));
+            } catch (RuntimeException ignored) {
+            }
+        } else {
+            // Paper/Spigot: already on the main thread (tickTemptPlayer was called directly), so invoke
+            // the move directly. Saves one BukkitTask allocation per nearby mob per tempter pass — in a
+            // large animal farm (100+ horses next to a feeding player) this avoids 100+ task allocations
+            // per tick interval.
+            try {
+                tryMoveToLocation(mob, playerId, targetLocation, definition);
+            } catch (RuntimeException ignored) {
+            }
         }
     }
 

@@ -46,6 +46,10 @@ public class SkilletManager {
     private static final double DEFAULT_FIRE_ASPECT_BONUS = Constants.SKILLET_FIRE_ASPECT_BONUS;
     private static final double DEFAULT_SMOKE_CHANCE = Constants.SKILLET_PARTICLE_CHANCE;
     private static final double DEFAULT_SIZZLE_CHANCE = Constants.SKILLET_SIZZLE_CHANCE;
+    // Heat-source state changes rarely (only on block break/place below the skillet). Cache the result
+    // for this many ticks so the per-tick hasHeatSource probe — which does two getBlockAt + HeatSourceConfig
+    // queries — is skipped in the steady state. 20 ticks = 1s max staleness, acceptable for cook progress.
+    private static final long HEAT_SOURCE_CACHE_TTL = 20L;
 
     private final FarmersDelightPlugin plugin;
     private final Map<Location, SkilletData> skillets = new ConcurrentHashMap<>();
@@ -118,6 +122,10 @@ public class SkilletManager {
         String ownerName;
         final List<Integer> displayEntityIds = new ArrayList<>();
         Boolean lastHeatState;
+        // Tick stamp of the last actual heat-source probe; Long.MIN_VALUE = never probed. Combined with
+        // lastHeatState this forms a short-TTL cache so hasHeatSource skips its two getBlockAt +
+        // HeatSourceConfig queries in the steady state (heat source changes are block-event driven).
+        long heatSourceCheckedTick = Long.MIN_VALUE;
 
         SkilletData(Location location, int defaultCookingTime) {
             this.location = location;
@@ -981,15 +989,27 @@ public class SkilletManager {
             return;
         }
 
-        boolean hasHeat = hasHeatSource(location);
-        if (!Objects.equals(skillet.lastHeatState, hasHeat)) {
-            debug(() -> "heat state: hasHeat=" + hasHeat + ", progress=" + skillet.cookingProgress
-                    + "/" + skillet.cookingDuration + ", recipe="
-                    + (skillet.currentRecipe != null ? skillet.currentRecipe.getKey() : "null")
-                    + ", stored=" + formatItem(skillet.storedItem) + ", location=" + formatLocation(location)
-                    + ", fireAspectLevel=" + skillet.fireAspectLevel);
+        boolean hasHeat;
+        long currentBukkitTick = Bukkit.getCurrentTick();
+        if (skillet.lastHeatState != null
+                && skillet.heatSourceCheckedTick != Long.MIN_VALUE
+                && currentBukkitTick - skillet.heatSourceCheckedTick < HEAT_SOURCE_CACHE_TTL) {
+            // Reuse the cached heat-source result within the TTL window. Heat source changes are
+            // block-event driven (break/place below the skillet), so 1s max staleness is acceptable
+            // for cook-progress gating and saves two getBlockAt + HeatSourceConfig queries per tick.
+            hasHeat = skillet.lastHeatState;
+        } else {
+            hasHeat = computeHasHeatSource(location);
+            skillet.heatSourceCheckedTick = currentBukkitTick;
+            if (!Objects.equals(skillet.lastHeatState, hasHeat)) {
+                debug(() -> "heat state: hasHeat=" + hasHeat + ", progress=" + skillet.cookingProgress
+                        + "/" + skillet.cookingDuration + ", recipe="
+                        + (skillet.currentRecipe != null ? skillet.currentRecipe.getKey() : "null")
+                        + ", stored=" + formatItem(skillet.storedItem) + ", location=" + formatLocation(location)
+                        + ", fireAspectLevel=" + skillet.fireAspectLevel);
+            }
+            skillet.lastHeatState = hasHeat;
         }
-        skillet.lastHeatState = hasHeat;
 
         if (!hasHeat) {
             skillet.cookingProgress = Math.max(0, skillet.cookingProgress - coolingDecrement);
@@ -1013,7 +1033,6 @@ public class SkilletManager {
         // visuals are identical to before — only pathological density (~50+ cooking skillets in one
         // chunk) is clipped. The budget map is cleared once per bukkit tick across the whole tick pass.
         long chunkKey = chunkKey(location);
-        long currentBukkitTick = Bukkit.getCurrentTick();
         if (currentBukkitTick != effectBudgetResetTick) {
             chunkEffectBudget.clear();
             effectBudgetResetTick = currentBukkitTick;
@@ -1039,8 +1058,16 @@ public class SkilletManager {
         }
     }
 
-    private boolean hasHeatSource(Location location) {
-        Block blockBelow = location.clone().subtract(0, 1, 0).getBlock();
+    private boolean computeHasHeatSource(Location location) {
+        // Use world.getBlockAt with raw integer coords instead of location.clone().subtract(...).getBlock(),
+        // avoiding two Location object allocations per call (this is a hot path — called once per skillet per
+        // tick when the TTL cache is cold).
+        World world = location.getWorld();
+        if (world == null) return false;
+        int x = location.getBlockX();
+        int y = location.getBlockY();
+        int z = location.getBlockZ();
+        Block blockBelow = world.getBlockAt(x, y - 1, z);
 
         if (plugin.getHeatSourceConfig().isHeatSource(blockBelow)) {
             return true;
@@ -1051,7 +1078,7 @@ public class SkilletManager {
         }
 
         if (plugin.getHeatSourceConfig().isConductor(blockBelow)) {
-            Block blockTwoBelow = location.clone().subtract(0, 2, 0).getBlock();
+            Block blockTwoBelow = world.getBlockAt(x, y - 2, z);
             return plugin.getHeatSourceConfig().isHeatSource(blockTwoBelow);
         }
 
