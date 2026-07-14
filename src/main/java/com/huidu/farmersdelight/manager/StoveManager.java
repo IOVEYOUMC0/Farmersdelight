@@ -680,25 +680,33 @@ public class StoveManager {
         boolean folia = plugin.scheduler().isFolia();
         for (Player player : players) {
             if (folia) {
-                // On Folia the block/entity reads must happen on the region owning the player.
-                plugin.scheduler().runAt(player.getLocation(), () -> burnAroundPlayer(player, sweepMobs));
+                // On Folia the block/entity reads must happen on the region owning the player. Reuse the
+                // fetched location for both the region dispatch and burnAroundPlayer's scans below, saving
+                // one Location allocation per player per burn pass (was 2: one here, one in burnAroundPlayer).
+                Location playerLoc = player.getLocation();
+                plugin.scheduler().runAt(playerLoc, () -> burnAroundPlayer(player, sweepMobs, playerLoc));
             } else {
-                burnAroundPlayer(player, sweepMobs);
+                burnAroundPlayer(player, sweepMobs, null);
             }
         }
     }
 
-    private void burnAroundPlayer(Player player, boolean sweepMobs) {
-        tryBurnEntityOnStove(player);
+    private void burnAroundPlayer(Player player, boolean sweepMobs, Location playerLoc) {
+        // Reuse the Folia-dispatch location when provided; otherwise fetch once here. This single
+        // location feeds both tryBurnEntityOnStove(player) and getNearbyLivingEntities below.
+        if (playerLoc == null) {
+            playerLoc = player.getLocation();
+        }
+        tryBurnEntityOnStove(player, playerLoc);
         if (!sweepMobs) {
             return;
         }
         // Mobs standing on a stove burn too (vanilla burns any LivingEntity). Bounded to near the player
         // so this stays cheap; a mob near two players is checked twice but the damage-invulnerability
         // window collapses that to one hit.
-        for (LivingEntity living : player.getWorld().getNearbyLivingEntities(player.getLocation(), BURN_MOB_RADIUS)) {
+        for (LivingEntity living : player.getWorld().getNearbyLivingEntities(playerLoc, BURN_MOB_RADIUS)) {
             if (!(living instanceof Player)) {
-                tryBurnEntityOnStove(living);
+                tryBurnEntityOnStove(living, null);
             }
         }
     }
@@ -708,7 +716,13 @@ public class StoveManager {
      * Damage amount / whether burning is enabled come from the stove's behavior config. The per-entity
      * invulnerability cooldown rate-limits the actual hit, so polling every few ticks yields ~2 dmg/sec. */
     private void tryBurnEntityOnStove(LivingEntity entity) {
-        Location loc = entity.getLocation();
+        tryBurnEntityOnStove(entity, null);
+    }
+
+    private void tryBurnEntityOnStove(LivingEntity entity, Location knownLoc) {
+        // knownLoc is an optional pre-fetched location (e.g. the player's reused location from burnAroundPlayer);
+        // other entities still need their own getLocation() since each stands on a different block.
+        Location loc = knownLoc != null ? knownLoc : entity.getLocation();
         World world = loc.getWorld();
         if (world == null) return;
         // The stove is the block directly beneath the entity's feet (feet rest on the stove's top face).

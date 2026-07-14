@@ -366,7 +366,9 @@ public class TrayManager {
             if (queuedSyncTask != null) {
                 return;
             }
-            queuedSyncTask = plugin.scheduler().runRepeating(this::processQueuedTraySyncs, 1L, 1L);
+            // 4L 而非 1L：tray 是视觉装饰，200ms 延迟无感知；budget 32 足以批量处理队列，
+            // 1L 周期会让每次末尾的 stopQueuedSyncTaskIfIdle 进入 synchronized 块检查，4L 减 75% 开销。
+            queuedSyncTask = plugin.scheduler().runRepeating(this::processQueuedTraySyncs, 1L, 4L);
         }
     }
 
