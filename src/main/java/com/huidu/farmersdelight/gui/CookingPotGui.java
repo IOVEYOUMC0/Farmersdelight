@@ -531,6 +531,7 @@ public class CookingPotGui implements InventoryHolder {
         // Implement a safe collect that only pulls from writable input slots (under the inventory
         // lock, mirroring the click handlers) and the player's own inventory.
         InventoryAction action = event.getAction();
+        ClickType click = event.getClick();
         if (action == InventoryAction.UNKNOWN) {
             event.setCancelled(true);
             return;
@@ -543,10 +544,16 @@ public class CookingPotGui implements InventoryHolder {
             handleCollectToCursor(event, player);
             return;
         }
+        // 双击空槽位且无可合并物品时，Paper 会发 NOTHING + DOUBLE_CLICK。如果点击的是可放入的
+        // input slot，让 vanilla 正常处理（光标物品放入该槽位），不取消事件，避免"打断双击"。
+        if (action == InventoryAction.NOTHING && click == ClickType.DOUBLE_CLICK
+                && clickedTop && isPlayerInputSlot(rawSlot)) {
+            scheduleGuiSync(event.getWhoClicked() instanceof Player p ? p : null);
+            return;
+        }
         // Hotbar number-key / offhand swap targeting top (GUI) slots does not fit this GUI's
         // slot model (they fall into the cursor-pickup branch). Reject them on the top inventory;
         // players can still freely arrange their own inventory.
-        ClickType click = event.getClick();
         if (clickedTop && (click == ClickType.NUMBER_KEY || click == ClickType.SWAP_OFFHAND)) {
             event.setCancelled(true);
             return;
