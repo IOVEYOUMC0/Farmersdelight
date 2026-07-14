@@ -1,8 +1,10 @@
 package com.huidu.farmersdelight.block.behavior;
 
+import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.util.BehaviorArgParser;
 import com.huidu.farmersdelight.util.CraftEngineAdapter;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
+import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
@@ -15,6 +17,7 @@ import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.context.BlockPlaceContext;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
+import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -23,6 +26,9 @@ import java.util.Map;
 import java.util.Optional;
 
 public class TatamiPairingBehavior extends BlockBehavior {
+    private static final BlockFace[] ORTHOGONAL_FACES = {
+            BlockFace.NORTH, BlockFace.EAST, BlockFace.SOUTH, BlockFace.WEST, BlockFace.UP, BlockFace.DOWN
+    };
 
     @Override
     public boolean isPathFindable(Object thisBlock, Object[] args) {
@@ -38,6 +44,7 @@ public class TatamiPairingBehavior extends BlockBehavior {
     }
     private static volatile String tatamiBlockId = "farmersdelight:tatami";
     private static volatile String facingPropertyName = "facing";
+    private static volatile String pairedPropertyName = "paired";
 
     private final Property<?> facingProperty;
     private final Property<Boolean> pairedProperty;
@@ -57,7 +64,7 @@ public class TatamiPairingBehavior extends BlockBehavior {
             Map<String, Object> arguments = section != null ? section.values() : Map.of();
             tatamiBlockId = BehaviorArgParser.getString(arguments, "block-id", tatamiBlockId);
             facingPropertyName = BehaviorArgParser.getString(arguments, "facing-property", facingPropertyName);
-            String pairedPropertyName = BehaviorArgParser.getString(arguments, "paired-property", "paired");
+            pairedPropertyName = BehaviorArgParser.getString(arguments, "paired-property", pairedPropertyName);
             boolean pairWhileSneaking = BehaviorArgParser.getBoolean(arguments, "pair-while-sneaking", false);
 
             Property<?> facingProperty = block.getProperty(facingPropertyName);
@@ -108,14 +115,46 @@ public class TatamiPairingBehavior extends BlockBehavior {
     }
 
     /**
-     * Resets paired=false when the facing partner is no longer this same tatami, mirroring vanilla
-     * TatamiBlock.updateShape. This is the engine-native neighbor-update hook, dispatched synchronously to the
-     * surviving half for every removal cause (break, explosion, piston, fluid, programmatic setBlock), so a
-     * broken pair's remaining half returns to the lone-mat appearance and can accept a new pairing. Only a
-     * paired tatami can un-pair, so the not-yet-paired half is skipped while its partner is being written during
-     * placement and pairing never triggers a false reset. The check keys on the facing partner (not the changed
-     * direction) because the neighbor-update hook carries no reliable single changed face; re-checking the
-     * partner every call is the direction-agnostic equivalent of vanilla's facing==FACING gate and is idempotent.
+     * Resets paired=false when the facing partner stops being this tatami, mirroring vanilla
+     * TatamiBlock.updateShape one-to-one. updateShape is the engine's shape-update hook, called for the exact
+     * changed direction whenever a block state changes; the returned state is persisted with no follow-up
+     * place(). Whether the engine dispatches this to a CraftEngine custom block on this server is being verified
+     * in-game via the debug log below; the authoritative reset is resetFacingNeighbors driven by the block-break
+     * events (TatamiBreakListener). args[3]=pos, args[5]=neighborPos, args[6]=neighborState (1.21.2+).
+     */
+    @Override
+    public Object updateShape(Object thisBlock, Object[] args) {
+        if (args.length < 7 || pairedProperty == null || facingProperty == null) {
+            return args[0];
+        }
+        ImmutableBlockState state = BlockStateUtils.getOptionalCustomBlockState(args[0]).orElse(null);
+        if (state == null || !isTatamiState(state) || !Boolean.TRUE.equals(state.get(pairedProperty))) {
+            return args[0];
+        }
+        BlockPos pos = CraftEngineAdapter.toBlockPos(args[3]);
+        BlockPos neighborPos = CraftEngineAdapter.toBlockPos(args[5]);
+        if (pos == null || neighborPos == null) {
+            return args[0];
+        }
+        BlockFace facing = getFacing(state);
+        boolean facingMatch = pos.x() + facing.getModX() == neighborPos.x()
+                && pos.y() + facing.getModY() == neighborPos.y()
+                && pos.z() + facing.getModZ() == neighborPos.z();
+        ImmutableBlockState neighborState = BlockStateUtils.getOptionalCustomBlockState(args[6]).orElse(null);
+        boolean partnerGone = facingMatch && !(isTatamiState(neighborState) && isSameTatami(state, neighborState));
+        debug("updateShape paired self=" + posStr(pos.x(), pos.y(), pos.z()) + " facing=" + facing
+                + " changed=" + posStr(neighborPos.x(), neighborPos.y(), neighborPos.z())
+                + " facingMatch=" + facingMatch + " partnerGone=" + partnerGone);
+        if (!partnerGone) {
+            return args[0];
+        }
+        return state.with(pairedProperty, false).customBlockState().minecraftState();
+    }
+
+    /**
+     * Backup reset on the neighbor-notify path. Fires when a neighbor is placed/removed; resets paired=false when
+     * the facing partner is no longer this tatami. Idempotent (only a paired tatami un-pairs), so pairing never
+     * triggers a false reset and a redundant fire after updateShape / the break listener is a no-op.
      */
     @Override
     public void neighborChanged(Object thisBlock, Object[] args) {
@@ -136,11 +175,44 @@ public class TatamiPairingBehavior extends BlockBehavior {
 
         Block partner = self.getRelative(getFacing(state));
         ImmutableBlockState partnerState = CraftEngineBlocks.getCustomBlockState(partner);
-        if (isTatamiState(partnerState) && isSameTatami(state, partnerState)) {
+        boolean partnerGone = !(isTatamiState(partnerState) && isSameTatami(state, partnerState));
+        debug("neighborChanged paired self=" + posStr(pos.x(), pos.y(), pos.z()) + " partnerGone=" + partnerGone);
+        if (!partnerGone) {
             return;
         }
-
         CraftEngineBlocks.place(self.getLocation(), state.with(pairedProperty, false), false);
+    }
+
+    /**
+     * Authoritative un-pair reset, driven by the block-break events (TatamiBreakListener). Given the location of
+     * a tatami that is being removed, resets paired=false on any adjacent paired tatami whose facing points back
+     * at that location (its now-departing partner). Position-based and synchronous: it does not depend on the
+     * broken block's own custom state still being readable (which CraftEngine may already have cleared), only on
+     * the surviving neighbor's live state, so it is reliable where the engine block-update hooks are not.
+     */
+    public static void resetFacingNeighbors(Location brokenLocation, String source) {
+        if (brokenLocation == null || brokenLocation.getWorld() == null) {
+            return;
+        }
+        World world = brokenLocation.getWorld();
+        Block center = world.getBlockAt(brokenLocation);
+        for (BlockFace face : ORTHOGONAL_FACES) {
+            Block neighbor = center.getRelative(face);
+            ImmutableBlockState nState = CraftEngineBlocks.getCustomBlockState(neighbor);
+            if (!isTatamiState(nState)) {
+                continue;
+            }
+            Property<Boolean> paired = pairedPropertyOf(nState);
+            if (paired == null || !Boolean.TRUE.equals(nState.get(paired))) {
+                continue;
+            }
+            Block partner = neighbor.getRelative(getFacingFromState(nState));
+            if (partner.getX() == center.getX() && partner.getY() == center.getY() && partner.getZ() == center.getZ()) {
+                CraftEngineBlocks.place(neighbor.getLocation(), nState.with(paired, false), false);
+                debug("reset neighbor " + posStr(neighbor.getX(), neighbor.getY(), neighbor.getZ())
+                        + " via " + source + " broken=" + posStr(center.getX(), center.getY(), center.getZ()));
+            }
+        }
     }
 
     /**
@@ -239,6 +311,15 @@ public class TatamiPairingBehavior extends BlockBehavior {
                 .isPresent();
     }
 
+    @SuppressWarnings("unchecked")
+    private static Property<Boolean> pairedPropertyOf(ImmutableBlockState state) {
+        if (state == null || state.isEmpty()) {
+            return null;
+        }
+        Property<?> property = state.owner().value().getProperty(pairedPropertyName);
+        return property == null ? null : (Property<Boolean>) property;
+    }
+
     private static BlockFace getFacingFromState(ImmutableBlockState state) {
         if (state == null || state.isEmpty()) {
             return BlockFace.NORTH;
@@ -259,6 +340,17 @@ public class TatamiPairingBehavior extends BlockBehavior {
             return BlockFace.valueOf(facingStr);
         } catch (IllegalArgumentException e) {
             return BlockFace.NORTH;
+        }
+    }
+
+    private static String posStr(int x, int y, int z) {
+        return x + "," + y + "," + z;
+    }
+
+    private static void debug(String message) {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        if (plugin != null) {
+            plugin.getLogger().info("[tatami] " + message);
         }
     }
 
