@@ -498,6 +498,7 @@ furniture:
           width: 0.5
           height: 1
           blocks-building: false
+          can-use-item-on: false
           interactive: false
           invisible: true
   farmersdelight:cooking_pot_handle:
