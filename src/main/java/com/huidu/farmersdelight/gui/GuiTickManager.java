@@ -74,7 +74,7 @@ public class GuiTickManager {
                         } finally {
                             scheduledCallbacks.remove(callback);
                         }
-                    });
+                    }, () -> scheduledCallbacks.remove(callback));
                 } catch (RuntimeException e) {
                     scheduledCallbacks.remove(callback);
                     playerTickCallbacks.remove(callback);
