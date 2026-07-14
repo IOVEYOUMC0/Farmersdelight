@@ -944,7 +944,9 @@ public class CookingPotGui implements InventoryHolder {
         // must run there (not on the pot's region) to avoid cross-thread access to the Bukkit
         // inventory on Folia. Block-related work is dispatched to the pot's region from inside syncTask.
         if (viewer != null) {
-            plugin.scheduler().runForEntity(viewer, syncTask);
+            // 带 retired 回调：玩家 retired 时 syncTask 的 finally 块不会执行，syncQueued 会永久为 true，
+            // 导致后续所有 scheduleGuiSync 调用被 early-return 跳过，GUI 同步功能失效。
+            plugin.scheduler().runForEntity(viewer, syncTask, () -> syncQueued = false);
         } else {
             plugin.scheduler().runAt(cookingPotLocation, syncTask);
         }

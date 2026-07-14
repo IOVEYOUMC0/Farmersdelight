@@ -210,6 +210,10 @@ public class HorseFeedTemptListener implements Listener {
                         } finally {
                             scheduledTempterTicks.remove(playerId);
                         }
+                    }, () -> {
+                        // 玩家 retired 时 finally 块不会执行，需在 retired 回调中清理守卫，否则
+                        // scheduledTempterTicks 永久持有该 UUID，诱饵功能对该玩家永久失效。
+                        scheduledTempterTicks.remove(playerId);
                     });
                 } catch (RuntimeException e) {
                     scheduledTempterTicks.remove(playerId);
