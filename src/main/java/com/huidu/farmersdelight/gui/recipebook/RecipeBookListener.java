@@ -38,6 +38,17 @@ public final class RecipeBookListener implements Listener {
         }
     }
 
+    /**
+     * 在插件 disable 时调用，与 HandlerList.unregisterAll(plugin) 配合：前者移除监听器实例，
+     * 这里 reset 标志位以便软重启（/plugman reload）时 ensureRegistered 能重新注册新监听器。
+     * 不 reset 会导致 ensureRegistered early return，点击/拖拽事件不再被取消 → 物品 dupe。
+     */
+    public static void reset() {
+        synchronized (RecipeBookListener.class) {
+            registered = false;
+        }
+    }
+
     @EventHandler(priority = EventPriority.HIGH)
     public void onClick(InventoryClickEvent event) {
         InventoryHolder holder = event.getInventory().getHolder();

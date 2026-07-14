@@ -599,12 +599,13 @@ public class TickManager {
 
         Block blockBelow = world.getBlockAt(posKey.x(), posKey.y() - 1, posKey.z());
         boolean hasHeat = plugin.getHeatSourceConfig().isHeatSource(blockBelow);
-        
-        if (!hasHeat) {
+
+        // Only fetch the block two below when the block below is actually a conductor — the previous
+        // order fetched blockTwoBelow unconditionally on !hasHeat, wasting a getBlockAt whenever the
+        // block below wasn't a conductor (the common case: solid stone, dirt, etc.).
+        if (!hasHeat && plugin.getHeatSourceConfig().isConductor(blockBelow)) {
             Block blockTwoBelow = world.getBlockAt(posKey.x(), posKey.y() - 2, posKey.z());
-            if (plugin.getHeatSourceConfig().isConductor(blockBelow)) {
-                hasHeat = plugin.getHeatSourceConfig().isHeatSource(blockTwoBelow);
-            }
+            hasHeat = plugin.getHeatSourceConfig().isHeatSource(blockTwoBelow);
         }
 
         entity.setHasHeatSource(hasHeat);

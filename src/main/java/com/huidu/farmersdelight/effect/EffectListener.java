@@ -103,6 +103,10 @@ public class EffectListener implements Listener {
         if (effectTask != null) {
             return;
         }
+        // Resolve Folia once: on Paper/Spigot the repeating task already runs on the main thread, so we
+        // can call EffectManager.tick directly and skip one BukkitTask allocation per tracked player per
+        // tick pass (100 buffed players × 5 passes/sec = 500 task allocations/sec saved).
+        boolean folia = plugin.scheduler().isFolia();
         effectTask = plugin.scheduler().runRepeating(() -> {
             if (playersWithEffects.isEmpty()) {
                 return;
@@ -117,28 +121,45 @@ public class EffectListener implements Listener {
                     iterator.remove();
                     continue;
                 }
-                if (player == null || !scheduledTicks.add(playerId)) {
+                if (player == null) {
                     continue;
                 }
-                try {
-                    // retired callback: on Folia the entity task is silently dropped if the player is
-                    // retired after queueing but before running (no Quit/Death event). Without clearing
-                    // scheduledTicks there, the guard above (scheduledTicks.add) stays false forever and
-                    // EffectManager.tick never runs for that player again.
-                    plugin.scheduler().runForEntity(player, () -> {
-                        try {
-                            if (player.isOnline()) {
-                                EffectManager.tick(player);
-                            } else {
-                                untrackPlayer(playerId);
+                if (folia) {
+                    // Folia: EffectManager.tick touches player state, must run on the player's region thread.
+                    if (!scheduledTicks.add(playerId)) {
+                        continue;
+                    }
+                    try {
+                        // retired callback: on Folia the entity task is silently dropped if the player is
+                        // retired after queueing but before running (no Quit/Death event). Without clearing
+                        // scheduledTicks there, the guard above (scheduledTicks.add) stays false forever and
+                        // EffectManager.tick never runs for that player again.
+                        plugin.scheduler().runForEntity(player, () -> {
+                            try {
+                                if (player.isOnline()) {
+                                    EffectManager.tick(player);
+                                } else {
+                                    untrackPlayer(playerId);
+                                }
+                            } finally {
+                                scheduledTicks.remove(playerId);
                             }
-                        } finally {
-                            scheduledTicks.remove(playerId);
-                        }
-                    }, () -> scheduledTicks.remove(playerId));
-                } catch (RuntimeException e) {
-                    scheduledTicks.remove(playerId);
-                    untrackPlayer(playerId);
+                        }, () -> scheduledTicks.remove(playerId));
+                    } catch (RuntimeException e) {
+                        scheduledTicks.remove(playerId);
+                        untrackPlayer(playerId);
+                    }
+                } else {
+                    // Paper/Spigot: already on the main thread, call tick directly.
+                    if (!player.isOnline()) {
+                        untrackPlayer(playerId);
+                        continue;
+                    }
+                    try {
+                        EffectManager.tick(player);
+                    } catch (RuntimeException e) {
+                        untrackPlayer(playerId);
+                    }
                 }
             }
         }, 1L, TICK_INTERVAL);
