@@ -524,13 +524,23 @@ public class CookingPotGui implements InventoryHolder {
         boolean clickedTop = clickedInventory != null && clickedInventory.equals(inventory);
         boolean clickedBottom = clickedInventory != null && clickedInventory.getType() == InventoryType.PLAYER;
 
-        // Double-click "collect to cursor" gathers matching item stacks from both inventories,
-        // including the read-only top display/output/buffer slots mapped to the block entity.
-        // syncToBlockEntity only writes back writable slots, so a collect pulls items out of
-        // display slots without removing them from the entity -> item duplication. Reject it.
+        // Double-click "collect to cursor" gathers matching item stacks from both inventories.
+        // Vanilla's default would pull from read-only top display/output/buffer slots mapped to the
+        // block entity — syncToBlockEntity only writes back writable slots, so a collect would pull
+        // items out of display slots without removing them from the entity -> item duplication.
+        // Implement a safe collect that only pulls from writable input slots (under the inventory
+        // lock, mirroring the click handlers) and the player's own inventory.
         InventoryAction action = event.getAction();
-        if (action == InventoryAction.COLLECT_TO_CURSOR || action == InventoryAction.UNKNOWN) {
+        if (action == InventoryAction.UNKNOWN) {
             event.setCancelled(true);
+            return;
+        }
+        if (action == InventoryAction.COLLECT_TO_CURSOR) {
+            event.setCancelled(true);
+            if (!(event.getWhoClicked() instanceof Player player)) {
+                return;
+            }
+            handleCollectToCursor(event, player);
             return;
         }
         // Hotbar number-key / offhand swap targeting top (GUI) slots does not fit this GUI's
@@ -648,48 +658,46 @@ public class CookingPotGui implements InventoryHolder {
         }
 
         int maxStack = Math.min(oldCursor.getMaxStackSize(), inventory.getMaxStackSize());
-        // The amount vanilla's drag distribution intends to deposit into each writable input slot, computed
-        // from the pre-apply GUI snapshot. Applied to the authoritative entity value below, not written
-        // absolutely, so a concurrent cook-tick consume cannot be clobbered.
-        java.util.Map<Integer, Integer> shares = new java.util.LinkedHashMap<>();
+        // 轻量预检查：是否有任何 input slot 被 drag 触及且持有同类型物品，避免无谓获取 inventory lock。
+        boolean hasApplicable = false;
         for (Map.Entry<Integer, ItemStack> entry : event.getNewItems().entrySet()) {
             int rawSlot = entry.getKey();
             if (rawSlot < 0 || rawSlot >= config.getSize() || !isPlayerInputSlot(rawSlot)) {
-                continue; // only handle writable top input slots
+                continue;
             }
             ItemStack newItem = entry.getValue();
             if (newItem == null || newItem.getType().isAir() || !newItem.isSimilar(oldCursor)) {
                 continue;
             }
-            ItemStack existing = inventory.getItem(rawSlot);
-            int existingAmount = (existing == null || existing.getType().isAir()) ? 0 : existing.getAmount();
-            if (existingAmount > 0 && !newItem.isSimilar(existing)) {
-                continue; // slot already holds a different item; do not mix
-            }
-            int share = Math.min(newItem.getAmount(), maxStack) - existingAmount;
-            if (share > 0) {
-                shares.put(rawSlot, share);
-            }
+            hasApplicable = true;
+            break;
         }
-
-        if (shares.isEmpty()) {
+        if (!hasApplicable) {
             return; // no applicable input slots; cursor unchanged (event already cancelled)
         }
 
-        // Add each share on top of the CURRENT entity contents under the block entity's inventory lock (adopting
-        // the authoritative state first), so a cook tick that consumes ingredients under the same lock cannot
-        // interleave and be overwritten by the pre-drag GUI amount — the same Folia cross-region dupe as the
-        // click paths.
+        // 在 inventory lock 内基于 refresh 后的最新状态计算 share 并直接应用，省去中间 LinkedHashMap 分配，
+        // 且 share 基于最新 existingAmount 计算更准确（原代码用 lock 外旧状态计算的 share 可能与 refresh 后状态不一致）。
         int[] placedTotal = {0};
         blockEntity.withInventoryLock(() -> {
             refreshInputSlotsFromBlockEntity();
-            for (Map.Entry<Integer, Integer> e : shares.entrySet()) {
-                int rawSlot = e.getKey();
-                int share = e.getValue();
+            for (Map.Entry<Integer, ItemStack> entry : event.getNewItems().entrySet()) {
+                int rawSlot = entry.getKey();
+                if (rawSlot < 0 || rawSlot >= config.getSize() || !isPlayerInputSlot(rawSlot)) {
+                    continue; // only handle writable top input slots
+                }
+                ItemStack newItem = entry.getValue();
+                if (newItem == null || newItem.getType().isAir() || !newItem.isSimilar(oldCursor)) {
+                    continue;
+                }
                 ItemStack existing = inventory.getItem(rawSlot);
                 int existingAmount = (existing == null || existing.getType().isAir()) ? 0 : existing.getAmount();
                 // The slot may now hold a different item (another viewer / the cook tick); only stack onto a match.
                 if (existingAmount > 0 && !oldCursor.isSimilar(existing)) {
+                    continue;
+                }
+                int share = Math.min(newItem.getAmount(), maxStack) - existingAmount;
+                if (share <= 0) {
                     continue;
                 }
                 int place = Math.min(existingAmount + share, maxStack);
@@ -815,6 +823,83 @@ public class CookingPotGui implements InventoryHolder {
         player.setItemOnCursor(slotItem.clone());
         syncToBlockEntity();
         updateDisplayItems();
+    }
+
+    /**
+     * 安全的双击合并：只从可写 input slots（ingredient + container）和玩家背包收集匹配物品到光标，
+     * 跳过只读槽位（output/buffer/heat/progress/recipe）。input slots 的修改走 inventory lock，
+     * 与 cook tick 保持一致（避免 Folia 跨区域 dupe）。
+     */
+    private void handleCollectToCursor(InventoryClickEvent event, Player player) {
+        ItemStack cursor = event.getCursor();
+        if (cursor == null || cursor.getType().isAir()) {
+            return;
+        }
+        int maxStack = Math.min(cursor.getMaxStackSize(), inventory.getMaxStackSize());
+        int available = maxStack - cursor.getAmount();
+        if (available <= 0) {
+            return;
+        }
+
+        final ItemStack target = cursor;
+        final int[] collected = {0};
+        final int clickedRawSlot = event.getRawSlot();
+
+        // 从 input slots 收集（走 inventory lock 保证与 cook tick 一致）
+        blockEntity.withInventoryLock(() -> {
+            refreshInputSlotsFromBlockEntity();
+            for (int slot : ingredientSlots) {
+                if (slot == clickedRawSlot) continue;
+                if (collected[0] >= available) break;
+                collected[0] += collectMatchingFromGuiSlot(slot, target, available - collected[0]);
+            }
+            for (int slot : containerSlots) {
+                if (slot == clickedRawSlot) continue;
+                if (collected[0] >= available) break;
+                collected[0] += collectMatchingFromGuiSlot(slot, target, available - collected[0]);
+            }
+            syncToBlockEntity();
+        });
+
+        // 再从玩家背包收集（vanilla 行为：主物品栏 + 快捷栏，不含盔甲、副手）
+        if (collected[0] < available) {
+            PlayerInventory playerInventory = player.getInventory();
+            int topSize = config.getSize();
+            for (int i = 0; i < 36 && collected[0] < available; i++) {
+                if (topSize + i == clickedRawSlot) continue;
+                ItemStack item = playerInventory.getItem(i);
+                if (item == null || !item.isSimilar(target)) continue;
+                int take = Math.min(available - collected[0], item.getAmount());
+                collected[0] += take;
+                if (take >= item.getAmount()) {
+                    playerInventory.setItem(i, null);
+                } else {
+                    item.setAmount(item.getAmount() - take);
+                }
+            }
+        }
+
+        if (collected[0] > 0) {
+            cursor.setAmount(cursor.getAmount() + collected[0]);
+            player.setItemOnCursor(cursor);
+            updateDisplayItems();
+        }
+    }
+
+    private int collectMatchingFromGuiSlot(int guiSlot, ItemStack target, int maxTake) {
+        ItemStack slotItem = inventory.getItem(guiSlot);
+        if (slotItem == null || slotItem.getType().isAir() || !slotItem.isSimilar(target)) {
+            return 0;
+        }
+        int take = Math.min(maxTake, slotItem.getAmount());
+        if (take >= slotItem.getAmount()) {
+            writeWritableSlot(guiSlot, null);
+        } else {
+            ItemStack remaining = slotItem.clone();
+            remaining.setAmount(slotItem.getAmount() - take);
+            writeWritableSlot(guiSlot, remaining);
+        }
+        return take;
     }
 
     private void handleTopShiftClick(Player player, int rawSlot) {
