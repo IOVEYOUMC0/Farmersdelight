@@ -149,16 +149,30 @@ public class RopeBlockListener implements Listener {
     }
 
     private boolean hasNearbyRope(Block block) {
-        if (CustomBlockUtils.hasBehavior(block, RopeBlockBehavior.class)) {
+        // Use the tracked placedRopes set (O(1) hash lookups) instead of 5 CE hasBehavior queries
+        // (each of which calls CraftEngineBlocks.getCustomBlockState → NMS getBlockState + Optional alloc).
+        // placedRopes is maintained by CustomBlockPlace/Break + chunk/world unload. When a rope exists
+        // that wasn't placed during this session (e.g. pre-existing on startup), placedRopes.isEmpty()
+        // already short-circuits in scheduleRopeRefreshIfNearby before we get here, so the index is
+        // authoritative for the "at least one tracked rope exists" case.
+        UUID worldId = block.getWorld().getUID();
+        int x = block.getX();
+        int y = block.getY();
+        int z = block.getZ();
+        if (placedRopes.contains(new Cell(worldId, x, y, z))) {
             return true;
         }
-        for (BlockFace face : new BlockFace[]{BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST}) {
-            if (CustomBlockUtils.hasBehavior(block.getRelative(face), RopeBlockBehavior.class)) {
+        for (BlockFace face : HORIZONTAL_FACES) {
+            if (placedRopes.contains(new Cell(worldId, x + face.getModX(), y, z + face.getModZ()))) {
                 return true;
             }
         }
         return false;
     }
+
+    private static final BlockFace[] HORIZONTAL_FACES = {
+            BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST
+    };
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onRopePlace(CustomBlockPlaceEvent event) {
