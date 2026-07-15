@@ -134,6 +134,13 @@ public final class ItemUtils {
         return CraftEngineItems.byId(key) != null;
     }
 
+    /** True once CraftEngine has loaded at least one custom item (any namespace). A readiness probe that CE
+     * finished its item-load pass, independent of any specific item id or namespace: unlike probing one item,
+     * this survives an admin deleting that item or repacking the plugin's items under a different namespace. */
+    public static boolean isAnyCustomItemLoaded() {
+        return !CraftEngineItems.loadedItems().isEmpty();
+    }
+
     public static Set<Key> getCustomItemTags(Key key) {
         BukkitItemDefinition item = CraftEngineItems.byId(key);
         if (item == null) {

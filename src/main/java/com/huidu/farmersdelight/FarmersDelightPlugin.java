@@ -45,7 +45,6 @@ import com.huidu.farmersdelight.api.event.ProfessionCookingExperienceEvent;
 import net.momirealms.craftengine.bukkit.api.event.CraftEngineReloadEvent;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.world.BukkitWorldManager;
-import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.world.CEWorld;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -173,8 +172,12 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     }
 
     private boolean areCraftEngineItemsReady() {
+        // Probe whether CraftEngine has finished its item-load pass, not a single item id. CE parses items in a
+        // deferred pass after its onEnable (only listeners are registered there), so isPluginEnabled would flip
+        // true too early; and keying on one specific item breaks the moment that item is deleted or the pack's
+        // namespace is changed. isAnyCustomItemLoaded checks the registry itself, surviving both.
         try {
-            return ItemUtils.isCustomItemLoaded(Key.of(Constants.ITEM_RICE_PANICLE));
+            return ItemUtils.isAnyCustomItemLoaded();
         } catch (Exception ignored) {
             return false;
         }
