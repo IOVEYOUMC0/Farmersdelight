@@ -1,7 +1,7 @@
 ﻿items:
   farmersdelight:wild_cabbages:
     data:
-      item-name: <l10n:block.farmersdelight.wild_cabbages>
+      item-name: <lang:block.farmersdelight.wild_cabbages>
     texture: farmersdelight:block/wild_cabbages
     behavior:
       type: block_item
@@ -57,7 +57,7 @@
                       chance: 0.0001
   farmersdelight:wild_onions:
     data:
-      item-name: <l10n:block.farmersdelight.wild_onions>
+      item-name: <lang:block.farmersdelight.wild_onions>
     texture: farmersdelight:block/wild_onions
     behavior:
       type: block_item
@@ -107,7 +107,7 @@
                             max: 2
   farmersdelight:wild_tomatoes:
     data:
-      item-name: <l10n:block.farmersdelight.wild_tomatoes>
+      item-name: <lang:block.farmersdelight.wild_tomatoes>
     texture: farmersdelight:block/wild_tomatoes
     behavior:
       type: block_item
@@ -165,7 +165,7 @@
                       chance: 0.0001
   farmersdelight:wild_rice:
     data:
-      item-name: <l10n:block.farmersdelight.wild_rice>
+      item-name: <lang:block.farmersdelight.wild_rice>
     texture: farmersdelight:block/wild_rice_top
     behavior:
       type: double_high_block_item
