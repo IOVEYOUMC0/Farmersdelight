@@ -4,6 +4,7 @@ import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.manager.SkilletManager;
 import com.huidu.farmersdelight.util.BehaviorArgParser;
+import com.huidu.farmersdelight.util.CookingDebugLog;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CraftEngineAdapter;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
@@ -243,35 +244,17 @@ public class SkilletBlockBehavior extends BlockBehavior implements EntityBlock, 
     }
 
     private void logDebug(Player player, Block clickedBlock, ItemStack item, String recipeId) {
-        String resolvedItemId = resolveItemId(item);
+        String resolvedItemId = CookingDebugLog.resolveItemId(item);
         Material material = Material.AIR;
         if (item != null) {
             material = item.getType();
         }
         Bukkit.getLogger().info(I18n.formatConsole("debug.ce_header"));
-        logDebugField("debug.label_behavior", "farmersdelight:skillet");
-        logDebugField("debug.label_player", player.getName());
-        logDebugField("debug.label_clicked_block", clickedBlock.getType());
-        logDebugField("debug.label_item", material);
-        logDebugField("debug.label_item_id", resolvedItemId);
-        logDebugField("debug.label_recipe_found", recipeId);
-    }
-
-    private void logDebugField(String labelKey, Object value) {
-        Bukkit.getLogger().info(I18n.formatConsole("debug.field",
-                "label", I18n.formatConsole(labelKey),
-                "value", value));
-    }
-
-    private String resolveItemId(ItemStack item) {
-        if (item == null || item.getType().isAir()) {
-            return "minecraft:air";
-        }
-
-        String customItemId = ItemUtils.getCustomItemId(item);
-        if (customItemId != null) {
-            return customItemId;
-        }
-        return "minecraft:" + item.getType().name().toLowerCase(java.util.Locale.ROOT);
+        CookingDebugLog.logField("debug.label_behavior", "farmersdelight:skillet");
+        CookingDebugLog.logField("debug.label_player", player.getName());
+        CookingDebugLog.logField("debug.label_clicked_block", clickedBlock.getType());
+        CookingDebugLog.logField("debug.label_item", material);
+        CookingDebugLog.logField("debug.label_item_id", resolvedItemId);
+        CookingDebugLog.logField("debug.label_recipe_found", recipeId);
     }
 }

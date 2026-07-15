@@ -9,14 +9,12 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 /**
  * Single protection gate for FarmersDelight's custom-block placement/interaction paths (the R-SEC-001 sites
- * that intercept vanilla and call {@code CraftEngineBlocks.place}). A location is allowed only if BOTH pass:
- * <ul>
- *   <li>WorldGuard — via {@link WorldGuardCompat}, which keeps FD's master {@code farmersdelight-use} flag plus
- *       one per-{@link Feature} StateFlag (fine-grained per-station control WorldGuard-side);</li>
- *   <li>every other installed land/claim plugin — via {@link AntiGriefLib}, which abstracts 24+ backends
- *       (GriefPrevention, Lands, Towny, Residence, PlotSquared, Factions, HuskClaims, …) behind one query.
- *       WorldGuard is excluded from AntiGriefLib so FD's own granular WG path stays authoritative for it.</li>
- * </ul>
+ * that intercept vanilla and call CraftEngineBlocks.place). A location is allowed only if BOTH pass:
+ * - WorldGuard, via WorldGuardCompat, which keeps FD's master farmersdelight-use flag plus one per-Feature
+ *   StateFlag (fine-grained per-station control WorldGuard-side);
+ * - every other installed land/claim plugin, via AntiGriefLib, which abstracts 24+ backends (GriefPrevention,
+ *   Lands, Towny, Residence, PlotSquared, Factions, HuskClaims, and more) behind one query. WorldGuard is
+ *   excluded from AntiGriefLib so FD's own granular WG path stays authoritative for it.
  * Never fails closed: when a backend is absent or a hook errors, the check allows (protection is opt-in, and a
  * buggy third-party hook must not block legitimate interactions).
  */
@@ -80,14 +78,6 @@ public final class ProtectionCompat {
 
     public static boolean canBuild(Player player, Location location) {
         return canBuild(player, location, null);
-    }
-
-    public static boolean canUse(Player player, Block block) {
-        return canUse(player, block, null);
-    }
-
-    public static boolean canUse(Player player, Location location) {
-        return canUse(player, location, null);
     }
 
     // ── Feature-aware overloads. ──

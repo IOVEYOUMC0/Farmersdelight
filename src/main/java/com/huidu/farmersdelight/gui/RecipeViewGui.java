@@ -71,7 +71,6 @@ public class RecipeViewGui implements InventoryHolder {
         MAIN_MENU,
         COOKING_POT_LIST,
         CUTTING_BOARD_LIST,
-        MATERIAL_LIST,
         RECIPE_DETAIL
     }
 
@@ -376,7 +375,6 @@ public class RecipeViewGui implements InventoryHolder {
             case MAIN_MENU -> drawMainMenu(player);
             case COOKING_POT_LIST -> drawCookingPotList(player);
             case CUTTING_BOARD_LIST -> drawCuttingBoardList(player);
-            case MATERIAL_LIST -> drawMaterialList(player);
             case RECIPE_DETAIL -> drawRecipeDetail(player, resetDetailAnimations);
         }
     }
@@ -415,33 +413,6 @@ public class RecipeViewGui implements InventoryHolder {
         List<CuttingBoardRecipe> recipes = plugin.getCuttingBoardRecipes().getSortedRecipes();
         recipes = applyDiscoveryFilter(recipes, false, player);
         drawRecipeList(player, listConfig, recipes, false);
-    }
-
-    private void drawMaterialList(Player player) {
-        CookingPotRecipe recipe = plugin.getCookingPotRecipes().getRecipe(getActiveCookingPotRecipeGroup(), selectedRecipeId);
-        RecipeViewGuiConfig.RecipeDetailConfig detailConfig = getActiveCookingPotDetailConfig();
-        inventory = Bukkit.createInventory(this, detailConfig.getSize(),
-                coloredTitle(resolveMenuTitle("recipe-detail-cooking-pot", "level_2_pot", detailConfig.getTitle(), Map.of())));
-        fillBackground(detailConfig);
-        setGuiItem(detailConfig, "back", detailConfig.getBackSlot());
-        if (recipe == null) {
-            return;
-        }
-
-        List<Integer> slots = detailConfig.getIngredientSlots();
-        List<RecipeIngredient> ingredients = recipe.getIngredients();
-        for (int i = 0; i < slots.size() && i < ingredients.size(); i++) {
-            inventory.setItem(slots.get(i), createIngredientDisplay(ingredients.get(i), player, slots.get(i)));
-        }
-
-        if (recipe.needsContainer() && recipe.getContainer() != null && detailConfig.getContainerSlot() >= 0) {
-            ItemStack container = recipe.getContainer().clone();
-            ItemMeta meta = container.getItemMeta();
-            meta.displayName(itemNameComponent(container, player).colorIfAbsent(NamedTextColor.AQUA));
-            meta.lore(List.of(tr("gui.recipe.container", NamedTextColor.GRAY)));
-            container.setItemMeta(meta);
-            inventory.setItem(detailConfig.getContainerSlot(), container);
-        }
     }
 
     private <T> void drawRecipeList(Player player, RecipeViewGuiConfig.RecipeListConfig listConfig, 
@@ -556,10 +527,6 @@ public class RecipeViewGui implements InventoryHolder {
         }
     }
 
-    private void drawRecipeDetail(Player player) {
-        drawRecipeDetail(player, true);
-    }
-
     private void drawRecipeDetail(Player player, boolean resetAnimations) {
         RecipeViewGuiConfig.RecipeDetailConfig detailConfig = getActiveDetailConfig();
         Map<String, String> titlePlaceholders = new HashMap<>();
@@ -625,7 +592,6 @@ public class RecipeViewGui implements InventoryHolder {
 
     private void drawCookingPotDetailActions(RecipeViewGuiConfig.RecipeDetailConfig detailConfig, Player player) {
         clearDetailActionSlot(detailConfig, detailConfig.getFilterSlot());
-        clearDetailActionSlot(detailConfig, detailConfig.getMaterialsSlot());
         if (fromCookingPot) {
             setFillButton(detailConfig, player);
         }
@@ -1376,7 +1342,6 @@ public class RecipeViewGui implements InventoryHolder {
             case MAIN_MENU -> handleMainMenuClick(player, slot);
             case COOKING_POT_LIST -> handleCookingPotListClick(player, slot);
             case CUTTING_BOARD_LIST -> handleCuttingBoardListClick(player, slot);
-            case MATERIAL_LIST -> handleMaterialListClick(player, slot);
             case RECIPE_DETAIL -> handleRecipeDetailClick(player, slot, event.isShiftClick());
         }
     }
@@ -1428,16 +1393,6 @@ public class RecipeViewGui implements InventoryHolder {
         recipes = applyDiscoveryFilter(recipes, true, player);
 
         handleRecipeListClick(player, slot, listConfig, recipes, true);
-    }
-
-    private void handleMaterialListClick(Player player, int slot) {
-        RecipeViewGuiConfig.RecipeDetailConfig detailConfig = getActiveCookingPotDetailConfig();
-        if (slot == detailConfig.getBackSlot()) {
-            if (runBackButtonCommands(player, detailConfig.getItem("back"))) {
-                return;
-            }
-            navigateToState(player, GuiState.RECIPE_DETAIL);
-        }
     }
 
     private void handleCuttingBoardListClick(Player player, int slot) {
@@ -2375,7 +2330,4 @@ public class RecipeViewGui implements InventoryHolder {
         return activeGuis.remove(playerId);
     }
 
-    public static RecipeViewGui getActiveGui(UUID playerId) {
-        return activeGuis.get(playerId);
-    }
 }

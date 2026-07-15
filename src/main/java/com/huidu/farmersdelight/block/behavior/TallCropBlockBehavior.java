@@ -340,17 +340,7 @@ public class TallCropBlockBehavior extends BlockBehavior {
 
                     ImmutableBlockState lowerState = CraftEngineBlocks.getCustomBlockState(lowerBlock);
                     if (lowerState != null && !lowerState.isEmpty()) {
-                        ImmutableBlockState resetState = lowerState;
-                        if (ageProperty != null) {
-                            resetState = resetState.with(ageProperty, Math.max(0, maxAgeLower - 1));
-                        }
-                        if (halfProperty != null) {
-                            resetState = withRaw(resetState, halfProperty, halfLowerValue);
-                        }
-                        if (supportingProperty != null) {
-                            resetState = resetState.with(supportingProperty, false);
-                        }
-                        CraftEngineBlocks.place(lowerBlock.getLocation(), resetState, false);
+                        CraftEngineBlocks.place(lowerBlock.getLocation(), buildLowerResetState(lowerState), false);
                     }
                 }
             }
@@ -414,6 +404,10 @@ public class TallCropBlockBehavior extends BlockBehavior {
         ImmutableBlockState lowerState = CraftEngineBlocks.getCustomBlockState(lowerBlock);
         if (lowerState == null || lowerState.isEmpty() || isUpperHalf(lowerState)) return;
 
+        CraftEngineBlocks.place(lowerBlock.getLocation(), buildLowerResetState(lowerState), false);
+    }
+
+    private ImmutableBlockState buildLowerResetState(ImmutableBlockState lowerState) {
         ImmutableBlockState resetState = lowerState;
         if (ageProperty != null) {
             resetState = resetState.with(ageProperty, Math.max(0, maxAgeLower - 1));
@@ -424,7 +418,7 @@ public class TallCropBlockBehavior extends BlockBehavior {
         if (supportingProperty != null) {
             resetState = resetState.with(supportingProperty, false);
         }
-        CraftEngineBlocks.place(lowerBlock.getLocation(), resetState, false);
+        return resetState;
     }
 
     private boolean applyBoneMealToUpperHalf(BlockPos pos, World world, ImmutableBlockState state, int currentAge) {

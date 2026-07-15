@@ -115,10 +115,6 @@ public class WildRiceBlockBehavior extends BlockBehavior {
         return getBehavior(state.owner().value().id());
     }
 
-    public boolean requiresWater() {
-        return requiresWater;
-    }
-
     public boolean canPlantAt(Block waterBlock) {
         if (waterBlock == null) {
             return false;

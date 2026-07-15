@@ -5,7 +5,6 @@ import com.huidu.farmersdelight.config.PetFoodConfig;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.util.ItemUtils;
 import com.huidu.farmersdelight.util.scheduler.PluginTask;
-import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.entity.*;
@@ -29,7 +28,6 @@ public class HorseFeedTemptListener implements Listener {
     private static final int DEFAULT_TICK_BUDGET = 128;
 
     private final FarmersDelightPlugin plugin;
-    private final Set<UUID> activeTempters = ConcurrentHashMap.newKeySet();
     private final Set<UUID> scheduledTempterTicks = ConcurrentHashMap.newKeySet();
     private final Map<UUID, Player> activeTempterPlayers = new ConcurrentHashMap<>();
     private final Map<UUID, PetFoodConfig.PetFoodDefinition> activeTemptDefinitions = new ConcurrentHashMap<>();
@@ -126,19 +124,17 @@ public class HorseFeedTemptListener implements Listener {
         }
     }
 
-    // The following three methods centrally maintain the parallel collections activeTempters / activeTempterPlayers /
+    // The following three methods centrally maintain the parallel collections activeTempterPlayers /
     // activeTemptDefinitions, both avoiding scattered consistency errors and being the sole generation-change point for the
     // tickTemptGoals snapshot cache.
     private void addTempter(UUID playerId, Player player, PetFoodConfig.PetFoodDefinition definition) {
-        activeTempters.add(playerId);
         activeTempterPlayers.put(playerId, player);
         activeTemptDefinitions.put(playerId, definition);
         tempterGeneration.incrementAndGet();
     }
 
     private void removeTempter(UUID playerId) {
-        boolean changed = activeTempters.remove(playerId);
-        changed |= activeTempterPlayers.remove(playerId) != null;
+        boolean changed = activeTempterPlayers.remove(playerId) != null;
         changed |= activeTemptDefinitions.remove(playerId) != null;
         if (changed) {
             tempterGeneration.incrementAndGet();
@@ -146,8 +142,7 @@ public class HorseFeedTemptListener implements Listener {
     }
 
     private void clearTempters() {
-        boolean had = !activeTempters.isEmpty() || !activeTempterPlayers.isEmpty() || !activeTemptDefinitions.isEmpty();
-        activeTempters.clear();
+        boolean had = !activeTempterPlayers.isEmpty() || !activeTemptDefinitions.isEmpty();
         activeTempterPlayers.clear();
         activeTemptDefinitions.clear();
         if (had) {
@@ -211,8 +206,9 @@ public class HorseFeedTemptListener implements Listener {
                             scheduledTempterTicks.remove(playerId);
                         }
                     }, () -> {
-                        // 玩家 retired 时 finally 块不会执行，需在 retired 回调中清理守卫，否则
-                        // scheduledTempterTicks 永久持有该 UUID，诱饵功能对该玩家永久失效。
+                        // When the player is retired the finally block does not run, so the guard must be
+                        // cleared in the retired callback; otherwise scheduledTempterTicks holds the UUID
+                        // forever and the tempt feature stays permanently disabled for that player.
                         scheduledTempterTicks.remove(playerId);
                     });
                 } catch (RuntimeException e) {

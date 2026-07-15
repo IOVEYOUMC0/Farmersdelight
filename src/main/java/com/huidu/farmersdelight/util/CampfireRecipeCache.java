@@ -50,17 +50,17 @@ public final class CampfireRecipeCache {
         // (the common "is this cookable" probe for non-food items).
         List<CampfireRecipe> bucket = byMaterial.get().get(recipeInput.getType());
         if (bucket == null) {
-            debug.accept(() -> "Campfire recipe miss: input=" + formatItem(recipeInput));
+            debug.accept(() -> "Campfire recipe miss: input=" + ManagerSupport.formatItem(recipeInput));
             return null;
         }
         for (CampfireRecipe cookingRecipe : bucket) {
             if (matches(cookingRecipe, recipeInput)) {
-                debug.accept(() -> "Campfire recipe match: input=" + formatItem(recipeInput) + ", recipe=" + cookingRecipe.getKey());
+                debug.accept(() -> "Campfire recipe match: input=" + ManagerSupport.formatItem(recipeInput) + ", recipe=" + cookingRecipe.getKey());
                 return cookingRecipe;
             }
         }
 
-        debug.accept(() -> "Campfire recipe miss: input=" + formatItem(recipeInput));
+        debug.accept(() -> "Campfire recipe miss: input=" + ManagerSupport.formatItem(recipeInput));
         return null;
     }
 
@@ -144,13 +144,6 @@ public final class CampfireRecipeCache {
         ItemStack normalized = item.clone();
         normalized.setAmount(1);
         return normalized;
-    }
-
-    private String formatItem(ItemStack item) {
-        if (item == null || item.getType().isAir()) {
-            return "air";
-        }
-        return item.getType() + "x" + item.getAmount();
     }
 }
 
