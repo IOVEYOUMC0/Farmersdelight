@@ -287,7 +287,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         getAddonAdvancementRegistry().onSystemReady();
 
         // A rebuild (/ce reload) recreates the UAA tab, which drops it from online clients. Re-show FD's own
-        // tab to online players (no-op on first load �?no one is online yet). Addon tabs re-sync in onSystemReady.
+        // tab to online players (no-op on first load - no one is online yet). Addon tabs re-sync in onSystemReady.
         advancementManager.resyncOnlinePlayers();
     }
 
@@ -459,7 +459,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
         refreshAdvancementSystemWhenReady(false);
         // Warm CE item/GUI/behavior caches now IF CE is already up (FD enabled after CraftEngine). When CE
-        // loads after FD, onCraftEngineReload runs the warmup instead �?the readiness gate makes them exclusive.
+        // loads after FD, onCraftEngineReload runs the warmup instead - the readiness gate makes them exclusive.
         warmUpWhenReady("enable");
 
         scheduler.run(() -> startupSyncCompleted = true);
@@ -480,7 +480,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
         CraftEngineStateUsageMonitor.logRealStateUsage(this, "startup");
 
-        // PlaceholderAPI bridge �?registers iff PAPI is loaded so HUD plugins (BetterHud, MythicHud,
+        // PlaceholderAPI bridge - registers iff PAPI is loaded so HUD plugins (BetterHud, MythicHud,
         // etc.) can read every CustomBuffRegistry entry per player. Soft-dep, no-op when absent.
         if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
             try {
