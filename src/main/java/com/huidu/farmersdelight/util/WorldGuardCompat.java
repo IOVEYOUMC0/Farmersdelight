@@ -2,7 +2,6 @@ package com.huidu.farmersdelight.util;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
-import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 
 import java.lang.reflect.Array;
@@ -91,34 +90,9 @@ public final class WorldGuardCompat {
         }
     }
 
-    // ── Master-only overloads (no feature): still respect the master farmersdelight-use flag. ──
-    public static boolean canBuild(Player player, Block block) {
-        return canBuild(player, block, null);
-    }
-
-    public static boolean canBuild(Player player, Location location) {
-        return canBuild(player, location, null);
-    }
-
-    public static boolean canUse(Player player, Block block) {
-        return canUse(player, block, null);
-    }
-
-    public static boolean canUse(Player player, Location location) {
-        return canUse(player, location, null);
-    }
-
     // ── ProtectionCompat.Feature-aware overloads: WG BUILD/USE flag AND master flag AND the feature's own flag. ──
-    public static boolean canBuild(Player player, Block block, ProtectionCompat.Feature feature) {
-        return block == null || canBuild(player, block.getLocation(), feature);
-    }
-
     public static boolean canBuild(Player player, Location location, ProtectionCompat.Feature feature) {
         return testFlagState(player, location, buildFlagOrNull()) && customAllows(player, location, feature);
-    }
-
-    public static boolean canUse(Player player, Block block, ProtectionCompat.Feature feature) {
-        return block == null || canUse(player, block.getLocation(), feature);
     }
 
     public static boolean canUse(Player player, Location location, ProtectionCompat.Feature feature) {

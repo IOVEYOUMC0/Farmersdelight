@@ -233,7 +233,7 @@ public class CookingPotGui implements InventoryHolder {
     }
 
     private String resolveTitleLayout(String rawTitle) {
-        String title = "烹饪锅";
+        String title = "Cooking Pot";
         if (rawTitle != null) {
             title = rawTitle;
         }
@@ -544,8 +544,9 @@ public class CookingPotGui implements InventoryHolder {
             handleCollectToCursor(event, player);
             return;
         }
-        // 双击空槽位且无可合并物品时，Paper 会发 NOTHING + DOUBLE_CLICK。如果点击的是可放入的
-        // input slot，让 vanilla 正常处理（光标物品放入该槽位），不取消事件，避免"打断双击"。
+        // On a double-click of an empty slot with nothing to merge, Paper fires NOTHING + DOUBLE_CLICK.
+        // If the clicked slot is a placeable input slot, let vanilla handle it normally (drop the cursor
+        // item into the slot) by not cancelling the event, so the double-click is not interrupted.
         if (action == InventoryAction.NOTHING && click == ClickType.DOUBLE_CLICK
                 && clickedTop && isPlayerInputSlot(rawSlot)) {
             scheduleGuiSync(event.getWhoClicked() instanceof Player p ? p : null);
@@ -665,7 +666,8 @@ public class CookingPotGui implements InventoryHolder {
         }
 
         int maxStack = Math.min(oldCursor.getMaxStackSize(), inventory.getMaxStackSize());
-        // 轻量预检查：是否有任何 input slot 被 drag 触及且持有同类型物品，避免无谓获取 inventory lock。
+        // Lightweight precheck: is any input slot touched by the drag and holding a matching item type? Avoids
+        // acquiring the inventory lock needlessly.
         boolean hasApplicable = false;
         for (Map.Entry<Integer, ItemStack> entry : event.getNewItems().entrySet()) {
             int rawSlot = entry.getKey();
@@ -683,8 +685,9 @@ public class CookingPotGui implements InventoryHolder {
             return; // no applicable input slots; cursor unchanged (event already cancelled)
         }
 
-        // 在 inventory lock 内基于 refresh 后的最新状态计算 share 并直接应用，省去中间 LinkedHashMap 分配，
-        // 且 share 基于最新 existingAmount 计算更准确（原代码用 lock 外旧状态计算的 share 可能与 refresh 后状态不一致）。
+        // Under the inventory lock, compute and apply each share based on the freshly refreshed state, skipping the
+        // intermediate LinkedHashMap allocation. Computing share against the latest existingAmount is more accurate
+        // (computing it from stale pre-lock state could disagree with the refreshed state).
         int[] placedTotal = {0};
         blockEntity.withInventoryLock(() -> {
             refreshInputSlotsFromBlockEntity();
@@ -833,9 +836,10 @@ public class CookingPotGui implements InventoryHolder {
     }
 
     /**
-     * 安全的双击合并：只从可写 input slots（ingredient + container）和玩家背包收集匹配物品到光标，
-     * 跳过只读槽位（output/buffer/heat/progress/recipe）。input slots 的修改走 inventory lock，
-     * 与 cook tick 保持一致（避免 Folia 跨区域 dupe）。
+     * Safe double-click collect: gather matching items to the cursor only from writable input slots
+     * (ingredient + container) and the player's inventory, skipping read-only slots
+     * (output/buffer/heat/progress/recipe). Input-slot mutations go through the inventory lock,
+     * consistent with the cook tick, to avoid a Folia cross-region dupe.
      */
     private void handleCollectToCursor(InventoryClickEvent event, Player player) {
         ItemStack cursor = event.getCursor();
@@ -852,7 +856,7 @@ public class CookingPotGui implements InventoryHolder {
         final int[] collected = {0};
         final int clickedRawSlot = event.getRawSlot();
 
-        // 从 input slots 收集（走 inventory lock 保证与 cook tick 一致）
+        // Collect from input slots (under the inventory lock to stay consistent with the cook tick).
         blockEntity.withInventoryLock(() -> {
             refreshInputSlotsFromBlockEntity();
             for (int slot : ingredientSlots) {
@@ -868,7 +872,7 @@ public class CookingPotGui implements InventoryHolder {
             syncToBlockEntity();
         });
 
-        // 再从玩家背包收集（vanilla 行为：主物品栏 + 快捷栏，不含盔甲、副手）
+        // Then collect from the player's inventory (vanilla behavior: main storage + hotbar, excluding armor and offhand).
         if (collected[0] < available) {
             PlayerInventory playerInventory = player.getInventory();
             int topSize = config.getSize();
@@ -951,8 +955,8 @@ public class CookingPotGui implements InventoryHolder {
         // must run there (not on the pot's region) to avoid cross-thread access to the Bukkit
         // inventory on Folia. Block-related work is dispatched to the pot's region from inside syncTask.
         if (viewer != null) {
-            // 带 retired 回调：玩家 retired 时 syncTask 的 finally 块不会执行，syncQueued 会永久为 true，
-            // 导致后续所有 scheduleGuiSync 调用被 early-return 跳过，GUI 同步功能失效。
+            // With a retired callback: if the player is retired, syncTask's finally block never runs, so syncQueued
+            // would stay true forever, causing every later scheduleGuiSync call to early-return and breaking GUI sync.
             plugin.scheduler().runForEntity(viewer, syncTask, () -> syncQueued = false);
         } else {
             plugin.scheduler().runAt(cookingPotLocation, syncTask);

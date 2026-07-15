@@ -32,8 +32,6 @@ import java.util.function.Supplier;
 
 public class SkilletManager {
 
-    private static final String BLOCK_TYPE = "skillet";
-    
     private static final int HEARTBEAT_LOG_INTERVAL = 20;
     private static final int DEFAULT_TICK_BUDGET = 512;
     // Squared player-proximity radius for gating per-tick smoke/sizzle broadcasts (32 blocks =

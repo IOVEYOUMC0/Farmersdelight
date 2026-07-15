@@ -53,13 +53,12 @@ public class FoodEatListener implements Listener {
             //   item_id:
             //     duration: 300
             comfortFoodsEnabled = plugin.getConfig().getBoolean("comfort-foods-enabled", comfortFoodsEnabled);
-            ConfigurationSection legacyComfortSection = plugin.getConfig().getConfigurationSection("comfort-foods");
-            if (legacyComfortSection != null) {
-                for (String foodId : legacyComfortSection.getKeys(false)) {
+            if (comfortSection != null) {
+                for (String foodId : comfortSection.getKeys(false)) {
                     if ("enabled".equalsIgnoreCase(foodId) || "foods".equalsIgnoreCase(foodId)) {
                         continue;
                     }
-                    int duration = legacyComfortSection.getInt(foodId + ".duration", Constants.DEFAULT_COMFORT_DURATION);
+                    int duration = comfortSection.getInt(foodId + ".duration", Constants.DEFAULT_COMFORT_DURATION);
                     comfortFoodDurations.put(foodId, duration);
                 }
             }

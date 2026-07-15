@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.listener;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.config.RugConfig;
+import com.huidu.farmersdelight.i18n.I18n;
 import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
 import net.momirealms.craftengine.bukkit.api.CraftEngineFurniture;
 import net.momirealms.craftengine.bukkit.api.event.FurnitureAttemptPlaceEvent;
@@ -123,8 +124,7 @@ public final class RugListener implements Listener {
             Block below = world.getBlockAt(bx, by - 1, bz);
             if (below.getType().isAir() || !below.getType().isSolid()) {
                 event.setCancelled(true);
-                event.getPlayer().sendActionBar(net.kyori.adventure.text.Component.text(
-                        "需要每一格下方都有实心方块支撑").color(net.kyori.adventure.text.format.NamedTextColor.RED));
+                event.getPlayer().sendActionBar(I18n.getComponent("rug.needs_solid_support", event.getPlayer()));
                 return;
             }
         }

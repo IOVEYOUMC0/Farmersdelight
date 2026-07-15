@@ -1,6 +1,5 @@
 package com.huidu.farmersdelight.block.behavior;
 
-import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.util.BehaviorArgParser;
 import com.huidu.farmersdelight.util.CraftEngineAdapter;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
@@ -142,9 +141,6 @@ public class TatamiPairingBehavior extends BlockBehavior {
                 && pos.z() + facing.getModZ() == neighborPos.z();
         ImmutableBlockState neighborState = BlockStateUtils.getOptionalCustomBlockState(args[6]).orElse(null);
         boolean partnerGone = facingMatch && !(isTatamiState(neighborState) && isSameTatami(state, neighborState));
-        debug("updateShape paired self=" + posStr(pos.x(), pos.y(), pos.z()) + " facing=" + facing
-                + " changed=" + posStr(neighborPos.x(), neighborPos.y(), neighborPos.z())
-                + " facingMatch=" + facingMatch + " partnerGone=" + partnerGone);
         if (!partnerGone) {
             return args[0];
         }
@@ -176,7 +172,6 @@ public class TatamiPairingBehavior extends BlockBehavior {
         Block partner = self.getRelative(getFacing(state));
         ImmutableBlockState partnerState = CraftEngineBlocks.getCustomBlockState(partner);
         boolean partnerGone = !(isTatamiState(partnerState) && isSameTatami(state, partnerState));
-        debug("neighborChanged paired self=" + posStr(pos.x(), pos.y(), pos.z()) + " partnerGone=" + partnerGone);
         if (!partnerGone) {
             return;
         }
@@ -209,8 +204,6 @@ public class TatamiPairingBehavior extends BlockBehavior {
             Block partner = neighbor.getRelative(getFacingFromState(nState));
             if (partner.getX() == center.getX() && partner.getY() == center.getY() && partner.getZ() == center.getZ()) {
                 CraftEngineBlocks.place(neighbor.getLocation(), nState.with(paired, false), false);
-                debug("reset neighbor " + posStr(neighbor.getX(), neighbor.getY(), neighbor.getZ())
-                        + " via " + source + " broken=" + posStr(center.getX(), center.getY(), center.getZ()));
             }
         }
     }
@@ -340,17 +333,6 @@ public class TatamiPairingBehavior extends BlockBehavior {
             return BlockFace.valueOf(facingStr);
         } catch (IllegalArgumentException e) {
             return BlockFace.NORTH;
-        }
-    }
-
-    private static String posStr(int x, int y, int z) {
-        return x + "," + y + "," + z;
-    }
-
-    private static void debug(String message) {
-        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
-        if (plugin != null) {
-            plugin.getLogger().info("[tatami] " + message);
         }
     }
 

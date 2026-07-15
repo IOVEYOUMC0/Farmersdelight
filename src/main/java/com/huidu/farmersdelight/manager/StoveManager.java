@@ -36,7 +36,6 @@ import java.util.function.Supplier;
 
 public class StoveManager {
 
-    private static final String BLOCK_TYPE = "stove";
     private static final int SLOT_COUNT = 6;
     private static final int DEFAULT_COOK_TIME = 600;
     private static final int HEARTBEAT_LOG_INTERVAL = 20;
@@ -806,7 +805,7 @@ public class StoveManager {
 
             scheduleStoveTick(location, stove);
         }
-        tickCursor = size == 0 ? 0 : (start + Math.max(1, budget)) % size;
+        tickCursor = (start + Math.max(1, budget)) % size;
         stopTaskIfIdle();
     }
 

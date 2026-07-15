@@ -366,8 +366,9 @@ public class TrayManager {
             if (queuedSyncTask != null) {
                 return;
             }
-            // 4L 而非 1L：tray 是视觉装饰，200ms 延迟无感知；budget 32 足以批量处理队列，
-            // 1L 周期会让每次末尾的 stopQueuedSyncTaskIfIdle 进入 synchronized 块检查，4L 减 75% 开销。
+            // Period 4L rather than 1L: the tray is a visual decoration, so a ~200ms delay is imperceptible,
+            // and a batch budget of 32 is enough to drain the queue. A 1L period would make the
+            // stopQueuedSyncTaskIfIdle check at the end of every run enter the synchronized block, so 4L cuts that overhead by 75%.
             queuedSyncTask = plugin.scheduler().runRepeating(this::processQueuedTraySyncs, 1L, 4L);
         }
     }
@@ -745,14 +746,6 @@ public class TrayManager {
     }
 
     @Nullable
-    private TrayOwner getTrayOwner(BukkitFurniture furniture) {
-        if (furniture == null) {
-            return null;
-        }
-        return getTrayOwner(furniture.bukkitEntity());
-    }
-
-    @Nullable
     private TrayOwner getTrayOwner(Entity entity) {
         if (entity == null || !entity.isValid()) {
             return null;
@@ -807,16 +800,6 @@ public class TrayManager {
                 entity.removeScoreboardTag(tag);
             }
         }
-    }
-
-    @Nullable
-    private TrayOwner resolveTrayOwner(World world, BukkitFurniture furniture) {
-        TrayOwner owner = getTrayOwner(furniture);
-        if (owner != null) {
-            return owner;
-        }
-        Entity entity = furniture == null ? null : furniture.bukkitEntity();
-        return resolveTrayOwner(world, entity);
     }
 
     @Nullable
@@ -889,10 +872,6 @@ public class TrayManager {
         return ownerPos != null && isPotOrSkilletAt(world, ownerPos) && shouldHaveTray(world, ownerPos);
     }
 
-    private void removeTrayAt(World world, BlockPos trayPos) {
-        removeTrayAt(world, trayPos, "unspecified");
-    }
-
     private void removeTrayAt(World world, BlockPos trayPos, String reason) {
         try {
             Location location = new Location(world, trayPos.x(), trayPos.y(), trayPos.z());
@@ -950,17 +929,6 @@ public class TrayManager {
             return true;
         }
         return false;
-    }
-
-    @Nullable
-    private BukkitFurniture findAutoTrayFurniture(World world, Location location) {
-        List<BukkitFurniture> furnitures = findTrayFurnitures(world, location);
-        BukkitFurniture autoTray = firstAutoTray(furnitures);
-        if (autoTray != null) {
-            removeDuplicateAutoTrays(world, new BlockPos(location.getBlockX(), location.getBlockY(), location.getBlockZ()),
-                    furnitures, autoTray, "duplicate auto tray found");
-        }
-        return autoTray;
     }
 
     private List<BukkitFurniture> findTrayFurnitures(World world, Location location) {
@@ -1028,19 +996,6 @@ public class TrayManager {
     }
 
     @Nullable
-    private BukkitFurniture firstAutoTray(Collection<BukkitFurniture> furnitures) {
-        if (furnitures == null || furnitures.isEmpty()) {
-            return null;
-        }
-        for (BukkitFurniture furniture : furnitures) {
-            if (isAutoPlacedTray(furniture)) {
-                return furniture;
-            }
-        }
-        return null;
-    }
-
-    @Nullable
     private ItemDisplay firstAutoTrayEntity(Collection<ItemDisplay> entities) {
         if (entities == null || entities.isEmpty()) {
             return null;
@@ -1051,25 +1006,6 @@ public class TrayManager {
             }
         }
         return null;
-    }
-
-    private void removeDuplicateAutoTrays(World world, BlockPos trayPos, Collection<BukkitFurniture> furnitures,
-                                          BukkitFurniture keep, String reason) {
-        if (furnitures == null || furnitures.isEmpty()) {
-            return;
-        }
-        for (BukkitFurniture furniture : furnitures) {
-            if (furniture == keep || !isAutoPlacedTray(furniture)) {
-                continue;
-            }
-            Entity entity = furniture.bukkitEntity();
-            if (entity != null && entity.isValid()) {
-                CraftEngineFurniture.remove(entity, false, false);
-            }
-        }
-        if (plugin.isDebugEnabled("tray")) {
-            plugin.getLogger().info(I18n.formatConsole("tray.duplicates_cleaned", "pos", trayPos, "reason", reason));
-        }
     }
 
     private void removeDuplicateAutoTrays(World world, BlockPos trayPos, Collection<ItemDisplay> entities,
