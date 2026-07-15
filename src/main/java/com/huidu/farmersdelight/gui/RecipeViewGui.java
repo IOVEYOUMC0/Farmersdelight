@@ -110,6 +110,15 @@ public class RecipeViewGui implements InventoryHolder {
     private final Consumer<Void> tickCallback;
     private boolean ignoreNextClose = false;
     private FillButtonState fillButtonState = FillButtonState.READY;
+    // Detail-to-detail navigation history: clicking a linked recipe (an ingredient/result that is itself
+    // another recipe's output) pushes the detail it left, so "back" returns to that recipe instead of always
+    // dropping to the original list. Reset when a detail is opened fresh from a list; empty history keeps the
+    // old behavior (back to recipeBackState). Touched only inside the click handler (single-threaded per viewer).
+    private final java.util.Deque<DetailState> detailHistory = new java.util.ArrayDeque<>();
+
+    /** A remembered recipe-detail page: enough to redraw it and keep its own back destination. */
+    private record DetailState(boolean cookingPotMode, String selectedRecipeId, GuiState recipeBackState) {
+    }
 
     public RecipeViewGui(FarmersDelightPlugin plugin, Player player) {
         this(plugin, player, false, null);
@@ -1487,6 +1496,8 @@ public class RecipeViewGui implements InventoryHolder {
                 cookingPotMode = isCookingPot;
                 fillButtonState = FillButtonState.READY;
                 recipeBackState = isCookingPot ? GuiState.COOKING_POT_LIST : GuiState.CUTTING_BOARD_LIST;
+                // Fresh detail opened from a list: this is a new navigation root, so drop any prior jump chain.
+                detailHistory.clear();
                 navigateToState(player, GuiState.RECIPE_DETAIL);
             }
         }
@@ -1497,6 +1508,17 @@ public class RecipeViewGui implements InventoryHolder {
         
         if (slot == detailConfig.getBackSlot()) {
             if (runBackButtonCommands(player, detailConfig.getItem("back"))) {
+                return;
+            }
+            if (!detailHistory.isEmpty()) {
+                // Came here via a linked-recipe jump: return to the recipe it was opened from.
+                DetailState previous = detailHistory.pop();
+                cookingPotMode = previous.cookingPotMode();
+                selectedRecipeId = previous.selectedRecipeId();
+                recipeBackState = previous.recipeBackState();
+                currentToolIndex = 0;
+                fillButtonState = FillButtonState.READY;
+                navigateToState(player, GuiState.RECIPE_DETAIL);
                 return;
             }
             navigateToState(player, recipeBackState);
@@ -1544,11 +1566,14 @@ public class RecipeViewGui implements InventoryHolder {
             return;
         }
 
+        // Remember the recipe being left (and its own back destination) so back returns here, not straight to
+        // the original list. recipeBackState is snapshotted too, so this recipe's own back still works after a
+        // deeper jump chain unwinds to it.
+        detailHistory.push(new DetailState(cookingPotMode, selectedRecipeId, recipeBackState));
         selectedRecipeId = linkedRecipe.recipeId();
         cookingPotMode = linkedRecipe.cookingPot();
         currentToolIndex = 0;
         fillButtonState = FillButtonState.READY;
-        // Keep recipeBackState so the linked recipe's detail screen returns to the original list.
         navigateToState(player, GuiState.RECIPE_DETAIL);
     }
 
