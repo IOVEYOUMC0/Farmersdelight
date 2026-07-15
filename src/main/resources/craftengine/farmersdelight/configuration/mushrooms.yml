@@ -37,18 +37,11 @@ blocks:
       overrides:
         item: minecraft:brown_mushroom
         push-reaction: destroy
-        is-randomly-ticking: true
     behaviors:
       - type: bush_block
         bottom-block-tags:
           - minecraft:mushroom_grow_block
         bottom-blocks:
-          - farmersdelight:rich_soil
-          - farmersdelight:organic_compost
-      - type: farmersdelight:mushroom
-        colony-block: farmersdelight:brown_mushroom_colony
-        grow-speed: 0.12
-        grow-on-blocks:
           - farmersdelight:rich_soil
           - farmersdelight:organic_compost
     state:
@@ -68,18 +61,11 @@ blocks:
       overrides:
         item: minecraft:red_mushroom
         push-reaction: destroy
-        is-randomly-ticking: true
     behaviors:
       - type: bush_block
         bottom-block-tags:
           - minecraft:mushroom_grow_block
         bottom-blocks:
-          - farmersdelight:rich_soil
-          - farmersdelight:organic_compost
-      - type: farmersdelight:mushroom
-        colony-block: farmersdelight:red_mushroom_colony
-        grow-speed: 0.12
-        grow-on-blocks:
           - farmersdelight:rich_soil
           - farmersdelight:organic_compost
     state:
