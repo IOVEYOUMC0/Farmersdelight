@@ -1018,8 +1018,6 @@ public class TickManager {
     }
 
     public enum BlockType {
-        SKILLET,
-        STOVE,
         COOKING_POT
     }
     

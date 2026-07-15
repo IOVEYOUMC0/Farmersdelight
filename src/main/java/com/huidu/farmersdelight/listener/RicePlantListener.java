@@ -755,15 +755,13 @@ public class RicePlantListener implements Listener {
             return false;
         }
 
-        ImmutableBlockState placedState = CraftEngineBlocks.getCustomBlockState(location.getBlock());
-        boolean placedNow = isRiceBlock(placedState);
         if (scheduleStabilization) {
             scheduleRiceStabilization(location.clone(), 3);
         }
         // Even when the placement itself succeeded, CraftEngine may not expose the custom state within the same tick.
         // Treat a successful place call as success,
         // and let the stabilization routine fix up the carrier block over the next few ticks.
-        return placementSucceeded || placedNow;
+        return true;
     }
 
     private void scheduleRiceStabilization(Location location, int attemptsRemaining) {

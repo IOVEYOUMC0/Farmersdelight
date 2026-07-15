@@ -127,13 +127,6 @@ public final class ItemUtils {
         return null;
     }
 
-    public static boolean isCustomItemLoaded(Key key) {
-        if (key == null) {
-            return false;
-        }
-        return CraftEngineItems.byId(key) != null;
-    }
-
     /** True once CraftEngine has loaded at least one custom item (any namespace). A readiness probe that CE
      * finished its item-load pass, independent of any specific item id or namespace: unlike probing one item,
      * this survives an admin deleting that item or repacking the plugin's items under a different namespace. */

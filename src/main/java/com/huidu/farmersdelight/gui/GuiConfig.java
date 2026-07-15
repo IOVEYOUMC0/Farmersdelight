@@ -237,7 +237,7 @@ public class GuiConfig {
 
         Map<String, GuiItem> items = new HashMap<>();
         items.put("background", new GuiItem(Material.GRAY_STAINED_GLASS_PANE, null, " ", List.of()));
-        items.put("recipe", new GuiItem(Material.KNOWLEDGE_BOOK, null, "查看配方", List.of("点击查看所有烹饪锅配方")));
+        items.put("recipe", new GuiItem(Material.KNOWLEDGE_BOOK, null, "View Recipes", List.of("Click to view all cooking pot recipes")));
 
         return new GuiConfig(
                 "<white><offset><icon>",

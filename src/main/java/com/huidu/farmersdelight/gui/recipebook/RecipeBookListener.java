@@ -39,9 +39,10 @@ public final class RecipeBookListener implements Listener {
     }
 
     /**
-     * 在插件 disable 时调用，与 HandlerList.unregisterAll(plugin) 配合：前者移除监听器实例，
-     * 这里 reset 标志位以便软重启（/plugman reload）时 ensureRegistered 能重新注册新监听器。
-     * 不 reset 会导致 ensureRegistered early return，点击/拖拽事件不再被取消 → 物品 dupe。
+     * Called on plugin disable, paired with HandlerList.unregisterAll(plugin): that removes the listener
+     * instance, and this resets the flag so that on a soft restart (/plugman reload) ensureRegistered can
+     * register a fresh listener. Without the reset, ensureRegistered would early-return and click/drag events
+     * would no longer be cancelled, leading to item dupe.
      */
     public static void reset() {
         synchronized (RecipeBookListener.class) {

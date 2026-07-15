@@ -73,10 +73,6 @@ public class CuttingBoardBlockEntity {
         return itemCarved;
     }
 
-    public void setItem(ItemStack item, World world, BlockPosKey posKey, BlockFace facing) {
-        setItem(item, world, posKey, facing, false);
-    }
-
     public void setItem(ItemStack item, World world, BlockPosKey posKey, BlockFace facing, boolean itemCarved) {
         setStoredItem(item, world, posKey, facing, itemCarved);
     }
