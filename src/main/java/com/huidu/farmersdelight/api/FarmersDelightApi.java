@@ -237,6 +237,62 @@ public final class FarmersDelightApi {
         return plugin != null && block != null && plugin.getHeatSourceConfig().isConductor(block);
     }
 
+    // ── Packet item displays ─────────────────────────────────────────────────────────────────────
+    // Server-side, packet-only ItemDisplay proxies (no real entity is spawned): FarmersDelight tracks them,
+    // syncs them to nearby players (join / chunk-load / teleport) and cleans them up on world unload. Use
+    // these instead of world.spawn(ItemDisplay) so an addon's decoration displays don't persist to disk,
+    // never become orphans, and share FarmersDelight's Folia-safe visibility handling. The returned int is a
+    // handle for updateItemDisplay / removeItemDisplay; a return of -1 means the display was not created.
+
+    /**
+     * Creates a packet-only ItemDisplay at location showing item, with the given item display context (e.g.
+     * ItemDisplay.ItemDisplayTransform.FIXED) and transformation (translation / rotation / scale). Returns a
+     * handle, or -1 if unavailable or the packet build failed. Call on the region that owns location (Folia).
+     */
+    public int createItemDisplay(Location location, ItemStack item,
+                                 org.bukkit.entity.ItemDisplay.ItemDisplayTransform itemTransform,
+                                 org.bukkit.util.Transformation transformation) {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        if (plugin == null || !isAvailable() || location == null || item == null) {
+            return -1;
+        }
+        com.huidu.farmersdelight.visual.ItemDisplayManager manager = plugin.getItemDisplayManager();
+        if (manager == null) {
+            return -1;
+        }
+        return manager.createDisplay(new com.huidu.farmersdelight.visual.ItemDisplayManager.DisplaySpec(
+                location, item, itemTransform, transformation));
+    }
+
+    /** Updates an existing packet ItemDisplay (from createItemDisplay) in place. Returns false if the handle
+     *  is unknown or FarmersDelight is unavailable. */
+    public boolean updateItemDisplay(int handle, Location location, ItemStack item,
+                                     org.bukkit.entity.ItemDisplay.ItemDisplayTransform itemTransform,
+                                     org.bukkit.util.Transformation transformation) {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        if (plugin == null || !isAvailable() || location == null || item == null) {
+            return false;
+        }
+        com.huidu.farmersdelight.visual.ItemDisplayManager manager = plugin.getItemDisplayManager();
+        if (manager == null) {
+            return false;
+        }
+        return manager.updateDisplay(handle, new com.huidu.farmersdelight.visual.ItemDisplayManager.DisplaySpec(
+                location, item, itemTransform, transformation));
+    }
+
+    /** Removes a packet ItemDisplay by its handle (from createItemDisplay). No-op for an unknown handle. */
+    public void removeItemDisplay(int handle) {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        if (plugin == null || !isAvailable()) {
+            return;
+        }
+        com.huidu.farmersdelight.visual.ItemDisplayManager manager = plugin.getItemDisplayManager();
+        if (manager != null) {
+            manager.destroyDisplay(handle);
+        }
+    }
+
     /** Runs task on the region owning location (Folia-safe; immediate on Paper). */
     public void runAtLocation(Location location, Runnable task) {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();

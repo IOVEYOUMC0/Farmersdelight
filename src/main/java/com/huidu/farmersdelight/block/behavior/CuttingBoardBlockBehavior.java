@@ -642,7 +642,22 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         itemToPlace.setAmount(amountToMove);
 
         boolean carveTool = !offhand && player.isSneaking() && isTool(sourceItem);
-        storeItemInBoard(world, posKey, facing, blockEntity, itemToPlace, carveTool);
+        // Store, then consume — but atomically: setStoredItem commits the item field before it runs its
+        // remaining side effects (container sync / persistence), and on Folia one of those can throw a
+        // region thread-check. Without this guard a throw there would leave the item stored while the
+        // consume below is skipped — a phantom item retrievable for free (the protected-region dupe). If
+        // the store throws we roll it back and do NOT consume, so the player keeps the item and the board
+        // stays empty: no dupe and no loss.
+        try {
+            storeItemInBoard(world, posKey, facing, blockEntity, itemToPlace, carveTool);
+        } catch (Throwable t) {
+            try {
+                blockEntity.setStoredItem(null, world, posKey, facing);
+            } catch (Throwable ignored) {
+            }
+            debug("place rolled back after store failure: " + t);
+            return false;
+        }
         if (player.getGameMode() != GameMode.CREATIVE) {
             sourceItem.setAmount(sourceItem.getAmount() - amountToMove);
             if (sourceItem.getAmount() <= 0) {

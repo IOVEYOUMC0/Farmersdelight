@@ -8,6 +8,7 @@ import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
+import net.momirealms.craftengine.core.block.property.Property;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.world.BlockPos;
 import org.bukkit.Material;
@@ -102,8 +103,18 @@ public class RichSoilBlockBehavior extends BlockBehavior {
     private boolean replaceWithColony(Block target, Key colonyId) {
         BlockDefinition colony = CraftEngineBlocks.byId(colonyId);
         if (colony == null) return false;
-        CraftEngineBlocks.place(target.getLocation().add(0.5, 0, 0.5), colony.defaultState(), true);
+        // Convert to a young (age 0) colony that then grows to maturity, matching the mod: planting a
+        // mushroom must never yield a fully grown colony. The colony's default state is age 3 (used when the
+        // colony item is placed directly), so explicitly drop it to age 0 for this growth path.
+        CraftEngineBlocks.place(target.getLocation().add(0.5, 0, 0.5), colonyAgeZero(colony), true);
         return true;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ImmutableBlockState colonyAgeZero(BlockDefinition colony) {
+        ImmutableBlockState state = colony.defaultState();
+        Property<Integer> age = (Property<Integer>) colony.getProperty("age");
+        return age != null ? state.with(age, 0) : state;
     }
 
     private boolean boostPlant(Block plant) {

@@ -35,7 +35,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class BlockBreakListener implements Listener {
-    private static final String TATAMI_BLOCK_ID = "farmersdelight:tatami";
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         org.bukkit.block.Block block = event.getBlock();
@@ -45,7 +44,7 @@ public class BlockBreakListener implements Listener {
                 .invalidateBlockedAboveCache(block.getLocation().add(0, -1, 0));
         syncTraysAroundSupportChange(block);
         ImmutableBlockState state = CustomBlockUtils.getState(block);
-        if (isStateManagedInteractiveBlock(state)) {
+        if (isManagedInteractiveBlock(state)) {
             return;
         }
         cleanupBlockAt(block, state, false, true);
@@ -130,9 +129,6 @@ public class BlockBreakListener implements Listener {
         cleanupSkillet(blockLocation, dropLocation, shouldDropItems);
         cleanupCuttingBoard(pos, world, dropLocation, shouldDropItems);
         cleanupStove(blockLocation, dropLocation, shouldDropItems);
-        if (isTatamiBlock(state)) {
-            cleanupTatami(blockLocation);
-        }
     }
 
     private void cleanupCookingPot(BlockPos pos, World world, Location dropLocation, ImmutableBlockState state, boolean preserveContents, boolean shouldDropItems, boolean explosion) {
@@ -297,20 +293,7 @@ public class BlockBreakListener implements Listener {
         FarmersDelightPlugin.getInstance().getStoveManager().breakStove(blockLocation, dropLocation, shouldDropItems);
     }
 
-    private void cleanupTatami(Location blockLocation) {
-        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
-        plugin.scheduler().runLaterAt(blockLocation, () -> TatamiPairingBehavior.refreshAdjacentTatami(blockLocation), 1L);
-    }
-
     private boolean isManagedInteractiveBlock(ImmutableBlockState state) {
-        return isCookingPotBlock(state)
-                || isSkilletBlock(state)
-                || CustomBlockUtils.hasBehavior(state, CuttingBoardBlockBehavior.class)
-                || CustomBlockUtils.hasBehavior(state, StoveCookingBlockBehavior.class)
-                || TATAMI_BLOCK_ID.equals(CustomBlockUtils.getId(state));
-    }
-
-    private boolean isStateManagedInteractiveBlock(ImmutableBlockState state) {
         return isCookingPotBlock(state)
                 || isSkilletBlock(state)
                 || CustomBlockUtils.hasBehavior(state, CuttingBoardBlockBehavior.class)
@@ -323,21 +306,6 @@ public class BlockBreakListener implements Listener {
 
     private boolean isCookingPotBlock(ImmutableBlockState state) {
         return CustomBlockUtils.hasBehavior(state, CookingPotBlockBehavior.class);
-    }
-
-    private boolean isTatamiBlock(ImmutableBlockState state) {
-        if (state == null || state.isEmpty()) {
-            return false;
-        }
-
-        try {
-            return state.owner().keyOptional()
-                    .map(Object::toString)
-                    .filter(TATAMI_BLOCK_ID::equals)
-                    .isPresent();
-        } catch (Exception ignored) {
-            return false;
-        }
     }
 }
 
