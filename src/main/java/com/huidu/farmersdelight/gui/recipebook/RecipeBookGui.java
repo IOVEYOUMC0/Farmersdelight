@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.gui.recipebook;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.api.FarmersDelightApi;
+import com.huidu.farmersdelight.api.recipe.JumpTarget;
 import com.huidu.farmersdelight.api.recipe.RecipeBookLayout;
 import com.huidu.farmersdelight.api.recipe.RecipeFiller;
 import com.huidu.farmersdelight.api.recipe.RecipeType;
@@ -52,6 +53,17 @@ public final class RecipeBookGui implements InventoryHolder {
     // Optional "craftable only" filter (toggled by a 'filter' button); needs the viewer to test inventories.
     private boolean filterCraftable;
     private Player viewer;
+    // Back-navigation history: each drill-in (menu to list, list to detail, and a detail-to-detail jump)
+    // pushes the page it left, so "back" returns there instead of always dropping to the current type's list.
+    // A jump into another recipe's detail (the keg fluid icon opening the recipe that makes that fluid) thus
+    // backs out to the recipe it was opened from, and back chains through multi-hop jumps. Empty history keeps
+    // the original terminal behavior (list back to menu/station, menu back closes). Touched only inside
+    // handleClick, which runs single-threaded per viewer, so the plain ArrayDeque needs no synchronization.
+    private final java.util.Deque<ViewState> history = new java.util.ArrayDeque<>();
+
+    /** One remembered page. Redrawable via drawMenu/drawList/drawDetail, which set view/type/recipeId/page. */
+    private record ViewState(View view, RecipeType type, String recipeId, int page) {
+    }
 
     public static void openMenu(Player player, RecipeFiller filler) {
         RecipeBookListener.ensureRegistered();
@@ -345,6 +357,70 @@ public final class RecipeBookGui implements InventoryHolder {
         }
     }
 
+    private ViewState snapshot() {
+        return new ViewState(view, type, recipeId, page);
+    }
+
+    /** Redraws a remembered page (does not reopen the inventory; the caller does). */
+    private void restore(ViewState state, Player player) {
+        switch (state.view()) {
+            case MENU -> drawMenu();
+            case LIST -> drawList(state.type(), state.page());
+            case DETAIL -> drawDetail(state.type(), state.recipeId(), player);
+        }
+    }
+
+    /** Back button for every view: pop the navigation history if there is any, otherwise fall back to the
+     * original per-view terminal (list back to menu or the opening station, menu back closes). */
+    private void back(Player player) {
+        if (!history.isEmpty()) {
+            restore(history.pop(), player);
+            player.openInventory(inventory);
+            return;
+        }
+        switch (view) {
+            case MENU -> player.closeInventory();
+            case LIST -> {
+                if (singleType) {
+                    // Opened from a station (e.g. a keg): let its filler reopen that GUI; else just close.
+                    if (filler == null || !filler.onBack(player)) {
+                        player.closeInventory();
+                    }
+                } else {
+                    drawMenu();
+                    player.openInventory(inventory);
+                }
+            }
+            case DETAIL -> {
+                drawList(type, page);
+                player.openInventory(inventory);
+            }
+        }
+    }
+
+    /** Detail-view jump: if rawSlot is a display-role slot the current recipe marks as a jump target, remember
+     * the current detail and open the target recipe's detail (possibly a different type). No-op otherwise. */
+    private void tryJump(Player player, RenderSpec cfg, int rawSlot) {
+        ViewableRecipe recipe = type.recipe(recipeId);
+        if (recipe == null) {
+            return;
+        }
+        for (Map.Entry<String, JumpTarget> entry : recipe.jumpTargets().entrySet()) {
+            JumpTarget target = entry.getValue();
+            if (target == null || !cfg.slotsByType(entry.getKey()).contains(rawSlot)) {
+                continue;
+            }
+            RecipeType targetType = FarmersDelightApi.get().recipeType(target.typeId());
+            if (targetType == null || targetType.recipe(target.recipeId()) == null) {
+                return; // target unregistered/removed -> ignore the click
+            }
+            history.push(snapshot());
+            drawDetail(targetType, target.recipeId(), player);
+            player.openInventory(inventory);
+            return;
+        }
+    }
+
     void handleClick(Player player, int rawSlot) {
         this.viewer = player;
         RecipeBookGuiConfig config = config();
@@ -352,7 +428,7 @@ public final class RecipeBookGui implements InventoryHolder {
             case MENU -> {
                 RecipeBookGuiConfig.ViewConfig cfg = config.menu();
                 if (rawSlot == cfg.firstSlotByType("back")) {
-                    player.closeInventory();
+                    back(player);
                     return;
                 }
                 int index = cfg.slotsByType("category").indexOf(rawSlot);
@@ -361,6 +437,7 @@ public final class RecipeBookGui implements InventoryHolder {
                 }
                 List<RecipeType> types = FarmersDelightApi.get().recipeTypes();
                 if (index < types.size()) {
+                    history.push(snapshot());
                     drawList(types.get(index), 0);
                     player.openInventory(inventory);
                 }
@@ -368,15 +445,7 @@ public final class RecipeBookGui implements InventoryHolder {
             case LIST -> {
                 RenderSpec cfg = listSpec(type);
                 if (rawSlot == cfg.firstSlotByType("back")) {
-                    if (singleType) {
-                        // Opened from a station (e.g. a keg): let its filler reopen that GUI; else just close.
-                        if (filler == null || !filler.onBack(player)) {
-                            player.closeInventory();
-                        }
-                    } else {
-                        drawMenu();
-                        player.openInventory(inventory);
-                    }
+                    back(player);
                 } else if (rawSlot == cfg.firstSlotByType("prev_page")) {
                     drawList(type, page - 1);
                     player.openInventory(inventory);
@@ -404,6 +473,7 @@ public final class RecipeBookGui implements InventoryHolder {
                             if (isLocked(discovery(), type, clicked)) {
                                 player.sendMessage(I18n.getComponent("recipe-discovery.locked-click", player));
                             } else {
+                                history.push(snapshot());
                                 drawDetail(type, clicked.id(), player);
                                 player.openInventory(inventory);
                             }
@@ -414,13 +484,14 @@ public final class RecipeBookGui implements InventoryHolder {
             case DETAIL -> {
                 RenderSpec cfg = detailSpec(type);
                 if (rawSlot == cfg.firstSlotByType("back")) {
-                    drawList(type, page);
-                    player.openInventory(inventory);
+                    back(player);
                 } else if (rawSlot == cfg.firstSlotByType("fill") && filler != null) {
                     ViewableRecipe recipe = type.recipe(recipeId);
                     if (recipe != null && !filler.fill(player, recipe)) {
                         player.sendMessage(Text.deserialize(I18n.get("gui.recipe.missing_ingredients", player)));
                     }
+                } else {
+                    tryJump(player, cfg, rawSlot);
                 }
             }
         }

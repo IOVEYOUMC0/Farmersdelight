@@ -97,7 +97,7 @@ console:
     booze_profiles_loaded: "已加载 {count} 个醉酒效果饮品档案"
     keg_recipes_loaded: "已加载 {count} 个酒桶配方。"
     keg_pouring_recipes_loaded: "已加载 {count} 个酒桶倾倒配方，覆盖 {fluids} 种流体。"
-    cooking_pot_recipes_registered: "已向 FarmersDelight 注册 {count} 个陶锅配方。"
+    cooking_pot_recipes_registered: "已向 FarmersDelight 注册 {count} 个厨锅配方。"
     keg_item_unreadable: "跳过无法读取的酒桶物品，位于 {key} 槽位 {slot}：{error}"
     keg_recipe_invalid_base: "酒桶配方 '{id}' 的基础流体槽放的物品不是有效的可倾倒基础液体；未保存。"
     keg_recipes_save_failed: "保存 keg_recipes.yml 失败：{error}"

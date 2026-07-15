@@ -6,6 +6,7 @@ import org.bukkit.inventory.CampfireRecipe;
 import org.bukkit.inventory.CookingRecipe;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.Recipe;
+import org.bukkit.inventory.RecipeChoice;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -77,19 +78,30 @@ public final class CampfireRecipeCache {
         debug.accept(() -> "Loaded " + recipes.size() + " cached campfire recipes for " + debugName);
     }
 
-    /** Probes every Material against every recipe's RecipeChoice once, bucketing recipes by accepted
-     *  Material. Item materials only — non-item Materials can't be cooked. */
+    /** Buckets each recipe under the base Material of every item its RecipeChoice accepts. Reading the
+     *  choice's materials directly is what lets custom-item recipes index: CraftEngine registers them with an
+     *  ExactChoice carrying the full custom item (with data components), which a plain new ItemStack(material)
+     *  probe is never isSimilar to — so a probe-based bucket dropped every custom recipe and only vanilla
+     *  (MaterialChoice) items cooked. Item materials only — non-item Materials can't be cooked. */
     private static Map<Material, List<CampfireRecipe>> buildMaterialBucket(List<CampfireRecipe> recipes) {
         if (recipes.isEmpty()) {
             return Map.of();
         }
         Map<Material, List<CampfireRecipe>> raw = new EnumMap<>(Material.class);
-        for (Material material : Material.values()) {
-            if (material.isLegacy() || !material.isItem()) continue;
-            ItemStack probe = new ItemStack(material);
-            for (CampfireRecipe recipe : recipes) {
-                if (acceptsByChoice(recipe, probe)) {
-                    raw.computeIfAbsent(material, m -> new ArrayList<>()).add(recipe);
+        for (CampfireRecipe recipe : recipes) {
+            RecipeChoice choice = recipe.getInputChoice();
+            if (choice instanceof RecipeChoice.MaterialChoice materialChoice) {
+                for (Material material : materialChoice.getChoices()) {
+                    addToBucket(raw, material, recipe);
+                }
+            } else if (choice instanceof RecipeChoice.ExactChoice exactChoice) {
+                // ExactChoice targets a specific ItemStack (custom items / data-component matches). Index by
+                // its base Material; matches() then disambiguates by the full stack (multiple custom foods can
+                // share one base material and land in the same bucket).
+                for (ItemStack stack : exactChoice.getChoices()) {
+                    if (stack != null) {
+                        addToBucket(raw, stack.getType(), recipe);
+                    }
                 }
             }
         }
@@ -101,12 +113,11 @@ public final class CampfireRecipeCache {
         return Map.copyOf(frozen);
     }
 
-    private static boolean acceptsByChoice(CampfireRecipe recipe, ItemStack probe) {
-        try {
-            return recipe.getInputChoice() != null && recipe.getInputChoice().test(probe);
-        } catch (Exception ignored) {
-            return false;
+    private static void addToBucket(Map<Material, List<CampfireRecipe>> raw, Material material, CampfireRecipe recipe) {
+        if (material == null || material.isLegacy() || !material.isItem()) {
+            return;
         }
+        raw.computeIfAbsent(material, m -> new ArrayList<>()).add(recipe);
     }
 
     private boolean matches(CampfireRecipe recipe, ItemStack input) {

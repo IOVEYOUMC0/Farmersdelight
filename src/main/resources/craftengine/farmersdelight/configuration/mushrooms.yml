@@ -1,14 +1,14 @@
 ﻿items:
   farmersdelight:brown_mushroom_colony:
     data:
-      item-name: <!i><l10n:block.farmersdelight.brown_mushroom_colony>
+      item-name: <!i><lang:block.farmersdelight.brown_mushroom_colony>
     model: farmersdelight:item/brown_mushroom_colony
     behavior:
       type: block_item
       block: farmersdelight:brown_mushroom_colony
   farmersdelight:red_mushroom_colony:
     data:
-      item-name: <!i><l10n:block.farmersdelight.red_mushroom_colony>
+      item-name: <!i><lang:block.farmersdelight.red_mushroom_colony>
     model: farmersdelight:item/red_mushroom_colony
     behavior:
       type: block_item

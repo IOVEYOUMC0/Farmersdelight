@@ -680,33 +680,37 @@ public class StoveManager {
         boolean folia = plugin.scheduler().isFolia();
         for (Player player : players) {
             if (folia) {
-                // On Folia the block/entity reads must happen on the region owning the player. Reuse the
-                // fetched location for both the region dispatch and burnAroundPlayer's scans below, saving
-                // one Location allocation per player per burn pass (was 2: one here, one in burnAroundPlayer).
-                Location playerLoc = player.getLocation();
-                plugin.scheduler().runAt(playerLoc, () -> burnAroundPlayer(player, sweepMobs, playerLoc));
+                // Schedule on the PLAYER's own region (entity scheduler), not a fixed location. runForEntity
+                // follows the player to whatever region currently owns them, so reading the block at their feet
+                // stays same-region even if they moved or teleported since this poll was queued. runAt pinned the
+                // task to the schedule-time region and threw "Cannot read world asynchronously" once the player
+                // had crossed into another region by the time it ran.
+                plugin.scheduler().runForEntity(player, () -> burnAroundPlayer(player, sweepMobs));
             } else {
-                burnAroundPlayer(player, sweepMobs, null);
+                burnAroundPlayer(player, sweepMobs);
             }
         }
     }
 
-    private void burnAroundPlayer(Player player, boolean sweepMobs, Location playerLoc) {
-        // Reuse the Folia-dispatch location when provided; otherwise fetch once here. This single
-        // location feeds both tryBurnEntityOnStove(player) and getNearbyLivingEntities below.
-        if (playerLoc == null) {
-            playerLoc = player.getLocation();
-        }
-        tryBurnEntityOnStove(player, playerLoc);
+    private void burnAroundPlayer(Player player, boolean sweepMobs) {
+        tryBurnEntityOnStove(player);
         if (!sweepMobs) {
             return;
         }
         // Mobs standing on a stove burn too (vanilla burns any LivingEntity). Bounded to near the player
         // so this stays cheap; a mob near two players is checked twice but the damage-invulnerability
         // window collapses that to one hit.
-        for (LivingEntity living : player.getWorld().getNearbyLivingEntities(playerLoc, BURN_MOB_RADIUS)) {
-            if (!(living instanceof Player)) {
-                tryBurnEntityOnStove(living, null);
+        boolean folia = plugin.scheduler().isFolia();
+        for (LivingEntity living : player.getWorld().getNearbyLivingEntities(player.getLocation(), BURN_MOB_RADIUS)) {
+            if (living instanceof Player) {
+                continue;
+            }
+            if (folia) {
+                // Each mob's block read must run on the region that owns that mob — a mob just across a region
+                // boundary from the player would be a cross-region read from the player's region thread.
+                plugin.scheduler().runForEntity(living, () -> tryBurnEntityOnStove(living));
+            } else {
+                tryBurnEntityOnStove(living);
             }
         }
     }
@@ -716,22 +720,15 @@ public class StoveManager {
      * Damage amount / whether burning is enabled come from the stove's behavior config. The per-entity
      * invulnerability cooldown rate-limits the actual hit, so polling every few ticks yields ~2 dmg/sec. */
     private void tryBurnEntityOnStove(LivingEntity entity) {
-        tryBurnEntityOnStove(entity, null);
-    }
-
-    private void tryBurnEntityOnStove(LivingEntity entity, Location knownLoc) {
-        // knownLoc is an optional pre-fetched location (e.g. the player's reused location from burnAroundPlayer);
-        // other entities still need their own getLocation() since each stands on a different block.
-        Location loc = knownLoc != null ? knownLoc : entity.getLocation();
+        Location loc = entity.getLocation();
         World world = loc.getWorld();
         if (world == null) return;
         // The stove is the block directly beneath the entity's feet (feet rest on the stove's top face).
         Block stoveBlock = world.getBlockAt(loc.getBlockX(), (int) Math.floor(loc.getY() - 0.05D), loc.getBlockZ());
-        // Material fast filter: every stove appearance maps to the note_block auto-state, so any other
-        // carrier material cannot be a stove. This kills the CE state lookup and the per-entity Bukkit
-        // calls for ~all polled entities; false positives (real note blocks) fall through to the exact
-        // CE check below.
-        if (stoveBlock.getType() != Material.NOTE_BLOCK) return;
+        // No Material fast-filter here: a CraftEngine custom block's Bukkit getType() is the configurable
+        // deceive-bukkit-material (often bricks), NOT the note_block auto-state, so getType() can neither
+        // identify a stove nor rule one out. The cheap entity gates below (valid / sneaking / gamemode) run
+        // first, then the CE custom-state + StoveCookingBlockBehavior lookup is the authoritative reject.
         if (!entity.isValid() || entity.isDead()) return;
         if (entity instanceof Player player) {
             if (player.isSneaking()) return;
@@ -757,6 +754,10 @@ public class StoveManager {
     /** The custom {@code farmersdelight:stove_burn} damage type (from FD's datapack — gives the stove-specific
      * death message + mob panic + fire/no-knockback tags), resolved once and cached; falls back to
      * {@link DamageType#HOT_FLOOR} when the datapack isn't loaded so the burn always deals damage. */
+    // Registry.DAMAGE_TYPE is deprecated (since 1.20.6) but not for removal, so it stays stable. The suggested
+    // replacement goes through the ApiStatus.Experimental RegistryKey API; using the deprecated-but-stable
+    // accessor (already wrapped in try/catch with a HOT_FLOOR fallback) is the more version-robust choice.
+    @SuppressWarnings("deprecation")
     private DamageType stoveBurnDamageType() {
         DamageType type = this.stoveBurnType;
         if (type == null) {

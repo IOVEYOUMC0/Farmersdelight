@@ -4051,197 +4051,197 @@ blocks:
 items:
   farmersdelight:apple_pie_slice0:
     data:
-      item-name: <!i><l10n:block.farmersdelight.apple_pie>
+      item-name: <!i><lang:block.farmersdelight.apple_pie>
     model: farmersdelight:block/apple_pie
   farmersdelight:apple_pie_slice1:
     data:
-      item-name: <!i><l10n:block.farmersdelight.apple_pie>
+      item-name: <!i><lang:block.farmersdelight.apple_pie>
     model: farmersdelight:block/apple_pie_slice1
   farmersdelight:apple_pie_slice2:
     data:
-      item-name: <!i><l10n:block.farmersdelight.apple_pie>
+      item-name: <!i><lang:block.farmersdelight.apple_pie>
     model: farmersdelight:block/apple_pie_slice2
   farmersdelight:apple_pie_slice3:
     data:
-      item-name: <!i><l10n:block.farmersdelight.apple_pie>
+      item-name: <!i><lang:block.farmersdelight.apple_pie>
     model: farmersdelight:block/apple_pie_slice3
   farmersdelight:sweet_berry_cheesecake_slice0:
     data:
-      item-name: <!i><l10n:block.farmersdelight.sweet_berry_cheesecake>
+      item-name: <!i><lang:block.farmersdelight.sweet_berry_cheesecake>
     model: farmersdelight:block/sweet_berry_cheesecake
   farmersdelight:sweet_berry_cheesecake_slice1:
     data:
-      item-name: <!i><l10n:block.farmersdelight.sweet_berry_cheesecake>
+      item-name: <!i><lang:block.farmersdelight.sweet_berry_cheesecake>
     model: farmersdelight:block/sweet_berry_cheesecake_slice1
   farmersdelight:sweet_berry_cheesecake_slice2:
     data:
-      item-name: <!i><l10n:block.farmersdelight.sweet_berry_cheesecake>
+      item-name: <!i><lang:block.farmersdelight.sweet_berry_cheesecake>
     model: farmersdelight:block/sweet_berry_cheesecake_slice2
   farmersdelight:sweet_berry_cheesecake_slice3:
     data:
-      item-name: <!i><l10n:block.farmersdelight.sweet_berry_cheesecake>
+      item-name: <!i><lang:block.farmersdelight.sweet_berry_cheesecake>
     model: farmersdelight:block/sweet_berry_cheesecake_slice3
   farmersdelight:chocolate_pie_slice0:
     data:
-      item-name: <!i><l10n:block.farmersdelight.chocolate_pie>
+      item-name: <!i><lang:block.farmersdelight.chocolate_pie>
     model: farmersdelight:block/chocolate_pie
   farmersdelight:chocolate_pie_slice1:
     data:
-      item-name: <!i><l10n:block.farmersdelight.chocolate_pie>
+      item-name: <!i><lang:block.farmersdelight.chocolate_pie>
     model: farmersdelight:block/chocolate_pie_slice1
   farmersdelight:chocolate_pie_slice2:
     data:
-      item-name: <!i><l10n:block.farmersdelight.chocolate_pie>
+      item-name: <!i><lang:block.farmersdelight.chocolate_pie>
     model: farmersdelight:block/chocolate_pie_slice2
   farmersdelight:chocolate_pie_slice3:
     data:
-      item-name: <!i><l10n:block.farmersdelight.chocolate_pie>
+      item-name: <!i><lang:block.farmersdelight.chocolate_pie>
     model: farmersdelight:block/chocolate_pie_slice3
   farmersdelight:roast_chicken_block_stage0:
     data:
-      item-name: <!i><l10n:block.farmersdelight.roast_chicken_block>
+      item-name: <!i><lang:block.farmersdelight.roast_chicken_block>
     model: farmersdelight:block/roast_chicken_block_stage0
   farmersdelight:roast_chicken_block_stage1:
     data:
-      item-name: <!i><l10n:block.farmersdelight.roast_chicken_block>
+      item-name: <!i><lang:block.farmersdelight.roast_chicken_block>
     model: farmersdelight:block/roast_chicken_block_stage1
   farmersdelight:roast_chicken_block_stage2:
     data:
-      item-name: <!i><l10n:block.farmersdelight.roast_chicken_block>
+      item-name: <!i><lang:block.farmersdelight.roast_chicken_block>
     model: farmersdelight:block/roast_chicken_block_stage2
   farmersdelight:roast_chicken_block_stage3:
     data:
-      item-name: <!i><l10n:block.farmersdelight.roast_chicken_block>
+      item-name: <!i><lang:block.farmersdelight.roast_chicken_block>
     model: farmersdelight:block/roast_chicken_block_stage3
   farmersdelight:roast_chicken_block_leftovers:
     data:
-      item-name: <!i><l10n:block.farmersdelight.roast_chicken_block>
+      item-name: <!i><lang:block.farmersdelight.roast_chicken_block>
     model: farmersdelight:block/roast_chicken_block_leftovers
   farmersdelight:stuffed_pumpkin_block_stage0:
     data:
-      item-name: <!i><l10n:block.farmersdelight.stuffed_pumpkin_block>
+      item-name: <!i><lang:block.farmersdelight.stuffed_pumpkin_block>
     model: farmersdelight:block/stuffed_pumpkin_block_stage0
   farmersdelight:stuffed_pumpkin_block_stage1:
     data:
-      item-name: <!i><l10n:block.farmersdelight.stuffed_pumpkin_block>
+      item-name: <!i><lang:block.farmersdelight.stuffed_pumpkin_block>
     model: farmersdelight:block/stuffed_pumpkin_block_stage1
   farmersdelight:stuffed_pumpkin_block_stage2:
     data:
-      item-name: <!i><l10n:block.farmersdelight.stuffed_pumpkin_block>
+      item-name: <!i><lang:block.farmersdelight.stuffed_pumpkin_block>
     model: farmersdelight:block/stuffed_pumpkin_block_stage2
   farmersdelight:stuffed_pumpkin_block_stage3:
     data:
-      item-name: <!i><l10n:block.farmersdelight.stuffed_pumpkin_block>
+      item-name: <!i><lang:block.farmersdelight.stuffed_pumpkin_block>
     model: farmersdelight:block/stuffed_pumpkin_block_stage3
   farmersdelight:honey_glazed_ham_block_stage0:
     data:
-      item-name: <!i><l10n:block.farmersdelight.honey_glazed_ham_block>
+      item-name: <!i><lang:block.farmersdelight.honey_glazed_ham_block>
     model: farmersdelight:block/honey_glazed_ham_block_stage0
   farmersdelight:honey_glazed_ham_block_stage1:
     data:
-      item-name: <!i><l10n:block.farmersdelight.honey_glazed_ham_block>
+      item-name: <!i><lang:block.farmersdelight.honey_glazed_ham_block>
     model: farmersdelight:block/honey_glazed_ham_block_stage1
   farmersdelight:honey_glazed_ham_block_stage2:
     data:
-      item-name: <!i><l10n:block.farmersdelight.honey_glazed_ham_block>
+      item-name: <!i><lang:block.farmersdelight.honey_glazed_ham_block>
     model: farmersdelight:block/honey_glazed_ham_block_stage2
   farmersdelight:honey_glazed_ham_block_stage3:
     data:
-      item-name: <!i><l10n:block.farmersdelight.honey_glazed_ham_block>
+      item-name: <!i><lang:block.farmersdelight.honey_glazed_ham_block>
     model: farmersdelight:block/honey_glazed_ham_block_stage3
   farmersdelight:honey_glazed_ham_block_leftovers:
     data:
-      item-name: <!i><l10n:block.farmersdelight.honey_glazed_ham_block>
+      item-name: <!i><lang:block.farmersdelight.honey_glazed_ham_block>
     model: farmersdelight:block/honey_glazed_ham_block_leftovers
   farmersdelight:shepherds_pie_block_stage0:
     data:
-      item-name: <!i><l10n:block.farmersdelight.shepherds_pie_block>
+      item-name: <!i><lang:block.farmersdelight.shepherds_pie_block>
     model: farmersdelight:block/shepherds_pie_block_stage0
   farmersdelight:shepherds_pie_block_stage1:
     data:
-      item-name: <!i><l10n:block.farmersdelight.shepherds_pie_block>
+      item-name: <!i><lang:block.farmersdelight.shepherds_pie_block>
     model: farmersdelight:block/shepherds_pie_block_stage1
   farmersdelight:shepherds_pie_block_stage2:
     data:
-      item-name: <!i><l10n:block.farmersdelight.shepherds_pie_block>
+      item-name: <!i><lang:block.farmersdelight.shepherds_pie_block>
     model: farmersdelight:block/shepherds_pie_block_stage2
   farmersdelight:shepherds_pie_block_stage3:
     data:
-      item-name: <!i><l10n:block.farmersdelight.shepherds_pie_block>
+      item-name: <!i><lang:block.farmersdelight.shepherds_pie_block>
     model: farmersdelight:block/shepherds_pie_block_stage3
   farmersdelight:shepherds_pie_block_leftovers:
     data:
-      item-name: <!i><l10n:block.farmersdelight.shepherds_pie_block>
+      item-name: <!i><lang:block.farmersdelight.shepherds_pie_block>
     model: farmersdelight:block/shepherds_pie_block_leftovers
   farmersdelight:gleaming_salad_block_stage0:
     data:
-      item-name: <!i><l10n:block.farmersdelight.gleaming_salad_block>
+      item-name: <!i><lang:block.farmersdelight.gleaming_salad_block>
     model: farmersdelight:block/gleaming_salad_block_stage0
   farmersdelight:gleaming_salad_block_stage1:
     data:
-      item-name: <!i><l10n:block.farmersdelight.gleaming_salad_block>
+      item-name: <!i><lang:block.farmersdelight.gleaming_salad_block>
     model: farmersdelight:block/gleaming_salad_block_stage1
   farmersdelight:gleaming_salad_block_stage2:
     data:
-      item-name: <!i><l10n:block.farmersdelight.gleaming_salad_block>
+      item-name: <!i><lang:block.farmersdelight.gleaming_salad_block>
     model: farmersdelight:block/gleaming_salad_block_stage2
   farmersdelight:gleaming_salad_block_stage3:
     data:
-      item-name: <!i><l10n:block.farmersdelight.gleaming_salad_block>
+      item-name: <!i><lang:block.farmersdelight.gleaming_salad_block>
     model: farmersdelight:block/gleaming_salad_block_stage3
   farmersdelight:gleaming_salad_block_leftovers:
     data:
-      item-name: <!i><l10n:block.farmersdelight.gleaming_salad_block>
+      item-name: <!i><lang:block.farmersdelight.gleaming_salad_block>
     model: farmersdelight:block/gleaming_salad_block_leftovers
   farmersdelight:rice_roll_medley_block_stage0:
     data:
-      item-name: <!i><l10n:block.farmersdelight.rice_roll_medley_block>
+      item-name: <!i><lang:block.farmersdelight.rice_roll_medley_block>
     model: farmersdelight:block/rice_roll_medley_block_stage0
   farmersdelight:rice_roll_medley_block_stage1:
     data:
-      item-name: <!i><l10n:block.farmersdelight.rice_roll_medley_block>
+      item-name: <!i><lang:block.farmersdelight.rice_roll_medley_block>
     model: farmersdelight:block/rice_roll_medley_block_stage1
   farmersdelight:rice_roll_medley_block_stage2:
     data:
-      item-name: <!i><l10n:block.farmersdelight.rice_roll_medley_block>
+      item-name: <!i><lang:block.farmersdelight.rice_roll_medley_block>
     model: farmersdelight:block/rice_roll_medley_block_stage2
   farmersdelight:rice_roll_medley_block_stage3:
     data:
-      item-name: <!i><l10n:block.farmersdelight.rice_roll_medley_block>
+      item-name: <!i><lang:block.farmersdelight.rice_roll_medley_block>
     model: farmersdelight:block/rice_roll_medley_block_stage3
   farmersdelight:rice_roll_medley_block_stage4:
     data:
-      item-name: <!i><l10n:block.farmersdelight.rice_roll_medley_block>
+      item-name: <!i><lang:block.farmersdelight.rice_roll_medley_block>
     model: farmersdelight:block/rice_roll_medley_block_stage4
   farmersdelight:rice_roll_medley_block_stage5:
     data:
-      item-name: <!i><l10n:block.farmersdelight.rice_roll_medley_block>
+      item-name: <!i><lang:block.farmersdelight.rice_roll_medley_block>
     model: farmersdelight:block/rice_roll_medley_block_stage5
   farmersdelight:rice_roll_medley_block_stage6:
     data:
-      item-name: <!i><l10n:block.farmersdelight.rice_roll_medley_block>
+      item-name: <!i><lang:block.farmersdelight.rice_roll_medley_block>
     model: farmersdelight:block/rice_roll_medley_block_stage6
   farmersdelight:rice_roll_medley_block_stage7:
     data:
-      item-name: <!i><l10n:block.farmersdelight.rice_roll_medley_block>
+      item-name: <!i><lang:block.farmersdelight.rice_roll_medley_block>
     model: farmersdelight:block/rice_roll_medley_block_stage7
   farmersdelight:rice_roll_medley_block_leftovers:
     data:
-      item-name: <!i><l10n:block.farmersdelight.rice_roll_medley_block>
+      item-name: <!i><lang:block.farmersdelight.rice_roll_medley_block>
     model: farmersdelight:block/rice_roll_medley_block_leftovers
   farmersdelight:pumpkin_pie_slice0:
     data:
-      item-name: <!i><l10n:block.farmersdelight.pumpkin_pie>
+      item-name: <!i><lang:block.farmersdelight.pumpkin_pie>
     model: farmersdelight:block/pumpkin_pie
   farmersdelight:pumpkin_pie_slice1:
     data:
-      item-name: <!i><l10n:block.farmersdelight.pumpkin_pie>
+      item-name: <!i><lang:block.farmersdelight.pumpkin_pie>
     model: farmersdelight:block/pumpkin_pie_slice1
   farmersdelight:pumpkin_pie_slice2:
     data:
-      item-name: <!i><l10n:block.farmersdelight.pumpkin_pie>
+      item-name: <!i><lang:block.farmersdelight.pumpkin_pie>
     model: farmersdelight:block/pumpkin_pie_slice2
   farmersdelight:pumpkin_pie_slice3:
     data:
-      item-name: <!i><l10n:block.farmersdelight.pumpkin_pie>
+      item-name: <!i><lang:block.farmersdelight.pumpkin_pie>
     model: farmersdelight:block/pumpkin_pie_slice3
