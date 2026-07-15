@@ -632,7 +632,13 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
     /** Whether {@code player} is tracking (has been sent) the display's chunk. Uses Paper's
      *  chunk-holder player set, which already encodes each player's own view-distance — the authoritative
      *  "can this player see here" signal, mirroring CE routing furniture through the vanilla entity
-     *  tracker. Returns false for an unloaded chunk or a cross-world player. */
+     *  tracker. Returns false for an unloaded chunk or a cross-world player.
+     *
+     *  <p>On Folia, the chunk may be in a different region than the current thread (entity scheduler).
+     *  When the chunk's region is not owned by the current thread, the tracking check is skipped and
+     *  the method returns true, leaving the distance-based {@link #shouldViewerSeeDisplay} as the sole
+     *  visibility gate. This avoids a cross-region {@code getChunkAt} call that would trigger Folia's
+     *  "Async chunk retrieval" thread check. */
     private boolean isPlayerTrackingDisplayChunk(Player player, ProxyDisplay display) {
         Location location = display.location();
         World world = location.getWorld();
@@ -643,6 +649,9 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         int chunkZ = location.getBlockZ() >> 4;
         if (!world.isChunkLoaded(chunkX, chunkZ)) {
             return false;
+        }
+        if (!plugin.scheduler().isOwnedByCurrentRegion(location)) {
+            return true;
         }
         return world.getChunkAt(chunkX, chunkZ).getPlayersSeeingChunk().contains(player);
     }
@@ -1091,4 +1100,3 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
         }
     }
 }
-

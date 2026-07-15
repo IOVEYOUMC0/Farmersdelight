@@ -694,7 +694,9 @@ public class StoveManager {
     private void burnAroundPlayer(Player player, boolean sweepMobs, Location playerLoc) {
         // Reuse the Folia-dispatch location when provided; otherwise fetch once here. This single
         // location feeds both tryBurnEntityOnStove(player) and getNearbyLivingEntities below.
-        if (playerLoc == null) {
+        // On Folia the player may have changed worlds between the location capture and the task
+        // execution; if so, discard the stale location and re-fetch.
+        if (playerLoc == null || !playerLoc.getWorld().equals(player.getWorld())) {
             playerLoc = player.getLocation();
         }
         tryBurnEntityOnStove(player, playerLoc);
