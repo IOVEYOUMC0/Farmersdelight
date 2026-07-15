@@ -27,6 +27,8 @@ public final class Constants {
     public static final String BLOCK_CUTTING_BOARD = "farmersdelight:cutting_board";
     public static final String BLOCK_RICE = "farmersdelight:rice";
     public static final String BLOCK_WILD_RICE = "farmersdelight:wild_rice";
+    public static final String BLOCK_BROWN_MUSHROOM = "farmersdelight:brown_mushroom";
+    public static final String BLOCK_RED_MUSHROOM = "farmersdelight:red_mushroom";
     public static final String BLOCK_BROWN_MUSHROOM_COLONY = "farmersdelight:brown_mushroom_colony";
     public static final String BLOCK_RED_MUSHROOM_COLONY = "farmersdelight:red_mushroom_colony";
     public static final String BLOCK_ONIONS = "farmersdelight:onions";
@@ -43,7 +45,6 @@ public final class Constants {
     public static final String BEHAVIOR_WILD_RICE = "farmersdelight:wild_rice";
     public static final String BEHAVIOR_ROPE = "farmersdelight:rope";
     public static final String BEHAVIOR_MUSHROOM_COLONY = "farmersdelight:mushroom_colony";
-    public static final String BEHAVIOR_MUSHROOM = "farmersdelight:mushroom";
     public static final String BEHAVIOR_WILD_PLANT = "farmersdelight:wild_plant";
     public static final String BEHAVIOR_TOMATO_VINE = "farmersdelight:tomato_vine";
     public static final String BEHAVIOR_ORGANIC_COMPOST = "farmersdelight:organic_compost";
