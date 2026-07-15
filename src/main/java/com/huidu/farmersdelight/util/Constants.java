@@ -43,6 +43,7 @@ public final class Constants {
     public static final String BEHAVIOR_WILD_RICE = "farmersdelight:wild_rice";
     public static final String BEHAVIOR_ROPE = "farmersdelight:rope";
     public static final String BEHAVIOR_MUSHROOM_COLONY = "farmersdelight:mushroom_colony";
+    public static final String BEHAVIOR_MUSHROOM = "farmersdelight:mushroom";
     public static final String BEHAVIOR_WILD_PLANT = "farmersdelight:wild_plant";
     public static final String BEHAVIOR_TOMATO_VINE = "farmersdelight:tomato_vine";
     public static final String BEHAVIOR_ORGANIC_COMPOST = "farmersdelight:organic_compost";
