@@ -46,6 +46,18 @@ public interface ViewableRecipe {
     }
 
     /**
+     * Optional navigation: makes the detail-view slot(s) for a display role clickable, jumping to another
+     * recipe's detail (possibly a different RecipeType). Keyed by the same role name used in displaySlots (for
+     * example "fluid"); clicking any slot that role occupies opens the target. A role absent here (or mapped
+     * to null) is not clickable. The recipe book resolves the typeId to a registered RecipeType and opens the
+     * recipeId's detail; it interprets neither the role nor the ids, so this stays type-agnostic. Defaults to
+     * none.
+     */
+    default Map<String, JumpTarget> jumpTargets() {
+        return Map.of();
+    }
+
+    /**
      * Whether {@code player} can currently make this recipe (has the required inputs). Used by the recipe
      * book's optional "craftable only" filter. Defaults to true (always shown) for types that don't
      * implement an inventory check.
