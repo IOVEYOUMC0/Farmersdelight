@@ -604,7 +604,7 @@ public class CookingPotRecipeManager {
         return false;
     }
 
-    private Set<String> getVanillaItemIdsByTag(Key tagKey) {
+    public Set<String> getVanillaItemIdsByTag(Key tagKey) {
         if (tagKey == null) {
             return Set.of();
         }
