@@ -63,6 +63,16 @@ performance:
   # Increase to shorten post-startup recovery time, decrease to ease startup-instant load.
   startup-chunk-loads-per-tick: 16
 
+  # Hard cap on particle + sound packets a single chunk's cooking pots / skillets / stoves may emit in one
+  # server tick. Prevents a dense pocket of heat blocks from flooding the packet queue. Lower on a struggling
+  # server; the per-block emission chances (in each block's effects section) still gate individual visuals.
+  chunk-effect-packet-budget: 50
+
+  # How often (ticks) the Comfort / Nourishment effect task runs per tracked player: drives duration
+  # countdown, fade-warning granularity and the bossbar push. Higher = smoother CPU under many buffed
+  # players at the cost of bar smoothness; durations self-correct since they decrement by this interval.
+  effect-tick-interval-ticks: 4
+
 # Master switch for the vanilla container bridge between hoppers and plugin blocks.
 # When enabled=false, the hopper container bridge for plugin blocks is fully disabled, avoiding hoppers eating items, duplicate container creation or write errors.
 # On by default; if you hit hopper compatibility issues, turn off the master switch first to troubleshoot.
@@ -486,9 +496,16 @@ cooking-pot:
     x-offset: 0.5
     y-offset: 0.0
     z-offset: 0.5
+    # Feedback sound played to the player when toggling the handle on/off. Set volume to 0 to silence it.
+    toggle-sound: "minecraft:block.lantern.place"
+    toggle-sound-volume: 0.7
+    toggle-sound-pitch: 1.0
 
   # Cooking pot world particle effects.
   effects:
+    # How many blocks away a player must be for the pot to broadcast its particles/sounds. 32 = vanilla
+    # particle/sound range. Lower it to shrink the broadcast radius for dense pot farms (matches stove.effects.viewer-distance).
+    viewer-distance: 32.0
     bubble:
       enabled: true
       type: BUBBLE_POP
@@ -569,6 +586,12 @@ mushroom-colonies:
     # When the block above is not in always-valid-supports, placement is allowed only if the target light is at or below this value.
     max-light: 12
 
+# Rope block behavior.
+rope:
+  # How many blocks up a rope column is searched for a bell when right-clicked with an empty hand.
+  # The search stops early at any gap or non-rope block. Minimum 1.
+  bell-ring-max-distance: 24
+
 # Skillet configuration.
 skillet:
   # true = when hopper-interactions.enabled is on, the skillet allows hopper ingredient input; results still pop out directly per the original mod behavior, with no hopper output slot.
@@ -594,6 +617,9 @@ skillet:
     allow-conductors: false
 
   effects:
+    # How many blocks away a player must be for the skillet to broadcast its particles/sounds. 32 = vanilla
+    # particle/sound range. Lower it to shrink the broadcast radius for dense skillet farms (matches stove.effects.viewer-distance).
+    viewer-distance: 32.0
     smoke:
       enabled: true
       type: SMOKE
@@ -637,7 +663,17 @@ stove:
     # How much cooking progress reverts per tick when the stove goes out; set to 0 for no revert.
     cooling-decrement: 2
 
+  # A lit stove burns living entities standing on its central grilling area. Burn damage/type is on the
+  # CraftEngine stove block; this only bounds the always-on poll.
+  burn:
+    # Radius (blocks) around each online player scanned for mobs to burn. Lower on high-population servers
+    # to shrink the per-player entity scan; also limits how far away mobs get grilled.
+    mob-scan-radius: 12.0
+
   effects:
+    # How many blocks away a player must be for the stove to broadcast its particles/sounds. 32 = vanilla
+    # particle/sound range. Lower it to shrink the broadcast radius for dense stove farms.
+    viewer-distance: 32.0
     smoke:
       enabled: true
       type: SMOKE
@@ -798,6 +834,9 @@ bossbar:
   layout-mode: stacked
   # Ticks between switches in rotating mode. Lower bound 20 (1 second). Ignored in stacked mode.
   rotation-interval-ticks: 80
+  # How often (ticks) the action bar buff line is re-sent so it doesn't fade (~3s vanilla fade). Only used
+  # when the actionbar channel is enabled; raise if another plugin fights over the action bar.
+  actionbar-refresh-ticks: 30
   # Per-buff visual. color ∈ {PINK, BLUE, RED, GREEN, YELLOW, PURPLE, WHITE};
   # overlay ∈ {PROGRESS, NOTCHED_6, NOTCHED_10, NOTCHED_12, NOTCHED_20}. Case-insensitive,
   # hyphen/underscore tolerant. Addons (e.g. BrewinAndChewin) configure their own buff styles in
@@ -818,8 +857,10 @@ buff-persistence:
 # The mechanic code is kept: set enabled to true and add foods under foods if needed.
 comfort-foods:
   enabled: false
-  # How many ticks between each half-heart of comfort healing; set to 0 to disable comfort healing and keep only message/status.
+  # How many ticks between each comfort heal tick; set to 0 to disable comfort healing and keep only message/status.
   heal-interval-ticks: 80
+  # How much health (in HP; 1.0 = half a heart) each comfort heal tick restores.
+  heal-amount: 1.0
   # Send an about-to-end reminder when this many ticks of the effect remain; set to 0 to disable the reminder.
   fade-warning-ticks: 200
   foods: {}

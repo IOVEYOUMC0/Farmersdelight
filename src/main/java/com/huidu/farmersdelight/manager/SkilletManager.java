@@ -34,9 +34,12 @@ public class SkilletManager {
 
     private static final int HEARTBEAT_LOG_INTERVAL = 20;
     private static final int DEFAULT_TICK_BUDGET = 512;
-    // Squared player-proximity radius for gating per-tick smoke/sizzle broadcasts (32 blocks =
-    // vanilla particle/sound range, matches StoveManager/TickManager).
-    private static final double EFFECT_VIEWER_DISTANCE_SQUARED = 32.0D * 32.0D;
+    // Squared player-proximity radius for gating per-tick smoke/sizzle broadcasts. Default 32 blocks =
+    // vanilla particle/sound range; read from skillet.effects.viewer-distance on reload.
+    private static final double DEFAULT_EFFECT_VIEWER_DISTANCE = 32.0D;
+    // Written in reloadConfig (reload thread), read on Folia region tick threads — volatile for a
+    // happens-before edge, matching the other reload-mutated tick-read fields.
+    private volatile double effectViewerDistanceSquared = DEFAULT_EFFECT_VIEWER_DISTANCE * DEFAULT_EFFECT_VIEWER_DISTANCE;
     private static final int DEFAULT_COOK_TIME = Constants.DEFAULT_COOKING_TIME_SKILLET;
     private static final int DEFAULT_MIN_COOK_TIME = 60;
     private static final int DEFAULT_COOLING_DECREMENT = 2;
@@ -90,7 +93,7 @@ public class SkilletManager {
     // whole tick pass. No chunk stagger is applied: the manager dispatches on a period-4 timer at a
     // fixed tick residue, so a Bukkit.getCurrentTick()-derived stagger would never rotate — it would
     // permanently silence 3/4 of chunks — so only the hard budget cap is used here.
-    private int chunkEffectBudgetLimit = 50;
+    private volatile int chunkEffectBudgetLimit = 50;
     // Keyed by world UID (like StoveManager.chunkFx) so two worlds' chunks sharing a chunkKey don't collide on
     // one budget entry. The outer map is cleared wholesale once per Bukkit tick across the whole tick pass.
     private final Map<java.util.UUID, Map<Long, AtomicInteger>> chunkEffectBudget = new ConcurrentHashMap<>();
@@ -168,6 +171,11 @@ public class SkilletManager {
         this.fireAspectBonus = ManagerSupport.clampChance(plugin.getConfigDouble(DEFAULT_FIRE_ASPECT_BONUS,
                 "skillet.cooking.fire-aspect-bonus",
                 "skillet.fire-aspect-bonus"));
+        double viewerDistance = Math.max(0.0D, plugin.getConfigDouble(DEFAULT_EFFECT_VIEWER_DISTANCE,
+                "skillet.effects.viewer-distance"));
+        this.effectViewerDistanceSquared = viewerDistance * viewerDistance;
+        this.chunkEffectBudgetLimit = Math.max(1, plugin.getConfigInt(50,
+                "performance.chunk-effect-packet-budget"));
         loadEffectsConfig();
         refreshVisualsAfterConfigReload();
     }
@@ -1086,7 +1094,7 @@ public class SkilletManager {
         // recipient set for the sends below, so the particle/sound target player.spawnParticle/playSound
         // instead of world.spawnParticle re-walking the whole world player list per call (R-PERF-006).
         List<Player> nearbyViewers = ManagerSupport.collectNearbyPlayers(
-                world, location, EFFECT_VIEWER_DISTANCE_SQUARED, NEARBY_VIEWER_SCRATCH.get());
+                world, location, effectViewerDistanceSquared, NEARBY_VIEWER_SCRATCH.get());
         // Per-chunk per-dispatch packet budget (mirrors StoveManager): a dense pocket of cooking skillets
         // can't emit more than chunkEffectBudgetLimit particle/sound packets from one chunk in a single
         // Bukkit tick, capping the peak packet burst. Emission chance is unchanged, so per-skillet

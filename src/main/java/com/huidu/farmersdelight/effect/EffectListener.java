@@ -37,7 +37,17 @@ public class EffectListener implements Listener {
     private static final Set<UUID> playersWithEffects = ConcurrentHashMap.newKeySet();
     private static final Map<UUID, Player> trackedPlayers = new ConcurrentHashMap<>();
     private static final Set<UUID> scheduledTicks = ConcurrentHashMap.newKeySet();
-    static final long TICK_INTERVAL = 4L;
+    // Effect task tick cadence, resolved from config once at start(). The same value is the amount
+    // durations decrement by each pass and the fade-warning window granularity, so every consumer
+    // reads it back through tickInterval() to stay identical. A changed interval takes effect on the
+    // next start (plugin enable / server restart), keeping the running scheduler period and the
+    // duration decrement in lockstep. Config: performance.effect-tick-interval-ticks (default 4, min 1).
+    private static final long DEFAULT_TICK_INTERVAL = 4L;
+    private static volatile long tickInterval = DEFAULT_TICK_INTERVAL;
+
+    static long tickInterval() {
+        return tickInterval;
+    }
     // Default delay (ticks) for the post-join PDC restore retry; overridable via config. 40 ticks (2s)
     // comfortably clears a whole-profile sync plugin's async apply without a visible gap.
     private static final int DEFAULT_RESTORE_RETRY_DELAY_TICKS = 40;
@@ -113,6 +123,10 @@ public class EffectListener implements Listener {
         // can call EffectManager.tick directly and skip one BukkitTask allocation per tracked player per
         // tick pass (100 buffed players × 5 passes/sec = 500 task allocations/sec saved).
         boolean folia = plugin.scheduler().isFolia();
+        // Resolve the tick interval once so the scheduler period, the per-pass duration decrement and
+        // the fade-warning window all use the identical value.
+        tickInterval = Math.max(1L, plugin.getConfigInt((int) DEFAULT_TICK_INTERVAL,
+                "performance.effect-tick-interval-ticks"));
         effectTask = plugin.scheduler().runRepeating(() -> {
             if (playersWithEffects.isEmpty()) {
                 return;
@@ -168,7 +182,7 @@ public class EffectListener implements Listener {
                     }
                 }
             }
-        }, 1L, TICK_INTERVAL);
+        }, 1L, tickInterval);
     }
 
     public void stop() {

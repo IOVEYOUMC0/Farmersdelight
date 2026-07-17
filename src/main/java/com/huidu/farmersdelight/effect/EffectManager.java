@@ -25,6 +25,7 @@ public final class EffectManager {
 
     private static final int DEFAULT_EFFECT_FADE_WARNING_TICKS = 200;
     private static final int DEFAULT_COMFORT_HEAL_INTERVAL_TICKS = 80;
+    private static final double DEFAULT_COMFORT_HEAL_AMOUNT = 1.0D;
 
     // Bossbar styles for the two FD buffs. Volatile + setters so /fd reload can mutate them without
     // touching the per-tick push path. Defaults match the original NamedTextColor mapping
@@ -50,9 +51,12 @@ public final class EffectManager {
             comfortBarOverlay = com.huidu.farmersdelight.api.buff.BuffBossbar.parseOverlay(c.getString("overlay"), BossBar.Overlay.PROGRESS);
         }
     }
-    // Must match the effect task (EffectListener) run period. Durations are stored in real ticks,
-    // so they must be decremented by the elapsed real ticks between calls.
-    private static final int TICK_INTERVAL = (int) EffectListener.TICK_INTERVAL;
+    // Real ticks elapsed between effect-task passes. Mirrors EffectListener's resolved tick interval
+    // so durations (stored in real ticks) decrement by the actual elapsed ticks and self-correct.
+    private static int tickInterval() {
+        return (int) EffectListener.tickInterval();
+    }
+
     private static final Map<UUID, Integer> comfortDurations = new ConcurrentHashMap<>();
     private static final Map<UUID, Integer> nourishmentDurations = new ConcurrentHashMap<>();
     // Parallel "initial duration" maps — needed so the buff bossbar can render progress as
@@ -261,7 +265,7 @@ public final class EffectManager {
                                 durationPlaceholders(comfortDuration)
                         ));
                     }
-                    int newDuration = comfortDuration - TICK_INTERVAL;
+                    int newDuration = comfortDuration - tickInterval();
                     if (newDuration > 0) {
                         comfortDurations.put(playerId, newDuration);
                     } else {
@@ -283,7 +287,7 @@ public final class EffectManager {
                             durationPlaceholders(nourishmentDuration)
                     ));
                 }
-                int newDuration = nourishmentDuration - TICK_INTERVAL;
+                int newDuration = nourishmentDuration - tickInterval();
                 if (newDuration > 0) {
                     nourishmentDurations.put(playerId, newDuration);
                 } else {
@@ -293,12 +297,13 @@ public final class EffectManager {
                 }
             }
 
-            if (comfortDuration <= TICK_INTERVAL && nourishmentDuration <= TICK_INTERVAL) {
+            int interval = tickInterval();
+            if (comfortDuration <= interval && nourishmentDuration <= interval) {
                 EffectListener.untrackPlayer(playerId);
             }
 
-            // Bossbar feed — push current state every tick this method runs. Tick rate is FD's
-            // EffectListener.TICK_INTERVAL (4 ticks = 5 Hz), plenty for a smooth progress bar.
+            // Bossbar feed — push current state every tick this method runs. Tick rate is the effect
+            // task's configured interval (default 4 ticks = 5 Hz), plenty for a smooth progress bar.
             pushBossbar(player, playerId);
         } catch (Exception e) {
             EffectListener.untrackPlayer(player.getUniqueId());
@@ -506,7 +511,7 @@ public final class EffectManager {
         }
         double maxHealth = maxHealthAttr.getValue();
         if (player.getHealth() < maxHealth) {
-            player.setHealth(Math.min(player.getHealth() + 1.0D, maxHealth));
+            player.setHealth(Math.min(player.getHealth() + getComfortHealAmount(), maxHealth));
         }
     }
 
@@ -526,7 +531,7 @@ public final class EffectManager {
     private static boolean shouldSendFadeWarning(int durationTicks, int warningTicks) {
         return warningTicks > 0
                 && durationTicks <= warningTicks
-                && durationTicks > warningTicks - TICK_INTERVAL;
+                && durationTicks > warningTicks - tickInterval();
     }
 
     private static int getComfortHealIntervalTicks() {
@@ -535,6 +540,14 @@ public final class EffectManager {
                 ? DEFAULT_COMFORT_HEAL_INTERVAL_TICKS
                 : Math.max(0, plugin.getConfigInt(DEFAULT_COMFORT_HEAL_INTERVAL_TICKS,
                 "comfort-foods.heal-interval-ticks"));
+    }
+
+    private static double getComfortHealAmount() {
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
+        return plugin == null
+                ? DEFAULT_COMFORT_HEAL_AMOUNT
+                : Math.max(0, plugin.getConfigDouble(DEFAULT_COMFORT_HEAL_AMOUNT,
+                "comfort-foods.heal-amount"));
     }
 
     private static int getComfortFadeWarningTicks() {

@@ -44,7 +44,7 @@ public class StoveManager {
     // Burn poll: cadence + how far around each player mobs are scanned. The poll is bounded by online
     // player count (not stove count), so getNearbyEntities here is far cheaper than the per-stove scan.
     private static final long BURN_PERIOD_TICKS = 4L;
-    private static final double BURN_MOB_RADIUS = 12.0D;
+    private static final double DEFAULT_BURN_MOB_RADIUS = 12.0D;
     // Vanilla GRILLING_AREA = Block.box(3,0,3, 13,1,13): only the central 10x10 top surface burns.
     private static final double GRILL_MIN = 3.0D / 16.0D;
     private static final double GRILL_MAX = 13.0D / 16.0D;
@@ -97,13 +97,16 @@ public class StoveManager {
     private float cracklePitch = 1.0F;
     private boolean fireParticlesEnabled = true;
     private double fireParticleChance = 0.15D;
-    private double effectViewerDistance = 32.0D;
+    // Written in reloadConfig (reload thread), read on Folia region tick threads (effect/burn) — volatile
+    // for a happens-before edge, matching the other reload-mutated tick-read fields.
+    private volatile double effectViewerDistance = 32.0D;
+    private volatile double burnMobRadius = DEFAULT_BURN_MOB_RADIUS;
     private volatile Property<?> fireProperty;
     // Per-chunk per-tick effect context: the packet budget (hard cap so a dense pocket of stoves —
     // 60/chunk × 4 slot rolls — can't steamroll the packet queue in one Bukkit tick) plus the tick's
     // chunk-tracked player list, fetched once and shared by every stove in the chunk. World-keyed so
     // identical chunk coordinates in different worlds never collide. Cleared on tick rollover.
-    private int chunkEffectBudgetLimit = 50;
+    private volatile int chunkEffectBudgetLimit = 50;
     private final Map<UUID, Map<Long, ChunkFxContext>> chunkFx = new ConcurrentHashMap<>();
     private volatile long effectBudgetResetTick = -1L;
 
@@ -172,6 +175,8 @@ public class StoveManager {
         this.coolingDecrement = Math.max(0, plugin.getConfigInt(DEFAULT_COOLING_DECREMENT,
                 "stove.cooking.cooling-decrement",
                 "stove.cooling-decrement"));
+        this.burnMobRadius = Math.max(0.0D, plugin.getConfigDouble(DEFAULT_BURN_MOB_RADIUS, "stove.burn.mob-scan-radius"));
+        this.chunkEffectBudgetLimit = Math.max(1, plugin.getConfigInt(50, "performance.chunk-effect-packet-budget"));
         loadEffectsConfig();
         this.slotOffsets = StoveDisplayOffsets.load(plugin, SLOT_COUNT);
         refreshVisualsAfterConfigReload();
@@ -750,7 +755,7 @@ public class StoveManager {
         // so this stays cheap; a mob near two players is checked twice but the damage-invulnerability
         // window collapses that to one hit.
         boolean folia = plugin.scheduler().isFolia();
-        for (LivingEntity living : player.getWorld().getNearbyLivingEntities(player.getLocation(), BURN_MOB_RADIUS)) {
+        for (LivingEntity living : player.getWorld().getNearbyLivingEntities(player.getLocation(), burnMobRadius)) {
             if (living instanceof Player) {
                 continue;
             }
