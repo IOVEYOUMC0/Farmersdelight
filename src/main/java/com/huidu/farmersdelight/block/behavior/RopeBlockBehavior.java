@@ -188,7 +188,8 @@ public class RopeBlockBehavior extends BlockBehavior {
         // ring the first bell found. Any gap, or any block that is neither a rope nor a bell, stops the search.
         int x = pos.x();
         int z = pos.z();
-        for (int i = 1, y = pos.y() + 1; i <= 24 && y <= world.getMaxHeight(); i++, y++) {
+        int maxDistance = Math.max(1, FarmersDelightPlugin.getInstance().getConfigInt(24, "rope.bell-ring-max-distance"));
+        for (int i = 1, y = pos.y() + 1; i <= maxDistance && y <= world.getMaxHeight(); i++, y++) {
             Block above = world.getBlockAt(x, y, z);
             if (above.getType() == Material.BELL) {
                 ringBell(above, bukkitPlayer);

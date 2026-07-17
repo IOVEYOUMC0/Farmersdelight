@@ -58,6 +58,8 @@ public class MushroomColonyBehavior extends BlockBehavior implements Bonemealabl
     private final int maxAge;
     private final float growSpeed;
     private final int minGrowLight;
+    private final int bonemealMinAgeBonus;
+    private final int bonemealMaxAgeBonus;
     private final Set<Key> harvestToolTags;
     private final Set<String> harvestToolItems;
     private final SoilRuleSupport.SoilRules growSoilRules;
@@ -69,6 +71,8 @@ public class MushroomColonyBehavior extends BlockBehavior implements Bonemealabl
             int maxAge,
             float growSpeed,
             int minGrowLight,
+            int bonemealMinAgeBonus,
+            int bonemealMaxAgeBonus,
             Set<Key> harvestToolTags,
             Set<String> harvestToolItems,
             SoilRuleSupport.SoilRules growSoilRules,
@@ -79,6 +83,8 @@ public class MushroomColonyBehavior extends BlockBehavior implements Bonemealabl
         this.maxAge = maxAge;
         this.growSpeed = growSpeed;
         this.minGrowLight = minGrowLight;
+        this.bonemealMinAgeBonus = bonemealMinAgeBonus;
+        this.bonemealMaxAgeBonus = bonemealMaxAgeBonus;
         this.harvestToolTags = harvestToolTags;
         this.harvestToolItems = harvestToolItems;
         this.growSoilRules = growSoilRules;
@@ -101,6 +107,11 @@ public class MushroomColonyBehavior extends BlockBehavior implements Bonemealabl
                     : BehaviorArgParser.inferMaxIntegerValue(ageProperty, 3);
             float growSpeed = BehaviorArgParser.getFloat(arguments, "grow-speed", 0.25f);
             int minGrowLight = BehaviorArgParser.getInt(arguments, "light-requirement", 0);
+            int bonemealMinAgeBonus = BehaviorArgParser.getInt(arguments, "bonemeal-min-age-bonus", 1);
+            int bonemealMaxAgeBonus = BehaviorArgParser.getInt(arguments, "bonemeal-max-age-bonus", 2);
+            if (bonemealMaxAgeBonus < bonemealMinAgeBonus) {
+                bonemealMaxAgeBonus = bonemealMinAgeBonus;
+            }
             Set<Key> harvestToolTags = SoilRuleSupport.parseKeys(arguments, "harvest-tool-tags");
             Set<String> harvestToolItems = parseConfiguredItemIds(arguments, "harvest-tool-items");
             SoilRuleSupport.SoilRules growSoilRules = parseGrowSoilRules(arguments);
@@ -112,6 +123,8 @@ public class MushroomColonyBehavior extends BlockBehavior implements Bonemealabl
                     maxAge,
                     growSpeed,
                     minGrowLight,
+                    bonemealMinAgeBonus,
+                    bonemealMaxAgeBonus,
                     harvestToolTags,
                     harvestToolItems,
                     growSoilRules,
@@ -349,7 +362,7 @@ public class MushroomColonyBehavior extends BlockBehavior implements Bonemealabl
         BlockPos pos = CraftEngineAdapter.toBlockPos(args[2]);
         if (world == null || pos == null) return;
 
-        int increase = ThreadLocalRandom.current().nextInt(1, 3);
+        int increase = ThreadLocalRandom.current().nextInt(bonemealMinAgeBonus, bonemealMaxAgeBonus + 1);
         int newAge = Math.min(maxAge, currentAge + increase);
         ImmutableBlockState newState = state.with(ageProperty, newAge);
         Block block = world.getBlockAt(pos.x(), pos.y(), pos.z());
