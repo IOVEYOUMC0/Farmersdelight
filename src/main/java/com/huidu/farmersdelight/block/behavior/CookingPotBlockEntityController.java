@@ -62,6 +62,11 @@ public final class CookingPotBlockEntityController extends BlockEntityController
     private final Item[] items;
     private final double[] slotExperience;
     private final boolean[] dirtySlots;
+    // The entity value each slot's shadow was last read from (refreshFromEntity). Lets writeToEntity tell a
+    // local hopper in-place grow (shadow changed, entity still equals this baseline) apart from a concurrent
+    // entity write by another region's GUI viewer (entity no longer equals this baseline) — so it persists
+    // the grow but never clobbers the concurrent write with a stale shadow.
+    private final ItemStack[] entityBaseline;
     private final Object container;
     private final Inventory inventory;
     private ItemStack mealContainer;
@@ -88,6 +93,7 @@ public final class CookingPotBlockEntityController extends BlockEntityController
         this.items = new Item[this.layout.size()];
         this.slotExperience = new double[this.layout.size()];
         this.dirtySlots = new boolean[this.layout.size()];
+        this.entityBaseline = new ItemStack[this.layout.size()];
         Arrays.fill(this.items, Item.empty());
         this.container = CraftEngine.instance().platform().createContainer(this);
         this.inventory = CraftInventoryProxy.INSTANCE.newInstance(this.container);
@@ -291,8 +297,12 @@ public final class CookingPotBlockEntityController extends BlockEntityController
             if (hasDirtySlots && (this.allSlotsDirty || this.dirtySlots[i])) {
                 continue;
             }
-            this.items[i] = normalize(BukkitItemManager.instance().wrap(entity.getInventorySlot(i)));
+            ItemStack entitySlot = entity.getInventorySlot(i);
+            this.items[i] = normalize(BukkitItemManager.instance().wrap(entitySlot));
             this.slotExperience[i] = entity.getSlotExperience(i);
+            // getInventorySlot returns a fresh copy, so this baseline stays stable against later
+            // setInventorySlot writes; writeToEntity compares the live entity slot against it.
+            this.entityBaseline[i] = entitySlot;
         }
         if (!hasDirtySlots) {
             this.cookingProgress = entity.getCookingProgress();
@@ -351,15 +361,27 @@ public final class CookingPotBlockEntityController extends BlockEntityController
         World world = getBukkitWorld();
         if (entity == null || world == null) return;
 
-        boolean writeAll = this.allSlotsDirty || !hasDirtySlots();
         synchronized (entity.getLock()) {
             for (int i = 0; i < this.items.length; i++) {
-                // A hopper merge grows getItem(i) in place without marking it dirty. Skip a non-dirty slot
-                // only when the shadow still matches the entity; if it differs (an in-place grow), persist
-                // it, otherwise refreshFromEntity below would overwrite the merged amount with the stale value.
-                if (!writeAll && !this.dirtySlots[i]
-                        && itemStacksEqual(asBukkitStack(this.items[i]), entity.getInventorySlot(i))) {
-                    continue;
+                boolean slotDirty = this.allSlotsDirty || this.dirtySlots[i];
+                if (!slotDirty) {
+                    // Non-dirty slot: the only legitimate local change is a hopper in-place grow, which
+                    // grows getItem(i) without marking the slot dirty. Persist that grow, but never
+                    // clobber a concurrent entity write. The shadow was read from the entity at
+                    // refreshFromEntity (recorded in entityBaseline); if the live entity still equals that
+                    // baseline the shadow delta is our own grow (write it), but if the entity has changed
+                    // since (another region's GUI viewer wrote this slot under the entity lock) writing our
+                    // stale shadow would silently wipe that change — so adopt the entity's current value.
+                    ItemStack entityNow = entity.getInventorySlot(i);
+                    if (itemStacksEqual(asBukkitStack(this.items[i]), entityNow)) {
+                        continue;
+                    }
+                    if (!itemStacksEqual(this.entityBaseline[i], entityNow)) {
+                        this.items[i] = normalize(BukkitItemManager.instance().wrap(entityNow));
+                        this.slotExperience[i] = entity.getSlotExperience(i);
+                        this.entityBaseline[i] = entityNow;
+                        continue;
+                    }
                 }
                 entity.setInventorySlot(i, asBukkitStack(this.items[i]));
                 if (this.items[i].isEmpty()) {
