@@ -245,6 +245,19 @@ public class StoveManager {
             return existing;
         }
 
+        // Saved data may still be parked on the controller (deferred startup load, or a chunk served from
+        // CraftEngine's chunk cache where loadCustomData never re-ran); apply it before creating a blank
+        // entry that would shadow the stored contents and let the late apply overwrite this interaction.
+        if (normalized.getWorld() != null) {
+            CustomBlockUtils.notifyControllerChanged(normalized.getWorld(), new BlockPosKey(normalized),
+                    com.huidu.farmersdelight.block.behavior.StoveBlockEntityController.class, null,
+                    com.huidu.farmersdelight.block.behavior.StoveBlockEntityController::loadPendingDataIfReady);
+            StoveData loaded = stoves.get(normalized);
+            if (loaded != null) {
+                return loaded;
+            }
+        }
+
         StoveData created = new StoveData(normalized, defaultCookTime);
         StoveData previous = stoves.putIfAbsent(normalized, created);
         if (previous != null) {
@@ -387,7 +400,17 @@ public class StoveManager {
         }
         for (Location location : List.copyOf(locations)) {
             StoveData stove = stoves.get(location);
-            if (stove != null) {
+            if (stove == null) {
+                continue;
+            }
+            // Same contract as saveAndUnloadChunk: snapshot into the controller, then drop the live entry.
+            // CE serializes the world's chunks at WorldUnloadEvent HIGHEST (after this NORMAL handler and
+            // its cleanup), so a removed entry without a snapshot would export nothing and wipe the data.
+            // If the unload gets cancelled by another plugin, the first interaction re-hydrates from the
+            // snapshot via the entry-creation flush.
+            if (passivateToController(world, location)) {
+                removeStove(location, false);
+            } else {
                 saveStove(location, stove);
             }
         }
@@ -444,27 +467,53 @@ public class StoveManager {
             if (location.getBlockX() >= minX && location.getBlockX() <= maxX
                     && location.getBlockZ() >= minZ && location.getBlockZ() <= maxZ) {
                 StoveData stove = stoves.get(location);
-                if (stove != null) {
+                if (stove == null) {
+                    removeStove(location, false);
+                    continue;
+                }
+                // Snapshot into the controller BEFORE removing the entry: CE serializes this chunk at
+                // ChunkUnloadEvent HIGHEST by pulling from this manager, which runs after this HIGH
+                // handler — removing first would make it export nothing and wipe the persisted data.
+                if (passivateToController(world, location)) {
+                    removeStove(location, false);
+                } else {
+                    // Controller unreachable: keep the entry so the pull-serialization can still export
+                    // it; the entry is reconciled on the next chunk load.
                     saveStove(location, stove);
                 }
-                removeStove(location, false);
             }
         }
     }
 
-    public void loadStove(World world, net.momirealms.craftengine.core.world.BlockPos pos, Map<String, Object> data) {
-        loadStove(world, new BlockPosKey(pos), data);
+    /** Stashes the stove's exported state into its CE controller; false when the controller is unreachable. */
+    private boolean passivateToController(World world, Location location) {
+        boolean[] stashed = {false};
+        CustomBlockUtils.notifyControllerChanged(world, new BlockPosKey(location),
+                com.huidu.farmersdelight.block.behavior.StoveBlockEntityController.class, null,
+                controller -> stashed[0] = controller.passivate());
+        return stashed[0];
     }
 
-    public void loadStove(World world, BlockPosKey posKey, Map<String, Object> data) {
-        if (world == null || posKey == null || data == null) return;
+    public boolean loadStove(World world, net.momirealms.craftengine.core.world.BlockPos pos, Map<String, Object> data) {
+        return loadStove(world, new BlockPosKey(pos), data);
+    }
+
+    /** Returns whether the saved data was consumed; false keeps it parked on the controller for a retry. */
+    public boolean loadStove(World world, BlockPosKey posKey, Map<String, Object> data) {
+        if (world == null || posKey == null || data == null) return true;
 
         Location location = ManagerSupport.toLocation(world, posKey);
-        if (location == null) return;
+        if (location == null) return false;
         if (!isStoveStateBlock(location)) {
-            removeStoredData(location);
-            removeStove(location, false);
-            return;
+            // The CE state can be transiently unresolvable (a /ce reload unbinds states for the parse
+            // window); keep the data parked instead of discarding it, so a live stove's contents are
+            // not destroyed. A genuinely replaced block just carries inert leftover NBT.
+            return false;
+        }
+        if (stoves.containsKey(ManagerSupport.normalize(location))) {
+            // A live entry exists (created by an interaction before this deferred load applied); the live
+            // state is newer than the saved snapshot, so consume the snapshot without overwriting it.
+            return true;
         }
 
         StoveData stove = new StoveData(location, defaultCookTime);
@@ -499,6 +548,7 @@ public class StoveManager {
         } else {
             removeStoredData(location);
         }
+        return true;
     }
 
     private StoveData getOrLoadStove(Location location) {
@@ -1074,9 +1124,9 @@ public class StoveManager {
         stove.ownerNames[slot] = null;
         removeVisual(location, stove, slot);
 
-        if (!hasAnyItem(stove)) {
-            removeStoredData(location);
-        }
+        // Mark unconditionally: with other slots still occupied the disk copy would otherwise keep the
+        // finished slot until the next unrelated write, and a crash would restore the already-dropped item.
+        markStoveDirty(location);
     }
 
     private void ejectAllItems(Location location, StoveData stove) {
@@ -1273,9 +1323,9 @@ public class StoveManager {
             }
         }
 
-        if (!hasAnyItem(stove)) {
-            removeStoredData(location);
-        }
+        // Mark unconditionally: with other slots still occupied the disk copy would otherwise keep the
+        // retrieved slot until the next unrelated write, and a crash would duplicate the taken item.
+        markStoveDirty(location);
         location.getWorld().playSound(location, Sound.ENTITY_ITEM_PICKUP, 0.8f, 1.0f);
         return true;
     }

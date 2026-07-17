@@ -69,7 +69,14 @@ public final class CookingPotBlockEntityController extends BlockEntityController
     private int cookingDuration = 200;
     private int maxStackSize = 99;
     private boolean allSlotsDirty;
-    private CompoundTag pendingLoadData;
+    private volatile CompoundTag pendingLoadData;
+    // Snapshot taken when the plugin-side entity is dropped on chunk unload. CraftEngine's chunk cache can
+    // serve this same controller object back on a quick reload without ever re-running loadCustomData, so
+    // the snapshot both feeds saveCustomData while the entity is gone and re-hydrates the entity on reload.
+    private volatile CompoundTag pendingSaveData;
+    // Guards loadPendingDataIfReady against re-entry: applying pending data creates the plugin entity,
+    // whose creation hook flushes pending data again.
+    private volatile boolean applyingPendingLoad;
     // The block pos is fixed for this controller's lifetime; cache the key so getItem/contents
     // (called per slot during container scans) need not reallocate it on every access.
     private BlockPosKey cachedPosKey;
@@ -92,6 +99,12 @@ public final class CookingPotBlockEntityController extends BlockEntityController
 
     @Override
     public void saveCustomData(CompoundTag tag) {
+        // A passivation snapshot is authoritative while the plugin-side entity is gone; checked before
+        // loadPendingDataIfReady so serializing an unloaded chunk cannot resurrect the entity.
+        if (this.pendingSaveData != null) {
+            tag.put(this.behavior.customDataKey, this.pendingSaveData);
+            return;
+        }
         loadPendingDataIfReady();
         if (this.pendingLoadData != null) {
             tag.put(this.behavior.customDataKey, this.pendingLoadData);
@@ -150,13 +163,41 @@ public final class CookingPotBlockEntityController extends BlockEntityController
     }
 
     public void loadPendingDataIfReady() {
+        if (this.applyingPendingLoad) {
+            return;
+        }
+        if (this.pendingLoadData == null && this.pendingSaveData != null) {
+            // Chunk reload served from CraftEngine's chunk cache: loadCustomData never ran (no
+            // deserialization), so the passivation snapshot is the authoritative state to re-hydrate from.
+            this.pendingLoadData = this.pendingSaveData;
+            this.pendingSaveData = null;
+        }
         CompoundTag data = this.pendingLoadData;
         if (data == null) {
             return;
         }
-        if (loadData(data)) {
-            this.pendingLoadData = null;
+        this.applyingPendingLoad = true;
+        try {
+            if (loadData(data)) {
+                this.pendingLoadData = null;
+            }
+        } finally {
+            this.applyingPendingLoad = false;
         }
+    }
+
+    /**
+     * Snapshots the entity's current state so it survives the plugin-side entity being dropped on chunk
+     * unload. saveCustomData emits the snapshot verbatim and loadPendingDataIfReady re-hydrates from it
+     * when the chunk reloads out of CraftEngine's chunk cache (where loadCustomData never runs).
+     */
+    public void passivate(CookingPotBlockEntity entity) {
+        if (entity == null) {
+            return;
+        }
+        refreshFromEntity(entity);
+        this.pendingSaveData = saveData(entity);
+        CustomBlockUtils.markBlockEntityDirty(this.blockEntity);
     }
 
     private CompoundTag getPackedDataFromItem(Item item) {
@@ -210,6 +251,8 @@ public final class CookingPotBlockEntityController extends BlockEntityController
     }
 
     private void queueLoadData(CompoundTag data) {
+        // Freshly deserialized/item-packed data is authoritative; discard any stale passivation snapshot.
+        this.pendingSaveData = null;
         this.pendingLoadData = data;
         loadPendingDataIfReady();
     }

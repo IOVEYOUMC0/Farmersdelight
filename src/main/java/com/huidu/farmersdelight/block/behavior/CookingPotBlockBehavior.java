@@ -206,6 +206,14 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         });
         if (created[0]) {
             indexAdd(world.getUID(), posKey);
+            // A brand-new entity may shadow saved state the controller has not applied yet (startup's
+            // throttled chunk scan, or a chunk served from CraftEngine's chunk cache where loadCustomData
+            // never re-ran). Flush it now so the first interaction sees the stored contents instead of a
+            // blank pot whose later save would wipe them. Re-entry from loadData's own getOrCreate call is
+            // blocked by the controller's applyingPendingLoad guard.
+            CustomBlockUtils.notifyControllerChanged(world, posKey, CookingPotBlockEntityController.class,
+                    behavior == null ? null : behavior.controllerId,
+                    CookingPotBlockEntityController::loadPendingDataIfReady);
         }
         if (behavior != null) {
             entity.applyBehavior(behavior);
@@ -594,7 +602,10 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     public static void saveBlockEntityData(World world, BlockPosKey posKey) {
         if (world == null || posKey == null) return;
         if (!hasCookingPotBehavior(world, posKey)) {
-            removeBlockEntity(world, posKey, true);
+            // The CE state can be transiently unresolvable (a /ce reload unbinds states for the parse
+            // window); deleting the stored NBT here would destroy a live pot's contents. Just mark the
+            // chunk dirty — a genuinely replaced block is cleaned up by the break/removal callbacks.
+            markBlockEntityDirty(world, posKey);
             return;
         }
 
@@ -604,6 +615,28 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         }
 
         markBlockEntityDirty(world, posKey);
+    }
+
+    /**
+     * Chunk-unload save: snapshots the entity into the controller (so the data survives the entity's
+     * removal at MONITOR cleanup and re-hydrates it if the chunk reloads out of CraftEngine's chunk cache),
+     * falling back to the plain save when the controller is unreachable.
+     */
+    public static void passivateBlockEntityData(World world, BlockPosKey posKey) {
+        if (world == null || posKey == null) return;
+        CookingPotBlockEntity entity = getBlockEntity(world, posKey);
+        if (entity == null) {
+            saveBlockEntityData(world, posKey);
+            return;
+        }
+        CookingPotBlockBehavior behavior = getBlockBehavior(posKey.toLocation(world));
+        Integer controllerId = behavior == null ? null : behavior.controllerId;
+        boolean stashed = CustomBlockUtils.notifyControllerChanged(world, posKey,
+                CookingPotBlockEntityController.class, controllerId,
+                controller -> controller.passivate(entity));
+        if (!stashed) {
+            saveBlockEntityData(world, posKey);
+        }
     }
 
     private static boolean notifyControllerChanged(World world, BlockPosKey posKey, CookingPotBlockEntity entity) {
@@ -982,6 +1015,13 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         }
         return blockEntity.controller.let(CookingPotBlockEntityController.class, this.controllerId, controller -> {
             CookingPotBlockEntity entity = getBlockEntity(world, pos);
+            if (entity == null) {
+                // Native hoppers reach the pot through this injected WorldlyContainerHolder path without
+                // going through getOrCreateBlockEntity, so apply parked saved data here too — otherwise
+                // the hopper reads/fills an empty shadow and the late apply overwrites its insertions.
+                controller.loadPendingDataIfReady();
+                entity = getBlockEntity(world, pos);
+            }
             if (entity != null) {
                 controller.refreshFromEntity(entity);
             }
