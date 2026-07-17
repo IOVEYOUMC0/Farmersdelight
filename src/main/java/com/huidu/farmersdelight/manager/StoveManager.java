@@ -367,8 +367,19 @@ public class StoveManager {
         breakStove(blockLocation, dropLocation, true);
     }
 
+    /** Applies parked controller data (a chunk-cache passivation snapshot, or a deferred load) back into the
+     *  manager entry, so a caller that reads the entry right after — a break that drops the grilling food —
+     *  sees it instead of a blank entry whose state still sits in the controller's pendingSaveData. */
+    private void flushControllerPendingData(Location location) {
+        if (location == null || location.getWorld() == null) return;
+        CustomBlockUtils.notifyControllerChanged(location.getWorld(), new BlockPosKey(location),
+                com.huidu.farmersdelight.block.behavior.StoveBlockEntityController.class, null,
+                com.huidu.farmersdelight.block.behavior.StoveBlockEntityController::loadPendingDataIfReady);
+    }
+
     public void breakStove(Location blockLocation, Location dropLocation, boolean shouldDropItems) {
         Location normalized = ManagerSupport.normalize(blockLocation);
+        flushControllerPendingData(normalized);
         StoveData stove = removeTrackedStove(normalized);
         if (stove != null) {
             cleanupAllVisuals(stove);
