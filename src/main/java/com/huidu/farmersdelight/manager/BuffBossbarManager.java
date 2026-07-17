@@ -81,15 +81,14 @@ public final class BuffBossbarManager implements Listener {
         }
     }
 
-    // Action bar messages fade after ~3s, so the rotation tick re-sends them this often when the
-    // ACTIONBAR channel is active. Boss bar / tab footer persist and need no refresh.
-    private static final long ACTIONBAR_REFRESH_TICKS = 30L;
-
     private final FarmersDelightPlugin plugin;
     private final Map<UUID, PlayerBars> players = new ConcurrentHashMap<>();
     private volatile boolean enabled = true;
     private volatile LayoutMode layoutMode = LayoutMode.STACKED;
     private volatile long rotationIntervalTicks = 80L;
+    // Action bar messages fade after ~3s, so the rotation tick re-sends them this often when the
+    // ACTIONBAR channel is active. Boss bar / tab footer persist and need no refresh.
+    private volatile long actionbarRefreshTicks = 30L;
     // Enabled render channels. EnumSet, replaced wholesale on reload (never mutated in place) so readers
     // see a consistent snapshot. Defaults to BOSSBAR to preserve pre-channels behaviour.
     private volatile java.util.Set<Channel> channels = java.util.EnumSet.of(Channel.BOSSBAR);
@@ -122,6 +121,7 @@ public final class BuffBossbarManager implements Listener {
             this.enabled = true;
             this.layoutMode = LayoutMode.STACKED;
             this.rotationIntervalTicks = 80L;
+            this.actionbarRefreshTicks = 30L;
             this.channels = java.util.EnumSet.of(Channel.BOSSBAR);
             this.actionbarSeparator = Component.text("   ");
         } else {
@@ -129,6 +129,8 @@ public final class BuffBossbarManager implements Listener {
             this.layoutMode = LayoutMode.parse(section.getString("layout-mode", "stacked"));
             this.rotationIntervalTicks = Math.max(20L,
                     section.getLong("rotation-interval-ticks", 80L));
+            this.actionbarRefreshTicks = Math.max(1L,
+                    section.getLong("actionbar-refresh-ticks", 30L));
             this.channels = parseChannels(section.getStringList("channels"));
             this.actionbarSeparator = Component.text(section.getString("actionbar-separator", "   "));
         }
@@ -424,7 +426,7 @@ public final class BuffBossbarManager implements Listener {
         java.util.Set<Channel> ch = channels;
         boolean rotate = ch.contains(Channel.BOSSBAR) && layoutMode == LayoutMode.ROTATING;
         boolean refreshActionBar = ch.contains(Channel.ACTIONBAR)
-                && currentTick % ACTIONBAR_REFRESH_TICKS == 0;
+                && currentTick % actionbarRefreshTicks == 0;
         if (!rotate && !refreshActionBar) {
             return;
         }
