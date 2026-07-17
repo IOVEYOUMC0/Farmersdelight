@@ -830,6 +830,13 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         });
         if (created[0]) {
             indexAdd(world.getUID(), posKey);
+            // Flush parked controller data before the GUI reads this fresh entity. A chunk served back
+            // from CraftEngine's chunk cache never re-runs loadCustomData, so a pot whose entity was
+            // dropped on chunk unload would otherwise open EMPTY here (its snapshot sits in the
+            // controller's pendingSaveData) and a re-deposit would be wiped by that snapshot on the next
+            // save. Mirrors the flush in getOrCreateBlockEntity and the hopper getContainer path.
+            CustomBlockUtils.notifyControllerChanged(world, posKey, CookingPotBlockEntityController.class,
+                    this.controllerId, CookingPotBlockEntityController::loadPendingDataIfReady);
         }
         blockEntity.applyBehavior(this);
         blockEntity.setWorld(world);
