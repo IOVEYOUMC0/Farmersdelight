@@ -376,7 +376,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
      * Applies any pending controller data (deferred startup load, or a passivation snapshot left by a
      * chunk-cache reload) before callers create a blank entity that would shadow the stored item.
      */
-    private static void flushPendingControllerData(World world, BlockPosKey posKey) {
+    public static void flushPendingControllerData(World world, BlockPosKey posKey) {
         if (world == null || posKey == null) return;
         CuttingBoardBlockBehavior behavior = getBlockBehavior(posKey.toLocation(world));
         Integer controllerId = behavior == null ? null : behavior.controllerId;
@@ -825,6 +825,13 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         }
         return blockEntity.controller.let(CuttingBoardBlockEntityController.class, this.controllerId, controller -> {
             CuttingBoardBlockEntity entity = getBlockEntity(world, pos);
+            if (entity == null) {
+                // Native hoppers reach the board through this injected container path without going through
+                // loadBlockEntity, so apply parked controller data here too — otherwise a chunk-cache-dropped
+                // board reads an empty container and the hopper pulls nothing until a save/interaction flushes.
+                controller.loadPendingDataIfReady();
+                entity = getBlockEntity(world, pos);
+            }
             if (entity != null) {
                 controller.refreshFromEntity(entity);
             }

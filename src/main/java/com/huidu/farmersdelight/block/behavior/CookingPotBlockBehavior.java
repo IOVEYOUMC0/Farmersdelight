@@ -639,6 +639,20 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         }
     }
 
+    /**
+     * Applies any parked controller data (a passivation snapshot left by a chunk-cache reload, or a deferred
+     * startup load) into the plugin-side entity, so callers that read the entity right after — a break/drop
+     * that spills contents, a hopper container read — see the stored contents instead of a blank pot whose
+     * data still sits in the controller's pendingSaveData. Mirrors the flush in getOrCreateBlockEntity.
+     */
+    public static void flushPendingControllerData(World world, BlockPosKey posKey) {
+        if (world == null || posKey == null) return;
+        CookingPotBlockBehavior behavior = getBlockBehavior(posKey.toLocation(world));
+        Integer controllerId = behavior == null ? null : behavior.controllerId;
+        CustomBlockUtils.notifyControllerChanged(world, posKey, CookingPotBlockEntityController.class,
+                controllerId, CookingPotBlockEntityController::loadPendingDataIfReady);
+    }
+
     private static boolean notifyControllerChanged(World world, BlockPosKey posKey, CookingPotBlockEntity entity) {
         CookingPotBlockBehavior behavior = world != null && posKey != null ? getBlockBehavior(posKey.toLocation(world)) : null;
         Integer controllerId = behavior == null ? null : behavior.controllerId;
