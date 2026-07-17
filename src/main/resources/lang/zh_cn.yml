@@ -187,6 +187,7 @@ console:
     disable_step_failed: "禁用插件时执行 {step} 失败；将继续关闭流程。"
     disable_step_stop_tick_manager: "停止 tick 管理器"
     disable_step_save_recipe_discovery: "保存配方解锁数据"
+    disable_step_save_player_buffs: "保存在线玩家增益状态"
     disable_step_stop_effect_listener: "停止效果监听器"
     disable_step_stop_horse_feed_tempt_listener: "停止宠物食物吸引监听器"
     disable_step_close_cooking_pot_guis: "关闭厨锅 GUI"

@@ -187,6 +187,7 @@ console:
     disable_step_failed: "Failed to {step} during disable; continuing shutdown."
     disable_step_stop_tick_manager: "stop tick manager"
     disable_step_save_recipe_discovery: "save recipe discovery"
+    disable_step_save_player_buffs: "save online players' buff state"
     disable_step_stop_effect_listener: "stop effect listener"
     disable_step_stop_horse_feed_tempt_listener: "stop horse feed tempt listener"
     disable_step_close_cooking_pot_guis: "close cooking pot GUIs"
