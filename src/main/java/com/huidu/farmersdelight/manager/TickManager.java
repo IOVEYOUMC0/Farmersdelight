@@ -564,10 +564,18 @@ public class TickManager {
     private void tickCookingPot(ActiveBlock activeBlock, World world, BlockPosKey posKey, int elapsedTicks) {
         Block block = world.getBlockAt(posKey.x(), posKey.y(), posKey.z());
         ImmutableBlockState state = CraftEngineBlocks.getCustomBlockState(block);
-        
+
         if (state == null || state.isEmpty()) {
+            // A /ce reload unbinds custom states for its parse window, making them unresolvable while the
+            // injected server block is still in the world. Skip the tick and keep everything registered:
+            // deleting here would destroy a live pot's contents mid-reload.
+            if (CraftEngineBlocks.isCustomBlock(block)) {
+                return;
+            }
             unregisterCookingPotBlock(activeBlock, world, posKey);
-            CookingPotBlockBehavior.removeBlockEntity(world, posKey);
+            // Keep the CE-side stored NBT: only the break/removal callbacks delete data. A block replaced
+            // behind CE's back (WorldEdit /setblock) just leaves inert leftover NBT behind.
+            CookingPotBlockBehavior.removeBlockEntity(world, posKey, false);
             return;
         }
 

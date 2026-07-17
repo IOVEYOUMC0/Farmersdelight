@@ -335,7 +335,10 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         if (world == null || posKey == null) return;
 
         if (!isCuttingBoardBlock(world, posKey)) {
-            removeBlockEntity(world, posKey, true);
+            // The CE state can be transiently unresolvable (a /ce reload unbinds states for the parse
+            // window); deleting the stored NBT here would destroy a live board's item. Just mark the
+            // chunk dirty — a genuinely replaced block is cleaned up by the break/removal callbacks.
+            markBlockEntityDirty(world, posKey);
             return;
         }
 
@@ -345,6 +348,40 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         }
 
         markBlockEntityDirty(world, posKey);
+    }
+
+    /**
+     * Chunk-unload save: snapshots the entity into the controller (so the data survives the entity's
+     * removal at MONITOR cleanup and re-hydrates it if the chunk reloads out of CraftEngine's chunk cache),
+     * falling back to the plain save when the controller is unreachable.
+     */
+    public static void passivateBlockEntityData(World world, BlockPosKey posKey) {
+        if (world == null || posKey == null) return;
+        CuttingBoardBlockEntity entity = getBlockEntity(world, posKey);
+        if (entity == null) {
+            saveBlockEntityData(world, posKey);
+            return;
+        }
+        CuttingBoardBlockBehavior behavior = getBlockBehavior(posKey.toLocation(world));
+        Integer controllerId = behavior == null ? null : behavior.controllerId;
+        boolean stashed = CustomBlockUtils.notifyControllerChanged(world, posKey,
+                CuttingBoardBlockEntityController.class, controllerId,
+                controller -> controller.passivate(entity));
+        if (!stashed) {
+            saveBlockEntityData(world, posKey);
+        }
+    }
+
+    /**
+     * Applies any pending controller data (deferred startup load, or a passivation snapshot left by a
+     * chunk-cache reload) before callers create a blank entity that would shadow the stored item.
+     */
+    private static void flushPendingControllerData(World world, BlockPosKey posKey) {
+        if (world == null || posKey == null) return;
+        CuttingBoardBlockBehavior behavior = getBlockBehavior(posKey.toLocation(world));
+        Integer controllerId = behavior == null ? null : behavior.controllerId;
+        CustomBlockUtils.notifyControllerChanged(world, posKey, CuttingBoardBlockEntityController.class,
+                controllerId, CuttingBoardBlockEntityController::loadPendingDataIfReady);
     }
 
     private static boolean notifyControllerChanged(World world, BlockPosKey posKey, CuttingBoardBlockEntity entity) {
@@ -364,6 +401,10 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
 
     public static void loadBlockEntity(World world, BlockPosKey posKey) {
         if (world == null || posKey == null || !isCuttingBoardBlock(world, posKey)) return;
+        // Saved data may still be parked on the controller (deferred startup load, or a chunk served from
+        // CraftEngine's chunk cache); apply it first so the computeIfAbsent below does not create a blank
+        // entity that shadows the stored item and gets overwritten by the late apply.
+        flushPendingControllerData(world, posKey);
         // Only update the index when an entity was actually newly created.
         boolean[] created = {false};
         CuttingBoardBlockEntity entity = worldBlockEntities.computeIfAbsent(world.getUID(), k -> new ConcurrentHashMap<>())

@@ -160,7 +160,14 @@ public class ChunkLoadListener implements Listener {
         if (entities.isEmpty()) return;
 
         for (BlockPosKey posKey : entities.keySet()) {
-            CookingPotBlockBehavior.saveBlockEntityData(world, posKey);
+            // A viewer can keep a pot GUI open long after walking out of range; close it before the
+            // MONITOR cleanup orphans the entity, or its clicks would dupe (take) / lose (insert) items
+            // against an entity nothing persists anymore. close() also commits the GUI's final state.
+            com.huidu.farmersdelight.gui.CookingPotGui.closeOpenGuisAt(world, posKey.x(), posKey.y(), posKey.z());
+            // Snapshot into the controller (not just a plain save): the snapshot survives the MONITOR
+            // cleanup and re-hydrates the entity if the chunk reloads out of CraftEngine's chunk cache,
+            // where loadCustomData never re-runs.
+            CookingPotBlockBehavior.passivateBlockEntityData(world, posKey);
         }
     }
 
@@ -170,7 +177,7 @@ public class ChunkLoadListener implements Listener {
         if (entities.isEmpty()) return;
 
         for (BlockPosKey posKey : entities.keySet()) {
-            CuttingBoardBlockBehavior.saveBlockEntityData(world, posKey);
+            CuttingBoardBlockBehavior.passivateBlockEntityData(world, posKey);
         }
     }
 

@@ -231,6 +231,19 @@ public class SkilletManager {
             return existing;
         }
 
+        // Saved data may still be parked on the controller (deferred startup load, or a chunk served from
+        // CraftEngine's chunk cache where loadCustomData never re-ran); apply it before creating a blank
+        // entry that would shadow the stored contents and let the late apply overwrite this interaction.
+        if (normalized.getWorld() != null) {
+            CustomBlockUtils.notifyControllerChanged(normalized.getWorld(), new BlockPosKey(normalized),
+                    com.huidu.farmersdelight.block.behavior.SkilletBlockEntityController.class, null,
+                    com.huidu.farmersdelight.block.behavior.SkilletBlockEntityController::loadPendingDataIfReady);
+            SkilletData loaded = skillets.get(normalized);
+            if (loaded != null) {
+                return loaded;
+            }
+        }
+
         SkilletData created = new SkilletData(normalized, defaultCookingTime);
         SkilletData previous = skillets.putIfAbsent(normalized, created);
         if (previous != null) {
@@ -620,9 +633,19 @@ public class SkilletManager {
         if (locations == null || locations.isEmpty()) {
             return;
         }
-        for (Location location : locations) {
+        for (Location location : List.copyOf(locations)) {
             SkilletData skillet = skillets.get(location);
-            if (skillet != null) {
+            if (skillet == null) {
+                continue;
+            }
+            // Same contract as saveAndUnloadChunk: snapshot into the controller, then drop the live entry.
+            // CE serializes the world's chunks at WorldUnloadEvent HIGHEST (after this NORMAL handler and
+            // its cleanup), so a removed entry without a snapshot would export nothing and wipe the data.
+            // If the unload gets cancelled by another plugin, the first interaction re-hydrates from the
+            // snapshot via the entry-creation flush.
+            if (passivateToController(world, location)) {
+                removeSkillet(location, false);
+            } else {
                 saveSkillet(location, skillet);
             }
         }
@@ -659,27 +682,53 @@ public class SkilletManager {
             if (location.getBlockX() >= minX && location.getBlockX() <= maxX
                     && location.getBlockZ() >= minZ && location.getBlockZ() <= maxZ) {
                 SkilletData skillet = skillets.get(location);
-                if (skillet != null) {
+                if (skillet == null) {
+                    removeSkillet(location, false);
+                    continue;
+                }
+                // Snapshot into the controller BEFORE removing the entry: CE serializes this chunk at
+                // ChunkUnloadEvent HIGHEST by pulling from this manager, which runs after this HIGH
+                // handler — removing first would make it export nothing and wipe the persisted data.
+                if (passivateToController(world, location)) {
+                    removeSkillet(location, false);
+                } else {
+                    // Controller unreachable: keep the entry so the pull-serialization can still export
+                    // it; the entry is reconciled on the next chunk load.
                     saveSkillet(location, skillet);
                 }
-                removeSkillet(location, false);
             }
         }
     }
 
-    public void loadSkillet(World world, net.momirealms.craftengine.core.world.BlockPos pos, Map<String, Object> data) {
-        loadSkillet(world, new BlockPosKey(pos), data);
+    /** Stashes the skillet's exported state into its CE controller; false when the controller is unreachable. */
+    private boolean passivateToController(World world, Location location) {
+        boolean[] stashed = {false};
+        CustomBlockUtils.notifyControllerChanged(world, new BlockPosKey(location),
+                com.huidu.farmersdelight.block.behavior.SkilletBlockEntityController.class, null,
+                controller -> stashed[0] = controller.passivate());
+        return stashed[0];
     }
 
-    public void loadSkillet(World world, BlockPosKey posKey, Map<String, Object> data) {
-        if (world == null || posKey == null || data == null) return;
+    public boolean loadSkillet(World world, net.momirealms.craftengine.core.world.BlockPos pos, Map<String, Object> data) {
+        return loadSkillet(world, new BlockPosKey(pos), data);
+    }
+
+    /** Returns whether the saved data was consumed; false keeps it parked on the controller for a retry. */
+    public boolean loadSkillet(World world, BlockPosKey posKey, Map<String, Object> data) {
+        if (world == null || posKey == null || data == null) return true;
 
         Location location = ManagerSupport.toLocation(world, posKey);
-        if (location == null) return;
+        if (location == null) return false;
         if (!isSkilletBlock(location)) {
-            removeStoredData(location);
-            removeSkillet(location, false);
-            return;
+            // The CE state can be transiently unresolvable (a /ce reload unbinds states for the parse
+            // window); keep the data parked instead of discarding it, so a live skillet's contents are
+            // not destroyed. A genuinely replaced block just carries inert leftover NBT.
+            return false;
+        }
+        if (skillets.containsKey(ManagerSupport.normalize(location))) {
+            // A live entry exists (created by an interaction before this deferred load applied); the live
+            // state is newer than the saved snapshot, so consume the snapshot without overwriting it.
+            return true;
         }
 
         SkilletData skillet = new SkilletData(location, defaultCookingTime);
@@ -718,6 +767,7 @@ public class SkilletManager {
         } else {
             removeStoredData(location);
         }
+        return true;
     }
 
     private SkilletData getOrLoadSkillet(Location location) {
@@ -788,6 +838,11 @@ public class SkilletManager {
     private SkilletData putSkillet(Location location, SkilletData skillet) {
         Location normalized = ManagerSupport.normalize(location);
         SkilletData previous = skillets.put(normalized, skillet);
+        if (previous != null && previous != skillet) {
+            // Overwriting a still-tracked skillet (double chunk-load / reload re-scan): destroy the old
+            // entry's item display so it doesn't orphan (the incoming skillet already created its own).
+            cleanupVisual(previous);
+        }
         indexSkillet(normalized);
         markTickLocationsDirty();
         return previous;
@@ -963,6 +1018,12 @@ public class SkilletManager {
         if (!world.isChunkLoaded(location.getBlockX() >> 4, location.getBlockZ() >> 4)) return;
         ImmutableBlockState carrierState = CustomBlockUtils.getState(location.getBlock());
         if (!isSkilletBlock(carrierState)) {
+            // A /ce reload unbinds custom states for its parse window while the injected server block
+            // is still in the world; skip the tick instead of tearing the skillet down mid-reload
+            // (the teardown below marks the chunk dirty with the entry gone = wipes the saved data).
+            if (net.momirealms.craftengine.bukkit.api.CraftEngineBlocks.isCustomBlock(location.getBlock())) {
+                return;
+            }
             debug(() -> "tick remove: skillet carrier block is gone at " + formatLocation(location));
             cleanupVisual(skillet);
             removeStoredData(location);

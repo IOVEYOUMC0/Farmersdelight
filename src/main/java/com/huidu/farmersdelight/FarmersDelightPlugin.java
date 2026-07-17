@@ -562,6 +562,20 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             }
         });
 
+        runDisableStep("plugin.disable_step_save_player_buffs", () -> {
+            // A runtime disable (plugin manager, CE watchdog cascade) fires no quit events, so the
+            // quit-time buff save never runs; persist every online player's buff state before the
+            // effect listener stop below wipes the live maps and unregisters the buffs. On a normal
+            // stop players were already kicked (and saved on quit), making this a no-op re-write.
+            for (org.bukkit.entity.Player player : getServer().getOnlinePlayers()) {
+                try {
+                    com.huidu.farmersdelight.api.buff.CustomBuffRegistry.saveAll(player);
+                } catch (Throwable ignored) {
+                    // Per-player isolation; on Folia a cross-region PDC write may fail — best effort.
+                }
+            }
+        });
+
         runDisableStep("plugin.disable_step_stop_effect_listener", () -> {
             if (effectListener != null) {
                 effectListener.stop();
@@ -746,7 +760,11 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         }
     }
 
-    @org.bukkit.event.EventHandler
+    // ignoreCancelled: WorldUnloadEvent is cancellable, and this handler passivates + drops skillet/stove
+    // entries — running it for an already-cancelled unload would needlessly strip a live world's visuals.
+    // A cancellation AFTER this priority still self-heals: the entry-creation flush hooks re-hydrate each
+    // block from its controller snapshot on the first interaction.
+    @org.bukkit.event.EventHandler(ignoreCancelled = true)
     public void onWorldUnload(WorldUnloadEvent event) {
         saveWorldBlockData(event.getWorld());
 
