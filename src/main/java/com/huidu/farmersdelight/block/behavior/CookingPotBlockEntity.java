@@ -1108,18 +1108,30 @@ public class CookingPotBlockEntity {
         return space;
     }
 
+    /**
+     * Per-slot stack limit, mirroring the original mod's meal-display override: the pending-output
+     * slot (the in-pot meal) holds at least 64 regardless of the item's own max stack size — bowl
+     * foods stack to 16 elsewhere but the pot accumulates 64 servings before cooking stops. Every
+     * other slot uses the item's real limit. The pending slot is display-only in the GUI (clicks are
+     * cancelled) and unreachable by hoppers, so the oversized stack never enters player inventories.
+     */
+    private int slotStackLimit(int slot, ItemStack item) {
+        int itemMax = Math.max(1, item.getMaxStackSize());
+        return layout.isPendingOutputSlot(slot) ? Math.max(64, itemMax) : itemMax;
+    }
+
     private int getAvailableSpace(int slot, ItemStack item) {
         if (!isValidSlot(slot) || item == null || item.getType().isAir()) {
             return 0;
         }
         ItemStack existing = inventory[slot];
         if (existing == null || existing.getType().isAir()) {
-            return item.getMaxStackSize();
+            return slotStackLimit(slot, item);
         }
         if (!isSimilarIgnoringStoredExperience(existing, item)) {
             return 0;
         }
-        return Math.max(0, existing.getMaxStackSize() - existing.getAmount());
+        return Math.max(0, slotStackLimit(slot, existing) - existing.getAmount());
     }
 
     private void addItemToSlot(int slot, ItemStack item, double itemStoredExperience) {
@@ -1134,8 +1146,9 @@ public class CookingPotBlockEntity {
 
         ItemStack existing = inventory[slot];
         if (existing != null && isSimilarIgnoringStoredExperience(existing, item)) {
-            // Clamp the merged result to the max stack size so a slot never holds items beyond the stack limit.
-            int maxStack = Math.max(1, existing.getMaxStackSize());
+            // Clamp the merged result to the slot's stack limit so a slot never holds items beyond it
+            // (the pending-output slot allows at least 64, every other slot the item's real limit).
+            int maxStack = slotStackLimit(slot, existing);
             int merged = Math.min(maxStack, existing.getAmount() + item.getAmount());
             existing.setAmount(merged);
             slotExperience[slot] += Math.max(0.0D, itemStoredExperience);
@@ -1166,7 +1179,7 @@ public class CookingPotBlockEntity {
             if (existing == null || existing.getType().isAir() || !isSimilarIgnoringStoredExperience(existing, pending)) {
                 continue;
             }
-            int space = existing.getMaxStackSize() - existing.getAmount();
+            int space = slotStackLimit(slot, existing) - existing.getAmount();
             if (space <= 0) {
                 continue;
             }
@@ -1187,7 +1200,7 @@ public class CookingPotBlockEntity {
             if (existing != null && !existing.getType().isAir()) {
                 continue;
             }
-            int moved = Math.min(pending.getMaxStackSize(), pending.getAmount());
+            int moved = Math.min(slotStackLimit(slot, pending), pending.getAmount());
             ItemStack moving = pending.clone();
             moving.setAmount(moved);
             double experiencePart = itemStoredExperience <= 0.0D ? 0.0D : Math.min(remainingExperience, (itemStoredExperience * moved) / originalAmount);
