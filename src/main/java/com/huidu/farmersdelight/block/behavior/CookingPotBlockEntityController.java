@@ -364,24 +364,24 @@ public final class CookingPotBlockEntityController extends BlockEntityController
         synchronized (entity.getLock()) {
             for (int i = 0; i < this.items.length; i++) {
                 boolean slotDirty = this.allSlotsDirty || this.dirtySlots[i];
-                if (!slotDirty) {
-                    // Non-dirty slot: the only legitimate local change is a hopper in-place grow, which
-                    // grows getItem(i) without marking the slot dirty. Persist that grow, but never
-                    // clobber a concurrent entity write. The shadow was read from the entity at
-                    // refreshFromEntity (recorded in entityBaseline); if the live entity still equals that
-                    // baseline the shadow delta is our own grow (write it), but if the entity has changed
-                    // since (another region's GUI viewer wrote this slot under the entity lock) writing our
-                    // stale shadow would silently wipe that change — so adopt the entity's current value.
-                    ItemStack entityNow = entity.getInventorySlot(i);
-                    if (itemStacksEqual(asBukkitStack(this.items[i]), entityNow)) {
-                        continue;
-                    }
-                    if (!itemStacksEqual(this.entityBaseline[i], entityNow)) {
-                        this.items[i] = normalize(BukkitItemManager.instance().wrap(entityNow));
-                        this.slotExperience[i] = entity.getSlotExperience(i);
-                        this.entityBaseline[i] = entityNow;
-                        continue;
-                    }
+                ItemStack entityNow = entity.getInventorySlot(i);
+                // Non-dirty slot with no local change: nothing to write.
+                if (!slotDirty && itemStacksEqual(asBukkitStack(this.items[i]), entityNow)) {
+                    continue;
+                }
+                // A local change is pending: a hopper setItem/removeItem (dirty slot) or a hopper in-place
+                // grow (non-dirty, grows getItem without marking dirty). Commit it, but never clobber a
+                // concurrent entity write. The shadow was read from the entity at refreshFromEntity (recorded
+                // in entityBaseline); if the live entity no longer equals that baseline, another region's GUI
+                // viewer wrote this slot under the entity lock — adopt the entity's current value instead of
+                // overwriting it with our stale shadow (which would dupe on extract / lose on insert). This
+                // guard previously covered only the non-dirty branch, letting hopper writes clobber a
+                // cross-region viewer.
+                if (!itemStacksEqual(this.entityBaseline[i], entityNow)) {
+                    this.items[i] = normalize(BukkitItemManager.instance().wrap(entityNow));
+                    this.slotExperience[i] = entity.getSlotExperience(i);
+                    this.entityBaseline[i] = entityNow;
+                    continue;
                 }
                 entity.setInventorySlot(i, asBukkitStack(this.items[i]));
                 if (this.items[i].isEmpty()) {
