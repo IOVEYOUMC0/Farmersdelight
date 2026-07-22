@@ -1,8 +1,10 @@
+---
+icon: circle-play
+---
+
 # 快速上手
 
-FarmersDelight 是基于 CraftEngine 的 Paper / Folia 插件。附属（addon）是**一个独立的 Bukkit 插件**，与
-FarmersDelight 跑在同一个 JVM 里，硬依赖 FarmersDelight，并在进程内直接调用它的 Java API。这里没有任何
-网络协议，也没有命令桥接——你编译时链接一个 jar，运行时直接调方法。
+FarmersDelight 是基于 CraftEngine 的 Paper / Folia 插件。附属（addon）是**一个独立的 Bukkit 插件**，与 FarmersDelight 跑在同一个 JVM 里，硬依赖 FarmersDelight，并在进程内直接调用它的 Java API。这里没有任何 网络协议，也没有命令桥接——你编译时链接一个 jar，运行时直接调方法。
 
 本页讲的是构建配置、plugin.yml 的写法、`onEnable` 里该做什么，以及每个附属都应当装上的生命周期保护。
 
@@ -16,17 +18,13 @@ keep public class com.huidu.farmersdelight.api.** {
 }
 ```
 
-这个包以外的一切都会被改名和重打包。如果你的附属引用了
-`com.huidu.farmersdelight.recipe.CookingPotRecipeManager` 或者任何其它内部类，本地能编过，但上真服就是
-`NoClassDefFoundError`。`api` 包就是全部契约：它的签名只用 Bukkit 类型、JDK 类型、Adventure 类型和其它
-`api` 类型，所以被混淆的东西不可能从参数或返回值里漏出来。
+这个包以外的一切都会被改名和重打包。如果你的附属引用了 `com.huidu.farmersdelight.recipe.CookingPotRecipeManager` 或者任何其它内部类，本地能编过，但上真服就是 `NoClassDefFoundError`。`api` 包就是全部契约：它的签名只用 Bukkit 类型、JDK 类型、Adventure 类型和其它 `api` 类型，所以被混淆的东西不可能从参数或返回值里漏出来。
 
 反过来说，编译期你只需要这一个 api jar。
 
 ## 获取 api jar
 
-FarmersDelight 的构建里有一个 `apiJar` 任务，只打包 `com/huidu/farmersdelight/api/**`，不含任何内部实现，
-也不是一个能运行的插件：
+FarmersDelight 的构建里有一个 `apiJar` 任务，只打包 `com/huidu/farmersdelight/api/**`，不含任何内部实现， 也不是一个能运行的插件：
 
 ```bash
 # 在 FarmersDelight 仓库里执行
@@ -72,13 +70,11 @@ tasks.withType<JavaCompile>().configureEach {
 }
 ```
 
-必须是 `compileOnly`：运行时由真正的 FarmersDelight 插件提供实现。把 api jar shade 进自己的插件，只会多出
-一份永远不会被用到的死类。
+必须是 `compileOnly`：运行时由真正的 FarmersDelight 插件提供实现。把 api jar shade 进自己的插件，只会多出 一份永远不会被用到的死类。
 
 ### 方案 B：composite build（BrewinAndChewin、ExpandedDelight）
 
-两个正式附属都放在 FarmersDelight 检出目录旁边，让 Gradle 自动重建并同步 api jar，附属永远不会对着过期的
-接口编译：
+两个正式附属都放在 FarmersDelight 检出目录旁边，让 Gradle 自动重建并同步 api jar，附属永远不会对着过期的 接口编译：
 
 ```kotlin
 // settings.gradle.kts
@@ -115,8 +111,7 @@ dependencies {
 
 ## plugin.yml
 
-要写 `depend`，不要写 `softdepend`。你的 `onEnable` 跑起来时，CraftEngine 必须已经定义好物品和方块，
-FarmersDelight 也必须已经建好 api 背后的各项服务：
+要写 `depend`，不要写 `softdepend`。你的 `onEnable` 跑起来时，CraftEngine 必须已经定义好物品和方块， FarmersDelight 也必须已经建好 api 背后的各项服务：
 
 ```yaml
 name: FDAddonTemplate
@@ -132,11 +127,9 @@ depend: [CraftEngine, FarmersDelight]
 
 关于这份文件，几点都来自正在跑的附属：
 
-- `folia-supported: true`：api 的调度封装本身是 Folia 感知的，所以把世界访问都走这些封装的附属，可以名正
-  言顺地声明支持 Folia。
-- FDAddonTemplate 和 BrewinAndChewin 都**没有自己的命令**。重载由 FarmersDelight 驱动（`/fd reload all`），
-  配方浏览也由它负责（`/fd recipe book`）。
-- 可选联动写进 `softdepend`（BrewinAndChewin 在这里写了 `BreweryX`）。
+* `folia-supported: true`：api 的调度封装本身是 Folia 感知的，所以把世界访问都走这些封装的附属，可以名正 言顺地声明支持 Folia。
+* FDAddonTemplate 和 BrewinAndChewin 都**没有自己的命令**。重载由 FarmersDelight 驱动（`/fd reload all`）， 配方浏览也由它负责（`/fd recipe book`）。
+* 可选联动写进 `softdepend`（BrewinAndChewin 在这里写了 `BreweryX`）。
 
 ## onLoad
 
@@ -154,8 +147,7 @@ public void onLoad() {
 }
 ```
 
-自定义方块行为必须在 `blocks.yml` 被解析之前注册；你内置的 CraftEngine 资源也必须在 CraftEngine 扫描之前
-落到磁盘上。这两件事都不走 FarmersDelight 的 api。
+自定义方块行为必须在 `blocks.yml` 被解析之前注册；你内置的 CraftEngine 资源也必须在 CraftEngine 扫描之前 落到磁盘上。这两件事都不走 FarmersDelight 的 api。
 
 ## onEnable
 
@@ -193,10 +185,7 @@ public void onEnable() {
 
 ### 配方要等 CraftEngine 的物品就绪
 
-CraftEngine 的物品是延迟加载的，在那一轮加载跑完之前，`FarmersDelightItems.create(...)` 会返回 `null`，
-所以配方注册不能只在 enable 时跑一次。两个正式附属都注册两处：`onEnable` 里跑一次（覆盖 CraftEngine 先
-加载完的情况），再由监听器在 CraftEngine 的 `CraftEngineReloadEvent` 里跑一次。同一个监听器也顺手接上
-FarmersDelight 的 `FarmersDelightReloadEvent`，这样一条 `/fd reload all` 就能把附属一起同步：
+CraftEngine 的物品是延迟加载的，在那一轮加载跑完之前，`FarmersDelightItems.create(...)` 会返回 `null`， 所以配方注册不能只在 enable 时跑一次。两个正式附属都注册两处：`onEnable` 里跑一次（覆盖 CraftEngine 先 加载完的情况），再由监听器在 CraftEngine 的 `CraftEngineReloadEvent` 里跑一次。同一个监听器也顺手接上 FarmersDelight 的 `FarmersDelightReloadEvent`，这样一条 `/fd reload all` 就能把附属一起同步：
 
 ```java
 public final class ExampleReloadListener implements Listener {
@@ -241,20 +230,15 @@ public void onDisable() {
 }
 ```
 
-`DebugToolRegistry` 是静态注册表，活得比你的插件类加载器久，所以反注册不是可选项——留一条陈旧条目，就等于
-让一个已经拆掉的 manager 一直可达。
+`DebugToolRegistry` 是静态注册表，活得比你的插件类加载器久，所以反注册不是可选项——留一条陈旧条目，就等于 让一个已经拆掉的 manager 一直可达。
 
 ## 重载与热卸载的三道防线
 
-FarmersDelight、CraftEngine 以及建立在它们之上的附属，都会在自己的插件类加载器里留下大量后期绑定的引用：
-CraftEngine 方块行为、逐区块的方块实体、调度任务、事件 lambda。一旦 `/reload` 或者插件管理器关掉了类加载
-器，这些引用就会在无法预测的时间点抛 `NoClassDefFoundError`。这件事没有办法做安全，所以项目的答案是**大声
-拒绝**。一共三道机制，附属三道都应该装上。
+FarmersDelight、CraftEngine 以及建立在它们之上的附属，都会在自己的插件类加载器里留下大量后期绑定的引用： CraftEngine 方块行为、逐区块的方块实体、调度任务、事件 lambda。一旦 `/reload` 或者插件管理器关掉了类加载 器，这些引用就会在无法预测的时间点抛 `NoClassDefFoundError`。这件事没有办法做安全，所以项目的答案是**大声 拒绝**。一共三道机制，附属三道都应该装上。
 
 ### 1. JVM 级别的重载守卫
 
-系统属性能挺过插件类加载器的重建，所以同一个 JVM 里的第二次 `onEnable` 是可以被识别并拒绝的。
-FarmersDelight 用的是 `farmersdelight.enabled.in.this.jvm`，BrewinAndChewin 照抄了同样的做法：
+系统属性能挺过插件类加载器的重建，所以同一个 JVM 里的第二次 `onEnable` 是可以被识别并拒绝的。 FarmersDelight 用的是 `farmersdelight.enabled.in.this.jvm`，BrewinAndChewin 照抄了同样的做法：
 
 ```java
 private static final String RELOAD_GUARD_PROPERTY = "brewinandchewin.enabled.in.this.jvm";
@@ -276,8 +260,7 @@ public void onEnable() {
 
 ### 2. `PluginManagerGuard`：拒绝 PlugMan 一类的命令
 
-`com.huidu.farmersdelight.api.util.PluginManagerGuard` 是一个开箱即用的 `Listener`，用你自己的插件名
-（写在 `plugin.yml` 里的那个）构造。它的公开接口面就这些：
+`com.huidu.farmersdelight.api.util.PluginManagerGuard` 是一个开箱即用的 `Listener`，用你自己的插件名 （写在 `plugin.yml` 里的那个）构造。它的公开接口面就这些：
 
 ```java
 public final class PluginManagerGuard implements Listener {
@@ -292,35 +275,25 @@ public final class PluginManagerGuard implements Listener {
 }
 ```
 
-你唯一会碰的成员是构造器——那两个 handler 之所以是 public，是 Bukkit 事件系统的要求，不是让你去调的。其余
-一切（命令名集合、动作词集合、匹配逻辑、拒绝提示）都是 private。类是 `final`，并且**不带任何** `@ApiStatus`
-注解——这点和 `FarmersDelightApi`、`ApiTask`、`DebugToolRegistry` 不同；反正它既没有可继承的东西，也没有可
-实现的东西。
+你唯一会碰的成员是构造器——那两个 handler 之所以是 public，是 Bukkit 事件系统的要求，不是让你去调的。其余 一切（命令名集合、动作词集合、匹配逻辑、拒绝提示）都是 private。类是 `final`，并且**不带任何** `@ApiStatus` 注解——这点和 `FarmersDelightApi`、`ApiTask`、`DebugToolRegistry` 不同；反正它既没有可继承的东西，也没有可 实现的东西。
 
-`pluginName` 原样存一份用于拒绝提示，另外用 `Locale.ROOT` 转一次小写用于匹配。它没有判空——传 `null` 会在
-构造器里抛 `NullPointerException`。老实用 `getName()`。
+`pluginName` 原样存一份用于拒绝提示，另外用 `Locale.ROOT` 转一次小写用于匹配。它没有判空——传 `null` 会在 构造器里抛 `NullPointerException`。老实用 `getName()`。
 
 ```java
 getServer().getPluginManager().registerEvents(new PluginManagerGuard(getName()), this);
 ```
 
-FDAddonTemplate 和 BrewinAndChewin 都装了它（ExpandedDelight 没装）。它以 `EventPriority.LOWEST` 且
-`ignoreCancelled = true` 监听 `PlayerCommandPreprocessEvent` 和 `ServerCommandEvent`，当下面三条同时成立时
-取消命令：
+FDAddonTemplate 和 BrewinAndChewin 都装了它（ExpandedDelight 没装）。它以 `EventPriority.LOWEST` 且 `ignoreCancelled = true` 监听 `PlayerCommandPreprocessEvent` 和 `ServerCommandEvent`，当下面三条同时成立时 取消命令：
 
-- 命令名（剥掉可能存在的 `namespace:` 前缀之后）属于 `plugman`、`plm`、`pluginmanager`、`plugmanx`、
-  `plmx`、`pluginsmanager`、`pl`；
-- 第一个参数属于 `unload`、`reload`、`disable`、`enable`、`load`、`restart`、`stop`、`start`；
-- 后面某个参数与你的插件名大小写不敏感地相等。
+* 命令名（剥掉可能存在的 `namespace:` 前缀之后）属于 `plugman`、`plm`、`pluginmanager`、`plugmanx`、 `plmx`、`pluginsmanager`、`pl`；
+* 第一个参数属于 `unload`、`reload`、`disable`、`enable`、`load`、`restart`、`stop`、`start`；
+* 后面某个参数与你的插件名大小写不敏感地相等。
 
-`info`、`list` 这类只读动作会被放行。命令发起者会收到一条提示，告诉他改用 `/stop` 重启。原版 `/reload`
-不在覆盖范围内——那是上一道守卫的活。
+`info`、`list` 这类只读动作会被放行。命令发起者会收到一条提示，告诉他改用 `/stop` 重启。原版 `/reload` 不在覆盖范围内——那是上一道守卫的活。
 
 ### 3. `RequiredPluginWatchdogListener`：让运行时禁用逐级传导
 
-FarmersDelight 自己装了 `CraftEngineWatchdogListener`：服务器还在跑的时候 CraftEngine 被禁用，它就把自己
-也关掉，而不是让每一个绑在 CraftEngine 上的任务狂抛异常。你的附属应该在下一层做同样的事。这是
-BrewinAndChewin 的完整实现：
+FarmersDelight 自己装了 `CraftEngineWatchdogListener`：服务器还在跑的时候 CraftEngine 被禁用，它就把自己 也关掉，而不是让每一个绑在 CraftEngine 上的任务狂抛异常。你的附属应该在下一层做同样的事。这是 BrewinAndChewin 的完整实现：
 
 ```java
 public final class RequiredPluginWatchdogListener implements Listener {
@@ -348,24 +321,18 @@ public final class RequiredPluginWatchdogListener implements Listener {
 }
 ```
 
-那两个提前 return 很关键：没有它们，正常关服时这个监听器就会误触发，而那时候所有插件本来就在关。用
-`MONITOR` 优先级是因为它只观察和响应，从不修改事件。
+那两个提前 return 很关键：没有它们，正常关服时这个监听器就会误触发，而那时候所有插件本来就在关。用 `MONITOR` 优先级是因为它只观察和响应，从不修改事件。
 
 ### 关于持久化状态的顺序问题
 
-你的附属依赖 FarmersDelight，所以它**先于** FarmersDelight 和 CraftEngine 被禁用。如果你的附属要持久化
-方块实体状态，就得在 `onDisable` 的最开头、类加载器还开着的时候把它冲刷或预序列化掉。BrewinAndChewin 的
-`onDisable` 第一件事就是调用 `KegChunkListener.passivateLoadedChunks()`，原因正是 CraftEngine 序列化区块
-发生在 BAC 已经消失之后，那时再进入酒桶的保存代码会以 "zip file closed" 失败。
+你的附属依赖 FarmersDelight，所以它**先于** FarmersDelight 和 CraftEngine 被禁用。如果你的附属要持久化 方块实体状态，就得在 `onDisable` 的最开头、类加载器还开着的时候把它冲刷或预序列化掉。BrewinAndChewin 的 `onDisable` 第一件事就是调用 `KegChunkListener.passivateLoadedChunks()`，原因正是 CraftEngine 序列化区块 发生在 BAC 已经消失之后，那时再进入酒桶的保存代码会以 "zip file closed" 失败。
 
 ## 接下来
 
-- 入口类本身（`apiVersion`、`hasFeature`、`isAvailable`、`isFolia`、`consoleMessage`、`isDebugEnabled`、
-  `registerAddonBlockNamespace`）见 FarmersDelightApi 一页。
-- 调度（`runAtLocation`、`runLaterAtLocation`、`runRepeating`、`ApiTask`）单独成页，包含 Folia 下每个回调
-  落在哪个线程。
-- `/fd debugtools` 接入见调试工具一页。
-- 配方、物品、方块、buff、事件、文本、配置辅助各有自己的章节。
+* 入口类本身（`apiVersion`、`hasFeature`、`isAvailable`、`isFolia`、`consoleMessage`、`isDebugEnabled`、 `registerAddonBlockNamespace`）见 FarmersDelightApi 一页。
+* 调度（`runAtLocation`、`runLaterAtLocation`、`runRepeating`、`ApiTask`）单独成页，包含 Folia 下每个回调 落在哪个线程。
+* `/fd debugtools` 接入见调试工具一页。
+* 配方、物品、方块、buff、事件、文本、配置辅助各有自己的章节。
 
 ## 相关页面
 
