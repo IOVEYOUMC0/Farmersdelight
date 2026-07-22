@@ -14,11 +14,11 @@ FarmersDelight 建立在 CraftEngine 之上。CraftEngine 负责自定义物品�
 
 先看[快速上手](getting-started.md)，把依赖和插件生命周期理顺，再看 [FarmersDelightApi](farmersdelight-api.md)，了解入口以及那套能让同一个附属 jar 兼容多个 FarmersDelight 版本的 特性探测规则。
 
-## CraftEngine 那一侧
+## 关于 CraftEngine
 
-本书只讲 Java API。把 FarmersDelight 行为挂到你自己的 CraftEngine 方块和物品上的 YAML 写法——每种行为类型、它的参数、 以及那些会导致"不报错但不生效"的坑——见[项目 README](/broken/pages/U5xWBO0J0S3P29g6XbW2) 第 3 节"CraftEngine 侧需要配置什么"。 其中 3.1 讲方块行为挂载，3.2 集中列了容易踩的坑。
+本文只讲 Farmersdelight 插件的 Java API。
 
-如果你的附属主要是内容向的，那份文档值得在本书之前读。一个体量不小的附属完全可能几乎不写 Java；只有当你想要的行为 CraftEngine 表达不出来时，才需要本 API。
+如果你的附属主要是内容向的，请去查看Craftengine的官方wiki。一个体量不小的附属完全可以几乎不写 Java；只有当你想要的行为 CraftEngine 表达不出来时，才需要本 API。
 
 ## 稳定性约定
 
