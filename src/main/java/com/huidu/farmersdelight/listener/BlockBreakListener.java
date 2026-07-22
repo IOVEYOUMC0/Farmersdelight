@@ -127,7 +127,7 @@ public class BlockBreakListener implements Listener {
         } else if (CookingPotBlockBehavior.getBlockEntity(world, pos) != null) {
             CookingPotBlockBehavior.removeBlockEntity(world, pos);
         }
-        cleanupSkillet(blockLocation, dropLocation, shouldDropItems);
+        cleanupSkillet(blockLocation, dropLocation, shouldDropItems, explosion);
         cleanupCuttingBoard(pos, world, dropLocation, shouldDropItems);
         cleanupStove(blockLocation, dropLocation, shouldDropItems);
     }
@@ -266,20 +266,25 @@ public class BlockBreakListener implements Listener {
     }
 
     private void dropCookingPotContents(World world, Location dropLocation, CookingPotBlockEntity entity) {
-        for (ItemStack item : entity.getInventory()) {
+        var layout = entity.getLayout();
+        ItemStack[] inventory = entity.getInventory();
+        for (int slot = 0; slot < inventory.length; slot++) {
+            // The pending-output slot holds a finished meal whose container has NOT been paid for yet — a
+            // preview of what a supplied container would extract, not a real item (upstream FarmersDelight
+            // excludes this slot from break drops). Dropping it loose, and dropping the meal-container marker
+            // as a real item, would hand out meals and containers that were never consumed (dupe).
+            if (layout.isPendingOutputSlot(slot)) {
+                continue;
+            }
+            ItemStack item = inventory[slot];
             if (item != null && !item.getType().isAir()) {
                 world.dropItemNaturally(dropLocation, item);
             }
         }
-
-        ItemStack mealContainer = entity.getMealContainer();
-        if (mealContainer != null && !mealContainer.getType().isAir()) {
-            world.dropItemNaturally(dropLocation, mealContainer);
-        }
     }
 
-    private void cleanupSkillet(Location blockLocation, Location dropLocation, boolean shouldDropItems) {
-        FarmersDelightPlugin.getInstance().getSkilletManager().breakSkillet(blockLocation, dropLocation, shouldDropItems);
+    private void cleanupSkillet(Location blockLocation, Location dropLocation, boolean shouldDropItems, boolean explosion) {
+        FarmersDelightPlugin.getInstance().getSkilletManager().breakSkillet(blockLocation, dropLocation, shouldDropItems, explosion);
     }
 
     private void cleanupCuttingBoard(BlockPos pos, World world, Location dropLocation, boolean shouldDropItems) {

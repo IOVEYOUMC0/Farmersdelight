@@ -159,7 +159,7 @@ public class TickManager {
         
         tickTask = plugin.scheduler().runRepeating(this::tick, 1L, TICK_INTERVAL);
         cleanupTask = plugin.scheduler().runRepeating(this::performCleanup, CLEANUP_INTERVAL, CLEANUP_INTERVAL);
-        I18n.logInfo("tick.started", "interval", TICK_INTERVAL);
+        I18n.logDetail("startup", "tick.started", "interval", TICK_INTERVAL);
     }
 
     public void stop() {
@@ -181,7 +181,7 @@ public class TickManager {
         progressDisplayLastUpdateTicks.clear();
         scheduledActiveBlocks.clear();
 
-        I18n.logInfo("tick.stopped");
+        I18n.logDetail("startup", "tick.stopped");
     }
     
     private void performCleanup() {

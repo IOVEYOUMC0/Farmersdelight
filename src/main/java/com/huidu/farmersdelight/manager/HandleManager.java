@@ -207,7 +207,17 @@ public final class HandleManager {
 
     private void sweepOrphansInChunkNow(World world, int chunkX, int chunkZ) {
         if (world == null || !world.isChunkLoaded(chunkX, chunkZ)) return;
-        for (Entity entity : world.getChunkAt(chunkX, chunkZ).getEntities()) {
+        sweepOrphansIn(world, java.util.Arrays.asList(world.getChunkAt(chunkX, chunkZ).getEntities()));
+    }
+
+    /**
+     * Sweeps an already-fetched entity list instead of fetching a chunk's own. Lets a caller that has to
+     * walk the same chunk's entities for another purpose share one walk; the caller is responsible for
+     * having confirmed the chunk is loaded and for being on the region that owns it.
+     */
+    public void sweepOrphansIn(World world, List<Entity> entities) {
+        if (world == null || entities == null) return;
+        for (Entity entity : entities) {
             if (!(entity instanceof ItemDisplay display)) continue;
             BukkitFurniture furniture = CraftEngineFurniture.getLoadedFurnitureByMetaEntity(display);
             if (furniture == null) continue;
@@ -232,7 +242,7 @@ public final class HandleManager {
         try {
             furniture = CraftEngineFurniture.place(handleLoc, handleFurnitureKey, variant);
         } catch (Exception e) {
-            I18n.logWarning("handle_place_failed", "anchor", handleLoc, "error", e.getMessage());
+            I18n.logWarning("plugin.handle_place_failed", "anchor", handleLoc, "error", e.getMessage());
             return;
         }
         if (furniture == null) return;

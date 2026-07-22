@@ -10,7 +10,6 @@ import com.huidu.farmersdelight.visual.ItemDisplayManager;
 import com.huidu.farmersdelight.api.event.ProfessionCookingExperienceEvent;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
-import net.momirealms.craftengine.core.block.property.Property;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -101,7 +100,6 @@ public class StoveManager {
     // for a happens-before edge, matching the other reload-mutated tick-read fields.
     private volatile double effectViewerDistance = 32.0D;
     private volatile double burnMobRadius = DEFAULT_BURN_MOB_RADIUS;
-    private volatile Property<?> fireProperty;
     // Per-chunk per-tick effect context: the packet budget (hard cap so a dense pocket of stoves —
     // 60/chunk × 4 slot rolls — can't steamroll the packet queue in one Bukkit tick) plus the tick's
     // chunk-tracked player list, fetched once and shared by every stove in the chunk. World-keyed so
@@ -162,10 +160,6 @@ public class StoveManager {
     public void reloadConfig() {
         // Re-resolve the stove_burn damage type next hit (the datapack may have just been installed + reloaded).
         this.stoveBurnType = null;
-        // Drop the cached fire Property: /ce reload rebuilds block definitions with fresh Property
-        // instances, and CE's state map is identity-keyed — a stale handle makes state.get throw and
-        // isStoveLit fall back to "lit", so extinguished stoves would keep cooking until restart.
-        this.fireProperty = null;
         this.tickBudget = Math.max(1, plugin.getConfigInt(DEFAULT_TICK_BUDGET,
                 "stove.tick-budget",
                 "performance.stove-tick-budget"));
@@ -567,6 +561,37 @@ public class StoveManager {
         return true;
     }
 
+    /**
+     * Read-only snapshot of the tracked stove at location for the api station-query facade, or null
+     * when nothing is tracked there. Taken under the StoveData monitor so a concurrent interact cannot
+     * split a slot's item from its progress counters. The lit flag is read from the live custom block
+     * state and the blocked-above flag from the cached probe, so this must be called on the region
+     * thread owning location.
+     */
+    public com.huidu.farmersdelight.api.block.StoveSnapshot snapshot(Location location) {
+        Location normalized = ManagerSupport.normalize(location);
+        if (normalized == null) {
+            return null;
+        }
+        StoveData stove = stoves.get(normalized);
+        if (stove == null) {
+            return null;
+        }
+        boolean lit = isStoveLit(CustomBlockUtils.getState(normalized));
+        List<ItemStack> items = new ArrayList<>(SLOT_COUNT);
+        List<Integer> progress = new ArrayList<>(SLOT_COUNT);
+        List<Integer> durations = new ArrayList<>(SLOT_COUNT);
+        synchronized (stove) {
+            for (int slot = 0; slot < SLOT_COUNT; slot++) {
+                items.add(stove.items[slot]);
+                progress.add(stove.cookingTime[slot]);
+                durations.add(stove.maxTime[slot]);
+            }
+            return new com.huidu.farmersdelight.api.block.StoveSnapshot(
+                    normalized, items, progress, durations, lit, stove.blockedAbove);
+        }
+    }
+
     private StoveData getOrLoadStove(Location location) {
         Location normalized = ManagerSupport.normalize(location);
         StoveData stove = stoves.get(normalized);
@@ -804,7 +829,7 @@ public class StoveManager {
         if (state == null || state.isEmpty()) return;
         StoveCookingBlockBehavior behavior = CustomBlockUtils.getBehavior(state, StoveCookingBlockBehavior.class);
         if (behavior == null || !behavior.isBurnEnabled()) return;
-        if (!isStoveLit(state)) return;
+        if (!behavior.isLit(state)) return;
         double amount = behavior.getBurnDamage();
         if (amount <= 0D) return;
         // Only the central grilling surface burns (vanilla GRILLING_AREA = 3..13px), so standing on the
@@ -1056,29 +1081,14 @@ public class StoveManager {
         }
     }
 
-    private void resolveFireProperty(ImmutableBlockState state) {
-        if (fireProperty != null) return;
-        for (Property<?> prop : state.getProperties()) {
-            if ("fire".equals(prop.name())) {
-                fireProperty = prop;
-                return;
-            }
-        }
-    }
-
+    /**
+     * Reads the lit flag off the stove's own behavior, which resolved the fire property when its block
+     * definition loaded. A state with no stove behavior reads as not lit: an unknown stove must not cook
+     * and must not burn whoever stands on it.
+     */
     private boolean isStoveLit(ImmutableBlockState state) {
-        if (fireProperty == null) {
-            resolveFireProperty(state);
-        }
-        if (fireProperty == null) {
-            return true;
-        }
-        try {
-            Object fireValue = state.get(fireProperty);
-            return fireValue instanceof Boolean lit && lit;
-        } catch (Exception ignored) {
-            return true;
-        }
+        StoveCookingBlockBehavior behavior = CustomBlockUtils.getBehavior(state, StoveCookingBlockBehavior.class);
+        return behavior != null && behavior.isLit(state);
     }
 
     public void invalidateBlockedAboveCache(Location location) {
@@ -1127,7 +1137,8 @@ public class StoveManager {
                         stove.ownerNames[slot],
                         "stove",
                         result,
-                        recipe.getExperience()
+                        recipe.getExperience(),
+                        location
                 ));
             }
             location.getWorld().dropItemNaturally(location.clone().add(0.5, 1.0, 0.5), result.clone());

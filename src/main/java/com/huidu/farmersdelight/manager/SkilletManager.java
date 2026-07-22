@@ -432,6 +432,38 @@ public class SkilletManager {
         return skillet.storedItem.clone();
     }
 
+    /**
+     * Read-only snapshot of the tracked skillet at location for the api station-query facade, or null
+     * when nothing is tracked there. Taken under the SkilletData monitor so a concurrent interact or
+     * break cannot split the stored item from the progress counters; the heat flag is probed live
+     * rather than read from the tick cache so a caller that has just placed a heat source sees it.
+     * Must be called on the region thread owning location, because the heat probe reads blocks.
+     */
+    public com.huidu.farmersdelight.api.block.SkilletSnapshot snapshot(Location location) {
+        Location normalized = ManagerSupport.normalize(location);
+        if (normalized == null) {
+            return null;
+        }
+        SkilletData skillet = skillets.get(normalized);
+        if (skillet == null) {
+            return null;
+        }
+        boolean heated = computeHasHeatSource(normalized);
+        synchronized (skillet) {
+            CookingRecipe<?> recipe = skillet.currentRecipe;
+            return new com.huidu.farmersdelight.api.block.SkilletSnapshot(
+                    normalized,
+                    skillet.storedItem,
+                    skillet.skilletStack,
+                    recipe == null ? null : recipe.getKey().toString(),
+                    skillet.cookingProgress,
+                    skillet.cookingDuration,
+                    Math.max(0, skillet.cookingDuration - skillet.cookingProgress),
+                    heated,
+                    skillet.fireAspectLevel);
+        }
+    }
+
     public boolean canAcceptHopperInput(Location location, ItemStack item) {
         Location normalized = ManagerSupport.normalize(location);
         if (normalized == null || !isSkilletBlock(normalized) || !isValidHopperInput(item)) {
@@ -607,6 +639,10 @@ public class SkilletManager {
     }
 
     public void breakSkillet(Location blockLocation, Location dropLocation, boolean shouldDropItems) {
+        breakSkillet(blockLocation, dropLocation, shouldDropItems, false);
+    }
+
+    public void breakSkillet(Location blockLocation, Location dropLocation, boolean shouldDropItems, boolean explosion) {
         Location normalized = ManagerSupport.normalize(blockLocation);
         flushControllerPendingData(normalized);
         SkilletData skillet = removeTrackedSkillet(normalized);
@@ -619,7 +655,12 @@ public class SkilletManager {
                     normalized.getWorld().dropItemNaturally(dropLocation, skillet.storedItem.clone());
                     skillet.storedItem = null;
                 }
-                if (shouldDropItems) {
+                // Skip the manual base-item drop on explosion: CraftEngine's block loot table (default/self)
+                // already drops the skillet item on an explosion (like the cooking pot), so dropping it here
+                // too would duplicate it. The player-break path suppresses that CE loot (setDropItems(false))
+                // and relies on this manual drop to preserve enchantments; an exploded skillet drops a plain
+                // one from the loot table instead. The stored food (not in the loot table) still drops above.
+                if (shouldDropItems && !explosion) {
                     ItemStack skilletDrop = skillet.skilletStack != null && !skillet.skilletStack.getType().isAir()
                             ? skillet.skilletStack.clone()
                             : ItemUtils.createItem(Constants.ITEM_SKILLET);
@@ -1185,7 +1226,8 @@ public class SkilletManager {
                         skillet.ownerName,
                         "skillet",
                         result,
-                        skillet.currentRecipe.getExperience()
+                        skillet.currentRecipe.getExperience(),
+                        location
                 ));
             }
             Block block = location.getBlock();

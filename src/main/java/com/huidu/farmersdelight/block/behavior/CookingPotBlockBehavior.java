@@ -86,15 +86,6 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     // with a different pot at the identical x,y,z in another world. BlockPosKey omits the world by design.
     private static final Map<DisplayStateKey, Long> recentPlacements = new ConcurrentHashMap<>();
 
-    private static int visibilityCheckIntervalTicks() {
-        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
-        return plugin == null
-                ? Constants.DEFAULT_COOKING_POT_DISPLAY_VISIBILITY_CHECK_INTERVAL_TICKS
-                : Math.max(1, plugin.getConfigInt(
-                        Constants.DEFAULT_COOKING_POT_DISPLAY_VISIBILITY_CHECK_INTERVAL_TICKS,
-                        "cooking-pot.display.visibility-check-interval-ticks"));
-    }
-
     private static long placeInteractionCooldownMs() {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         return plugin == null
@@ -167,6 +158,29 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
     @Override
     public void initControllerId(int id) {
         this.controllerId = id;
+    }
+
+    @Override
+    public boolean hasAnalogOutputSignal(Object thisBlock, Object[] args) {
+        return true;
+    }
+
+    @Override
+    public int getAnalogOutputSignal(Object thisBlock, Object[] args) {
+        // args[1] = Level, args[2] = BlockPos. The mod's CookingPotBlock feeds its whole 9-slot handler through
+        // MathUtils.calcRedstoneFromItemHandler, so the signal tracks the pot's overall fill, not just the meal
+        // slot: every occupied slot contributes amount / min(slotLimit, maxStackSize), the sum is divided by the
+        // slot count, and any non-empty slot lifts the floor to 1.
+        World world = CraftEngineAdapter.toWorld(args[1]);
+        BlockPos pos = CraftEngineAdapter.toBlockPos(args[2]);
+        if (world == null || pos == null) {
+            return 0;
+        }
+        CookingPotBlockEntity entity = getBlockEntity(world, pos);
+        if (entity == null) {
+            return 0;
+        }
+        return entity.getComparatorOutput();
     }
 
     public static CookingPotBlockEntity getBlockEntity(World world, BlockPos pos) {
@@ -815,6 +829,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
             com.huidu.farmersdelight.manager.HandleManager hm = plugin == null ? null : plugin.getHandleManager();
             if (hm != null) {
                 hm.toggleHandle(bukkitPlayer.getWorld(), pos, bukkitPlayer);
+                bukkitPlayer.swingMainHand();
                 return InteractionResult.SUCCESS_AND_CANCEL;
             }
         }
@@ -861,6 +876,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         }
 
         if (handleHeldContainerServing(bukkitPlayer, world, posKey, blockEntity)) {
+            bukkitPlayer.swingMainHand();
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
 
@@ -942,32 +958,6 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         }
 
         return false;
-    }
-
-    @Override
-    public int getAnalogOutputSignal(Object thisBlock, Object[] args) {
-        if (args.length >= 3) {
-            World world = CraftEngineAdapter.toWorld(args[1]);
-            BlockPos pos = CraftEngineAdapter.toBlockPos(args[2]);
-            if (world == null || pos == null) return 0;
-
-            BlockPosKey posKey = new BlockPosKey(pos);
-            Map<BlockPosKey, CookingPotBlockEntity> worldEntities = worldBlockEntities.get(world.getUID());
-            if (worldEntities == null) return 0;
-
-            CookingPotBlockEntity entity = worldEntities.get(posKey);
-            if (entity == null) return 0;
-
-            CookingPotLayout layout = entity.getLayout();
-            int filledSlots = entity.countFilledInputSlots();
-
-            if (entity.hasMealDisplayItem()) {
-                filledSlots++;
-            }
-
-            return (filledSlots * 15) / (layout.inputSlots().length + 1);
-        }
-        return 0;
     }
 
     @Override

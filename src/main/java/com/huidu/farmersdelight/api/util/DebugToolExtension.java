@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.api.util;
 
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.util.List;
 
@@ -15,6 +16,7 @@ import java.util.List;
  * {@link DebugToolRegistry#register(DebugToolExtension)}. The {@link #name()} becomes the target
  * keyword in {@code /fd debugtools place <name> ...}.
  */
+@ApiStatus.OverrideOnly
 public interface DebugToolExtension {
 
     /** Lower-case target keyword (e.g. {@code "keg"}). Used both for command parsing and tab-complete. */
