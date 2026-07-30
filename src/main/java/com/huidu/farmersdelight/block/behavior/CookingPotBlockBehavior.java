@@ -819,7 +819,7 @@ public class CookingPotBlockBehavior extends BlockBehavior implements EntityBloc
         BlockPos pos = context.getClickedPos();
         BlockPosKey posKey = new BlockPosKey(pos);
 
-        Player bukkitPlayer = Bukkit.getPlayer(context.getPlayer().uuid());
+        Player bukkitPlayer = CraftEngineAdapter.toBukkitPlayer(context.getPlayer());
         if (bukkitPlayer == null) return InteractionResult.PASS;
 
         if (context.getHand() == InteractionHand.MAIN_HAND

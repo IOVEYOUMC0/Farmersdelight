@@ -1,6 +1,7 @@
 package com.huidu.farmersdelight.block.behavior;
 
 import com.huidu.farmersdelight.util.BehaviorArgParser;
+import com.huidu.farmersdelight.util.CraftEngineAdapter;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ProtectionCompat;
 import com.huidu.farmersdelight.util.SoilRuleSupport;
@@ -69,7 +70,7 @@ public class WildPlantBlockBehavior extends BlockBehavior {
         if (!isBoneMealTarget || context.getPlayer() == null) {
             return InteractionResult.PASS;
         }
-        Player player = Bukkit.getPlayer(context.getPlayer().uuid());
+        Player player = CraftEngineAdapter.toBukkitPlayer(context.getPlayer());
         if (player == null) {
             return InteractionResult.PASS;
         }

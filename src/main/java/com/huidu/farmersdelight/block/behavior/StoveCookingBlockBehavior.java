@@ -6,6 +6,7 @@ import com.huidu.farmersdelight.manager.StoveManager;
 import com.huidu.farmersdelight.util.BehaviorArgParser;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CookingDebugLog;
+import com.huidu.farmersdelight.util.CraftEngineAdapter;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ProtectionCompat;
 import com.huidu.farmersdelight.util.PermissionChecker;
@@ -132,7 +133,7 @@ public class StoveCookingBlockBehavior extends BlockBehavior implements EntityBl
             return InteractionResult.PASS;
         }
 
-        Player player = Bukkit.getPlayer(context.getPlayer().uuid());
+        Player player = CraftEngineAdapter.toBukkitPlayer(context.getPlayer());
         if (player == null) {
             return InteractionResult.PASS;
         }

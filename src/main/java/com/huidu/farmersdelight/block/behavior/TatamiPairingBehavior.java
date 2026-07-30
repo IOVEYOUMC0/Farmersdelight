@@ -11,7 +11,6 @@ import net.momirealms.craftengine.core.block.behavior.BlockBehavior;
 import net.momirealms.craftengine.core.block.behavior.BlockBehaviorFactory;
 import net.momirealms.craftengine.core.block.property.Property;
 import net.momirealms.craftengine.core.entity.player.InteractionResult;
-import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.plugin.config.KnownResourceException;
 import net.momirealms.craftengine.core.util.Direction;
 import net.momirealms.craftengine.core.util.Key;
@@ -230,13 +229,14 @@ public class TatamiPairingBehavior extends BlockBehavior {
         if (playerArg == null) {
             return false;
         }
-        if (playerArg instanceof Player cePlayer) {
-            return cePlayer.isSecondaryUseActive();
+        org.bukkit.entity.Player bukkitPlayer = CraftEngineAdapter.toBukkitPlayer(playerArg);
+        if (bukkitPlayer != null) {
+            return bukkitPlayer.isSneaking();
         }
         try {
             Object bukkitEntity = playerArg.getClass().getMethod("getBukkitEntity").invoke(playerArg);
-            if (bukkitEntity instanceof org.bukkit.entity.Player bukkitPlayer) {
-                return bukkitPlayer.isSneaking();
+            if (bukkitEntity instanceof org.bukkit.entity.Player nativeBukkitPlayer) {
+                return nativeBukkitPlayer.isSneaking();
             }
         } catch (ReflectiveOperationException | RuntimeException ignored) {
         }

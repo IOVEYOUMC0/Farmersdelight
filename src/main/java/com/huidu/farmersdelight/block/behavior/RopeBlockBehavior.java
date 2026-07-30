@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.block.behavior;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.listener.RopeBlockListener;
+import com.huidu.farmersdelight.util.CraftEngineAdapter;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
 import com.huidu.farmersdelight.util.ProtectionCompat;
@@ -154,7 +155,7 @@ public class RopeBlockBehavior extends BlockBehavior {
     public InteractionResult useOnBlock(UseOnContext context, ImmutableBlockState state) {
         if (context.getPlayer() == null) return InteractionResult.PASS;
 
-        Player bukkitPlayer = Bukkit.getPlayer(context.getPlayer().uuid());
+        Player bukkitPlayer = CraftEngineAdapter.toBukkitPlayer(context.getPlayer());
         if (bukkitPlayer == null) return InteractionResult.PASS;
 
         ItemStack hand = bukkitPlayer.getInventory().getItemInMainHand();
@@ -238,7 +239,7 @@ public class RopeBlockBehavior extends BlockBehavior {
         if (context.getPlayer() == null) {
             return InteractionResult.PASS;
         }
-        Player bukkitPlayer = Bukkit.getPlayer(context.getPlayer().uuid());
+        Player bukkitPlayer = CraftEngineAdapter.toBukkitPlayer(context.getPlayer());
         // Non-sneaking empty hand rings a bell above (as in vanilla RopeBlock); sneaking empty hand is the reel
         // path handled by RopeBlockListener, so leave it alone here.
         if (bukkitPlayer == null || bukkitPlayer.isSneaking()) {

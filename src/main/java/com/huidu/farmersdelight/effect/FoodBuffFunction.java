@@ -1,6 +1,7 @@
 package com.huidu.farmersdelight.effect;
 
 import com.huidu.farmersdelight.api.effect.FarmersDelightFoodEffects;
+import com.huidu.farmersdelight.util.CraftEngineAdapter;
 import net.momirealms.craftengine.core.plugin.config.ConfigConstants;
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.plugin.context.Condition;
@@ -51,7 +52,8 @@ public final class FoodBuffFunction<CTX extends Context> extends AbstractConditi
     @Override
     protected void runInternal(CTX ctx) {
         ctx.getOptionalParameter(DirectContextParameters.PLAYER).ifPresent(cePlayer -> {
-            if (!(cePlayer.platformPlayer() instanceof org.bukkit.entity.Player bukkitPlayer)) {
+            org.bukkit.entity.Player bukkitPlayer = CraftEngineAdapter.toBukkitPlayer(cePlayer);
+            if (bukkitPlayer == null) {
                 return;
             }
             int seconds = Math.max(1, duration.getInt(ctx));

@@ -4,6 +4,11 @@ messages:
     need_tool: "&c你需要正确的工具来处理这个物品。"
     wrong_tool: "&c工具不匹配，请使用正确的工具。"
     no_output: "&c该砧板配方没有生成产物，请检查配方输出物品。"
+buff:
+  nourishment:
+    title: "滋养 [{time}]"
+  comfort:
+    title: "舒适 [{time}]"
 crop:
   invalid_soil: "&c该作物貌似需要种在指定方块上..."
   need_water: "&c该作物貌似需要种在水中..."

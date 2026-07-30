@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.visual;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.i18n.I18n;
+import com.huidu.farmersdelight.util.CraftEngineAdapter;
 import com.huidu.farmersdelight.util.scheduler.PluginTask;
 import it.unimi.dsi.fastutil.ints.IntList;
 import net.momirealms.craftengine.bukkit.entity.data.BaseEntityData;
@@ -780,7 +781,7 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
 
     private void spawnForViewer(Player player, ProxyDisplay display) {
         try {
-            NetWorkUser user = networkManager.getOnlineUser(player.getUniqueId());
+            NetWorkUser user = CraftEngineAdapter.getOnlineUser(networkManager, player.getUniqueId());
             if (user == null || !user.isOnline()) {
                 return;
             }
@@ -797,7 +798,7 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
 
     private void destroyForViewer(Player player, ProxyDisplay display) {
         try {
-            NetWorkUser user = networkManager.getOnlineUser(player.getUniqueId());
+            NetWorkUser user = CraftEngineAdapter.getOnlineUser(networkManager, player.getUniqueId());
             if (user != null && user.isOnline()) {
                 user.sendPacket(display.destroyPacket, false);
                 viewerDestroyPacketCount.incrementAndGet();
@@ -862,7 +863,7 @@ public class ProxyItemDisplayManager implements Listener, ItemDisplayManager {
 
     private void sendUpdateForViewer(Player player, ProxyDisplay display, Object positionPacket, Object metadataPacket) {
         try {
-            NetWorkUser user = networkManager.getOnlineUser(player.getUniqueId());
+            NetWorkUser user = CraftEngineAdapter.getOnlineUser(networkManager, player.getUniqueId());
             if (user == null || !user.isOnline()) {
                 display.viewers.remove(player.getUniqueId());
                 return;

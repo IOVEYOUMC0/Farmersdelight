@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.effect;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.api.buff.BuffBossbar;
+import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.util.CompatAttributes;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
@@ -76,19 +77,16 @@ public final class EffectManager {
     private static final NamespacedKey PDC_NOURISHMENT = Objects.requireNonNull(NamespacedKey.fromString("farmersdelight:nourishment_ticks"));
     private static final NamespacedKey PDC_NOURISHMENT_INITIAL = Objects.requireNonNull(NamespacedKey.fromString("farmersdelight:nourishment_initial_ticks"));
 
-    // Title now interpolates the remaining time via the "<name> [%s]" pattern, so each title is built
-    // inline per push with the player's current seconds-left. Translatable + server fallback applied
-    // in FarmersDelightText.translatable so packs without the lang entry still show readable text.
-    private static Component titleNourishment(int durationTicks) {
-        return com.huidu.farmersdelight.api.text.FarmersDelightText.translatable(
-                "buff.farmersdelight.nourishment.title",
-                com.huidu.farmersdelight.api.text.FarmersDelightText.formatDuration(Math.max(0, durationTicks) / 20));
+    private static Component titleNourishment(Player player, int durationTicks) {
+        return I18n.getComponent("buff.nourishment.title", player, Map.of(
+                "time", com.huidu.farmersdelight.api.text.FarmersDelightText.formatDuration(
+                        Math.max(0, durationTicks) / 20)));
     }
 
-    private static Component titleComfort(int durationTicks) {
-        return com.huidu.farmersdelight.api.text.FarmersDelightText.translatable(
-                "buff.farmersdelight.comfort.title",
-                com.huidu.farmersdelight.api.text.FarmersDelightText.formatDuration(Math.max(0, durationTicks) / 20));
+    private static Component titleComfort(Player player, int durationTicks) {
+        return I18n.getComponent("buff.comfort.title", player, Map.of(
+                "time", com.huidu.farmersdelight.api.text.FarmersDelightText.formatDuration(
+                        Math.max(0, durationTicks) / 20)));
     }
 
     private EffectManager() {
@@ -296,7 +294,7 @@ public final class EffectManager {
         if (nourish > 0) {
             int initial = Math.max(nourish, nourishmentInitial.getOrDefault(playerId, nourish));
             BuffBossbar.update(plugin, player, KEY_NOURISHMENT,
-                    titleNourishment(nourish),
+                    titleNourishment(player, nourish),
                     Math.min(1F, (float) nourish / initial),
                     nourishmentBarColor, nourishmentBarOverlay);
         } else {
@@ -307,7 +305,7 @@ public final class EffectManager {
         if (comfort > 0) {
             int initial = Math.max(comfort, comfortInitial.getOrDefault(playerId, comfort));
             BuffBossbar.update(plugin, player, KEY_COMFORT,
-                    titleComfort(comfort),
+                    titleComfort(player, comfort),
                     Math.min(1F, (float) comfort / initial),
                     comfortBarColor, comfortBarOverlay);
         } else {

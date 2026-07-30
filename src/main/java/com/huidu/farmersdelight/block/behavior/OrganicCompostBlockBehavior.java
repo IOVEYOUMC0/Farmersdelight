@@ -120,7 +120,7 @@ public class OrganicCompostBlockBehavior extends BlockBehavior {
         if (context.getPlayer() == null || context.getHand() != InteractionHand.MAIN_HAND) {
             return InteractionResult.PASS;
         }
-        Player bukkitPlayer = Bukkit.getPlayer(context.getPlayer().uuid());
+        Player bukkitPlayer = CraftEngineAdapter.toBukkitPlayer(context.getPlayer());
         if (bukkitPlayer == null) return InteractionResult.PASS;
 
         ItemStack held = bukkitPlayer.getInventory().getItemInMainHand();

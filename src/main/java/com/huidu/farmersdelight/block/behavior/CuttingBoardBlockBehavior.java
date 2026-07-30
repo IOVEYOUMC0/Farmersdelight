@@ -494,7 +494,7 @@ public class CuttingBoardBlockBehavior extends BlockBehavior implements EntityBl
         BlockPos pos = context.getClickedPos();
         BlockPosKey posKey = new BlockPosKey(pos);
 
-        Player bukkitPlayer = Bukkit.getPlayer(context.getPlayer().uuid());
+        Player bukkitPlayer = CraftEngineAdapter.toBukkitPlayer(context.getPlayer());
         if (bukkitPlayer == null) return InteractionResult.PASS;
 
         if (consumeManualInsertionGuard(bukkitPlayer.getUniqueId(), bukkitPlayer.getWorld(), posKey)) {

@@ -1,6 +1,7 @@
 package com.huidu.farmersdelight.block.behavior;
 
 import com.huidu.farmersdelight.util.BlockPosKey;
+import com.huidu.farmersdelight.util.CraftEngineAdapter;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
@@ -360,7 +361,7 @@ public final class CuttingBoardBlockEntityController extends BlockEntityControll
     @Override
     public boolean stillValid(Player player) {
         WorldPosition position = this.position();
-        return position != null && player.canInteractPoint(position.toVec3d(), player.getCachedInteractionRange());
+        return position != null && CraftEngineAdapter.canInteractPoint(player, position.toVec3d());
     }
 
     @Override

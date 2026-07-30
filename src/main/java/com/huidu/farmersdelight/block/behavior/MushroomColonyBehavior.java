@@ -178,7 +178,7 @@ public class MushroomColonyBehavior extends BlockBehavior implements Bonemealabl
             return InteractionResult.PASS;
         }
 
-        Player player = Bukkit.getPlayer(context.getPlayer().uuid());
+        Player player = CraftEngineAdapter.toBukkitPlayer(context.getPlayer());
         if (player == null) {
             return InteractionResult.PASS;
         }

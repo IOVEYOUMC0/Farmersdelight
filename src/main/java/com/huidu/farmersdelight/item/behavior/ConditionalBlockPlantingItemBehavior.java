@@ -1,5 +1,6 @@
 package com.huidu.farmersdelight.item.behavior;
 
+import com.huidu.farmersdelight.util.CraftEngineAdapter;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ProtectionCompat;
 import com.huidu.farmersdelight.util.VanillaAdvancements;
@@ -20,7 +21,7 @@ import net.momirealms.craftengine.core.util.Direction;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.world.BlockPos;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
-import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.Block;
@@ -98,7 +99,10 @@ public final class ConditionalBlockPlantingItemBehavior extends ItemBehavior {
         // so vanilla's own WorldGuard build check never fires — gate on canBuild (master flag) here, or a
         // player without build rights could plant inside a protected region.
         Player player = context.getPlayer();
-        org.bukkit.entity.Player bukkitPlayer = player == null ? null : Bukkit.getPlayer(player.uuid());
+        org.bukkit.entity.Player bukkitPlayer = CraftEngineAdapter.toBukkitPlayer(player);
+        if (player != null && bukkitPlayer == null) {
+            return InteractionResult.PASS;
+        }
         if (bukkitPlayer != null && !ProtectionCompat.canBuild(bukkitPlayer, target)) {
             return InteractionResult.PASS;
         }
@@ -110,11 +114,15 @@ public final class ConditionalBlockPlantingItemBehavior extends ItemBehavior {
         }
 
         if (player != null) {
-            if (!player.isCreativeMode()) {
+            if (bukkitPlayer.getGameMode() != GameMode.CREATIVE) {
                 Item item = context.getItem();
                 item.shrink(1);
             }
-            player.swingHand(context.getHand());
+            if (context.getHand() == net.momirealms.craftengine.core.entity.player.InteractionHand.MAIN_HAND) {
+                bukkitPlayer.swingMainHand();
+            } else {
+                bukkitPlayer.swingOffHand();
+            }
         }
         // The crop was placed via CraftEngineBlocks.place, bypassing vanilla's placed_block trigger, so award
         // the vanilla "A Seedy Place" advancement manually.

@@ -4,6 +4,11 @@ messages:
     need_tool: "&cYou need the correct tool for this item."
     wrong_tool: "&cWrong tool. Use the correct tool for this item."
     no_output: "&cThis cutting recipe produced no output. Check the recipe result item."
+buff:
+  nourishment:
+    title: "Nourishment [{time}]"
+  comfort:
+    title: "Comfort [{time}]"
 crop:
   need_water: "&cRice must be planted in water."
   invalid_soil: "&cThis crop needs suitable soil."

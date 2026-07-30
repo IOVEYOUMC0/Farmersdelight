@@ -289,7 +289,7 @@ public class TallCropBlockBehavior extends BlockBehavior {
         if (context.getPlayer() == null) return InteractionResult.PASS;
         BlockPos pos = context.getClickedPos();
 
-        Player bukkitPlayer = Bukkit.getPlayer(context.getPlayer().uuid());
+        Player bukkitPlayer = CraftEngineAdapter.toBukkitPlayer(context.getPlayer());
         if (bukkitPlayer == null) return InteractionResult.PASS;
 
         World world = bukkitPlayer.getWorld();
