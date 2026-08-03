@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.gui.recipebook;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.api.FarmersDelightApi;
+import com.huidu.farmersdelight.api.recipe.FillOutcome;
 import com.huidu.farmersdelight.api.recipe.JumpTarget;
 import com.huidu.farmersdelight.api.recipe.RecipeBookLayout;
 import com.huidu.farmersdelight.api.recipe.RecipeFiller;
@@ -31,12 +32,12 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Generic, registrable recipe book: a category menu over all registered {@link RecipeType}s, a paginated
+ * Generic, registrable recipe book: a category menu over all registered RecipeTypes, a paginated
  * recipe list per category, and a recipe detail view. Type-agnostic — it only consumes the api
  * abstractions, so it never touches FarmersDelight's own recipe types or the legacy RecipeViewGui.
  *
- * Layout/title/buttons are config-driven via {@code gui.yml} -> {@code recipe-book-gui} (see
- * {@link RecipeBookGuiConfig}); the list page size follows the number of {@code recipe} slots.
+ * Layout/title/buttons are config-driven via gui.yml -> recipe-book-gui (see
+ * RecipeBookGuiConfig); the list page size follows the number of recipe slots.
  */
 public final class RecipeBookGui implements InventoryHolder {
 
@@ -96,7 +97,7 @@ public final class RecipeBookGui implements InventoryHolder {
         List<RecipeType> types = FarmersDelightApi.get().recipeTypes();
         if (types.size() == 1) {
             gui.singleType = true;
-            gui.drawList(types.get(0), 0);
+            gui.drawList(types.getFirst(), 0);
         } else {
             gui.drawMenu();
         }
@@ -123,8 +124,8 @@ public final class RecipeBookGui implements InventoryHolder {
             "category", "recipe", "ingredient", "result", "prev_page", "next_page", "fill", "filter", "switch",
             "progress");
 
-    /** A page's renderable spec — backed either by the shared {@link RecipeBookGuiConfig.ViewConfig} or by a
-     * type's own {@link RecipeBookLayout}. Lets list/detail/click logic stay layout-source-agnostic. */
+    /** A page's renderable spec — backed either by the shared RecipeBookGuiConfig.ViewConfig or by a
+     * type's own RecipeBookLayout. Lets list/detail/click logic stay layout-source-agnostic. */
     private interface RenderSpec {
         int size();
         Component title();
@@ -190,7 +191,7 @@ public final class RecipeBookGui implements InventoryHolder {
         }
         public ItemStack button(String role) {
             ItemStack item = layout.decorations().get(role);
-            return item == null ? null : item.clone();
+            return ItemUtils.cloneOrNull(item);
         }
     }
 
@@ -257,7 +258,7 @@ public final class RecipeBookGui implements InventoryHolder {
         }
     }
 
-    /** The recipes shown for {@code target}, narrowed to craftable ones when the filter is on and dropping
+    /** The recipes shown for target, narrowed to craftable ones when the filter is on and dropping
      * locked recipes when discovery is on in "hidden" mode. */
     private List<ViewableRecipe> visibleRecipes(RecipeType target) {
         List<ViewableRecipe> all = target.recipes();
@@ -431,7 +432,7 @@ public final class RecipeBookGui implements InventoryHolder {
     }
 
     /** Stops the animation when the open inventory truly closes. A navigation between pages reopens a fresh
-     * inventory under the same holder; its close event carries the OLD inventory while {@code this.inventory} is
+     * inventory under the same holder; its close event carries the OLD inventory while this.inventory is
      * already the new one, so that stale close is ignored and the animation survives the page change. */
     void onClose(Inventory closed) {
         if (closed == null || closed == inventory) {
@@ -559,7 +560,36 @@ public final class RecipeBookGui implements InventoryHolder {
         }
     }
 
-    void handleClick(Player player, int rawSlot) {
+    /** Mirrors FD's fill-button feedback in the recipe book: a successful fill hands off to the station's
+     *  filler (which reopens its own GUI), while missing-ingredient / station-full outcomes stay on the book
+     *  and tell the player why. */
+    private void applyFillOutcome(Player player, FillOutcome outcome, RenderSpec cfg) {
+        String statusKey = switch (outcome) {
+            case MISSING_INGREDIENTS -> "gui.recipe.missing_ingredients";
+            case INVENTORY_FULL -> "gui.recipe.inventory_full";
+            // FILLED reopens the station via the filler; NOTHING has no reason to show.
+            case FILLED, NOTHING -> null;
+        };
+        if (statusKey == null) {
+            return;
+        }
+        // Show the status ON the fill button (matching FD's cooking-pot fill button) rather than a chat line:
+        // append the status as a lore line to the fill item and re-place it. It reverts on the next detail draw.
+        int fillSlot = cfg.firstSlotByType("fill");
+        ItemStack fillItem = cfg.button("fill");
+        if (fillSlot >= 0 && fillItem != null) {
+            org.bukkit.inventory.meta.ItemMeta meta = fillItem.getItemMeta();
+            if (meta != null) {
+                List<Component> lore = meta.lore() != null ? new ArrayList<>(meta.lore()) : new ArrayList<>();
+                lore.add(Text.deserialize(I18n.get(statusKey, player)));
+                meta.lore(lore);
+                fillItem.setItemMeta(meta);
+            }
+            inventory.setItem(fillSlot, fillItem);
+        }
+    }
+
+    void handleClick(Player player, int rawSlot, boolean shiftClick) {
         this.viewer = player;
         RecipeBookGuiConfig config = config();
         switch (view) {
@@ -625,8 +655,8 @@ public final class RecipeBookGui implements InventoryHolder {
                     back(player);
                 } else if (rawSlot == cfg.firstSlotByType("fill") && filler != null) {
                     ViewableRecipe recipe = type.recipe(recipeId);
-                    if (recipe != null && !filler.fill(player, recipe)) {
-                        player.sendMessage(Text.deserialize(I18n.get("gui.recipe.missing_ingredients", player)));
+                    if (recipe != null) {
+                        applyFillOutcome(player, filler.fillDetailed(player, recipe, shiftClick), cfg);
                     }
                 } else {
                     tryJump(player, cfg, rawSlot);

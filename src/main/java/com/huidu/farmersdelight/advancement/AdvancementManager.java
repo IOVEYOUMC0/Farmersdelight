@@ -28,9 +28,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * UltimateAdvancementAPI-based advancement backend: a single {@code farmersdelight} advancement tab built in code.
- * {@link #award}/{@link #awardCriteria}/{@link #revoke}/{@link #hasAdvancement} are the public entry points called by
- * event listeners. Titles/descriptions are localized per-client via {@link LocalizedAdvancementDisplay}.
+ * UltimateAdvancementAPI-based advancement backend: a single farmersdelight advancement tab built in code.
+ * #award/#awardCriteria/#revoke/#hasAdvancement are the public entry points called by
+ * event listeners. Titles/descriptions are localized per-client via LocalizedAdvancementDisplay.
  */
 public class AdvancementManager {
 
@@ -283,7 +283,7 @@ public class AdvancementManager {
         return prefixed;
     }
 
-    /** Builds the CraftEngine item for {@code ceId}; uses the vanilla {@code fallback} if it can't be resolved. */
+    /** Builds the CraftEngine item for ceId; uses the vanilla fallback if it can't be resolved. */
     private static ItemStack icon(String ceId, Material fallback) {
         ItemStack item = ceId == null ? null : ItemUtils.createItem(ceId);
         return item != null && !item.getType().isAir() ? item : new ItemStack(fallback);

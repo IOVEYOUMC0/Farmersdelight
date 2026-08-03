@@ -56,7 +56,7 @@ public final class BehaviorArgParser {
         return changed ? new String(chars) : null;
     }
 
-    /** Lenient: any non-null value is coerced via {@code String.valueOf}; only {@code null} yields the fallback.
+    /** Lenient: any non-null value is coerced via String.valueOf; only null yields the fallback.
      *  Use when the YAML value can legally be a non-String type (e.g. an integer that should print as text). */
     public static String getString(Map<String, Object> arguments, String key, String defaultValue) {
         Object value = resolve(arguments, key);
@@ -66,14 +66,14 @@ public final class BehaviorArgParser {
         return defaultValue;
     }
 
-    /** Strict: only an actual non-empty {@code String} value passes through; anything else (null, wrong type,
+    /** Strict: only an actual non-empty String value passes through; anything else (null, wrong type,
      *  empty string) returns the fallback. Use to reject malformed configs early instead of silently coercing. */
     public static String getStringStrict(Map<String, Object> arguments, String key, String fallback) {
         Object value = resolve(arguments, key);
         return value instanceof String s && !s.isEmpty() ? s : fallback;
     }
 
-    /** Lenient: a non-null {@code Boolean} passes through, a String is parsed via {@link Boolean#parseBoolean},
+    /** Lenient: a non-null Boolean passes through, a String is parsed via Boolean#parseBoolean,
      *  everything else falls back. */
     public static boolean getBoolean(Map<String, Object> arguments, String key, boolean defaultValue) {
         Object value = resolve(arguments, key);
@@ -86,7 +86,7 @@ public final class BehaviorArgParser {
         return defaultValue;
     }
 
-    /** Strict: only an actual {@code Boolean} value passes through; quoted strings ("true"/"false") and any
+    /** Strict: only an actual Boolean value passes through; quoted strings ("true"/"false") and any
      *  other type return the fallback. Use to reject malformed configs early. */
     public static boolean getBooleanStrict(Map<String, Object> arguments, String key, boolean fallback) {
         Object value = resolve(arguments, key);

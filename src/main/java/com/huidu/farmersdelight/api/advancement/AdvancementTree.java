@@ -11,14 +11,14 @@ import java.util.Map;
 
 /**
  * Fluent builder for an addon advancement tab. Describe the tree as plain data — exactly one root plus child
- * advancements — then call {@link #register()}. FarmersDelight builds the UltimateAdvancementAPI tab (and
- * rebuilds it across {@code /fd reload}); no UAA types are involved.
+ * advancements — then call #register(). FarmersDelight builds the UltimateAdvancementAPI tab (and
+ * rebuilds it across /fd reload); no UAA types are involved.
  *
  * Titles/descriptions are client translation keys (resolved from the client's resource pack), or literal text
- * which clients render verbatim when the key is unknown. {@code frame} is {@code "task"}, {@code "goal"}, or
- * {@code "challenge"}. {@code x}/{@code y} place the node on the tab grid (root is conventionally 0,0).
+ * which clients render verbatim when the key is unknown. frame is "task", "goal", or
+ * "challenge". x/y place the node on the tab grid (root is conventionally 0,0).
  *
- * Obtain an instance via {@link FarmersDelightAdvancements#tree(String)}.
+ * Obtain an instance via FarmersDelightAdvancements#tree(String).
  */
 public final class AdvancementTree {
 
@@ -32,14 +32,14 @@ public final class AdvancementTree {
         this.tabId = tabId;
     }
 
-    /** Defines the single tab root. {@code background} is a texture path (null = a default). */
+    /** Defines the single tab root. background is a texture path (null = a default). */
     public AdvancementTree root(String id, ItemStack icon, String title, String description, String background) {
         defs.add(new AdvancementDef(id, null, icon, title, description, "task", 0, 0, null, background));
         hasRoot = true;
         return this;
     }
 
-    /** Adds a child advancement under {@code parentId}. */
+    /** Adds a child advancement under parentId. */
     public AdvancementTree advancement(String id, String parentId, ItemStack icon, String title,
                                        String description, String frame, float x, float y) {
         defs.add(new AdvancementDef(id, parentId, icon, title, description, frame, x, y, null, null));
@@ -48,7 +48,7 @@ public final class AdvancementTree {
 
     /**
      * Adds a multi-task (criteria-counting) child advancement: it completes when every named criterion is
-     * granted via {@link FarmersDelightAdvancements#awardCriteria(String, org.bukkit.entity.Player, String, String)}.
+     * granted via org.bukkit.entity.Player, String, String).
      */
     public AdvancementTree multiTask(String id, String parentId, ItemStack icon, String title,
                                      String description, String frame, float x, float y, List<String> criteria) {

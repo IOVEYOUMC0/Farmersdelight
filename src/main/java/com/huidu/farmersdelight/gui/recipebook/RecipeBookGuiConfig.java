@@ -12,8 +12,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Config for the generic addon recipe book ({@link RecipeBookGui}) — the category menu, paginated recipe
- * list, and recipe detail views. Read from {@code gui.yml} -> {@code recipe-book-gui.{menu,list,detail}};
+ * Config for the generic addon recipe book (RecipeBookGui) — the category menu, paginated recipe
+ * list, and recipe detail views. Read from gui.yml -> recipe-book-gui.{menu,list,detail};
  * defaults reproduce the previous hardcoded layout, so behavior is unchanged until edited.
  */
 public final class RecipeBookGuiConfig {
@@ -99,7 +99,7 @@ public final class RecipeBookGuiConfig {
 
         public int firstSlotByType(String type) {
             List<Integer> slots = slotsByType(type);
-            return slots.isEmpty() ? -1 : slots.get(0);
+            return slots.isEmpty() ? -1 : slots.getFirst();
         }
 
         /** Renders static chrome (background, decoration, close/back, etc.) into every layout slot whose type

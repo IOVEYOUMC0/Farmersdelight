@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Resolves recipe ingredients (item / tag / choice) into the display item icons the recipe GUIs show,
- * with the item-build and tag/choice option caches. Extracted from {@link RecipeViewGui} so the
+ * with the item-build and tag/choice option caches. Extracted from RecipeViewGui so the
  * icon-building concern (and its caches) lives in one focused place. All methods are stateless w.r.t. a
  * GUI session — they depend only on the recipe ingredient, the (bootstrap-frozen) item registries, and
  * these caches — so they are static. Callers get clones; the caches are cleared on config/recipe reload.

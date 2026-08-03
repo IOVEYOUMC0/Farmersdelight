@@ -16,13 +16,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Registry that lets FarmersDelight's milk-consume listener clear addon-side custom buffs without
- * knowing each addon's manager API. See {@link CustomBuff} for the contract.
+ * knowing each addon's manager API. See CustomBuff for the contract.
  *
  * Lifecycle: addons call register(CustomBuff) during onEnable and unregister(CustomBuff) during
  * onDisable. Registration is idempotent by CustomBuff.id() — re-registering with the same id replaces
  * the previous entry, which matches what a /plugman reload would naturally do.
  *
- * <p>Iteration is COW-snapshot based, so reads (the consume listener) and writes (a plugin enabling
+ * Iteration is COW-snapshot based, so reads (the consume listener) and writes (a plugin enabling
  * mid-game) don't lock against each other.
  *
  * The registry also raises FarmersDelightBuffChangeEvent on real level transitions — see
@@ -70,7 +70,7 @@ public final class CustomBuffRegistry {
         return systemEnabled;
     }
 
-    /** Add {@code buff} to the registry. If a buff with the same {@link CustomBuff#id()} is already
+    /** Add buff to the registry. If a buff with the same CustomBuff#id() is already
      *  registered, that entry is replaced (mirrors a clean re-register after a plugin reload). */
     public static void register(CustomBuff buff) {
         Objects.requireNonNull(buff, "buff");
@@ -80,7 +80,7 @@ public final class CustomBuffRegistry {
         BY_ID.put(buff.id(), buff);
     }
 
-    /** Drop the registered entry whose id matches {@code buff.id()}. No-op when not present. */
+    /** Drop the registered entry whose id matches buff.id(). No-op when not present. */
     public static void unregister(CustomBuff buff) {
         if (buff == null || buff.id() == null) return;
         ENTRIES.removeIf(existing -> existing.id().equals(buff.id()));
@@ -101,7 +101,7 @@ public final class CustomBuffRegistry {
         return ENTRIES_VIEW;
     }
 
-    /** O(1) lookup by registered buff id (e.g. {@code "brewinandchewin:tipsy"}). Returns {@code null}
+    /** O(1) lookup by registered buff id (e.g. "brewinandchewin:tipsy"). Returns null
      *  when no buff with that id is currently registered. Drives the PlaceholderAPI hot path. */
     public static CustomBuff byId(String id) {
         return id == null ? null : BY_ID.get(id);
@@ -249,7 +249,7 @@ public final class CustomBuffRegistry {
     }
 
     /**
-     * Persist every registered buff's state onto {@code player} (see {@link CustomBuff#saveState}).
+     * Persist every registered buff's state onto player (see CustomBuff#saveState).
      * Drives FarmersDelight's central buff-persistence lifecycle on quit; per-buff exceptions are
      * swallowed so one misbehaving addon can't block the rest of the save.
      */
@@ -269,8 +269,8 @@ public final class CustomBuffRegistry {
     }
 
     /**
-     * Restore every registered buff's state onto {@code player} (see {@link CustomBuff#restoreState}).
-     * Called on join and again after the configured retry delay; {@code restoreState} is gap-filling
+     * Restore every registered buff's state onto player (see CustomBuff#restoreState).
+     * Called on join and again after the configured retry delay; restoreState is gap-filling
      * so the repeat call is safe.
      */
     public static void restoreAll(Player player) {
@@ -291,10 +291,10 @@ public final class CustomBuffRegistry {
     }
 
     /**
-     * Grant the registered buff with {@code id} to {@code player} at {@code level} (1-based) for
-     * {@code durationSeconds} (see {@link CustomBuff#apply}). Returns {@code true} when a buff with
-     * that id is registered and accepted the grant, {@code false} when the id is unknown or the buff
-     * can't be granted. Drives the {@code /fd buff give} admin command.
+     * Grant the registered buff with id to player at level (1-based) for
+     * durationSeconds (see CustomBuff#apply). Returns true when a buff with
+     * that id is registered and accepted the grant, false when the id is unknown or the buff
+     * can't be granted. Drives the /fd buff give admin command.
      */
     public static boolean apply(Player player, String id, int level, int durationSeconds) {
         // Reports "not granted" rather than throwing when the system is off, which is the same answer an
@@ -318,7 +318,7 @@ public final class CustomBuffRegistry {
     }
 
     /**
-     * Remove every active registered buff from {@code player} — vanilla {@code milk_bucket} semantics
+     * Remove every active registered buff from player — vanilla milk_bucket semantics
      * extended to custom state. Returns the count actually removed.
      */
     public static int clearAll(Player player) {
@@ -341,7 +341,7 @@ public final class CustomBuffRegistry {
     }
 
     /**
-     * The registered buffs currently active on {@code player} (both priorities). Used by the milk-bottle
+     * The registered buffs currently active on player (both priorities). Used by the milk-bottle
      * cleanser to weigh custom buffs alongside vanilla effects when picking one to remove.
      */
     public static java.util.List<CustomBuff> activeBuffs(Player player) {
@@ -361,10 +361,10 @@ public final class CustomBuffRegistry {
     }
 
     /**
-     * Remove exactly one active buff from {@code player}, preferring non-low-priority entries.
-     * Returns the removed buff (or {@code null} when nothing was active). Mirrors the original
-     * {@code farmersdelight:milk_bottle} semantics modulated by BAC's
-     * {@code brewinandchewin:low_priority/milk_bottle} effect tag.
+     * Remove exactly one active buff from player, preferring non-low-priority entries.
+     * Returns the removed buff (or null when nothing was active). Mirrors the original
+     * farmersdelight:milk_bottle semantics modulated by BAC's
+     * brewinandchewin:low_priority/milk_bottle effect tag.
      */
     public static CustomBuff clearOne(Player player) {
         if (player == null) return null;

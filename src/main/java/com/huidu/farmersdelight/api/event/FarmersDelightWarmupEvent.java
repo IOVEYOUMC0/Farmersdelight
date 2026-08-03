@@ -9,7 +9,7 @@ import org.jetbrains.annotations.ApiStatus;
  * warmed its own item / GUI / recipe caches. Addons listen to pre-build their own CraftEngine item stacks
  * and prime their caches off the hot path, so the first in-game interaction does not pay lazy-init cost.
  *
- * <p>Handlers must do pure computation only (build item stacks, prime caches). They run on the global/main
+ * Handlers must do pure computation only (build item stacks, prime caches). They run on the global/main
  * thread and must not touch worlds, entities, regions, or real block state.
  */
 @ApiStatus.NonExtendable
@@ -23,7 +23,7 @@ public class FarmersDelightWarmupEvent extends Event {
         this.reason = reason;
     }
 
-    /** A short identifier for what triggered the warmup — {@code "enable"} or {@code "reload"} (may be null). */
+    /** A short identifier for what triggered the warmup — "enable" or "reload" (may be null). */
     public String getReason() {
         return reason;
     }

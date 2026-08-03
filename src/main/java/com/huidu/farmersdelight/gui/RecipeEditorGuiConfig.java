@@ -10,9 +10,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Parsed gui.yml config for the recipe editor GUI. Reuses {@link RecipeViewGuiConfig.BaseConfig}
+ * Parsed gui.yml config for the recipe editor GUI. Reuses RecipeViewGuiConfig.BaseConfig
  * to parse layout/legend/items, following the per-custom-pot override pattern of
- * {@code recipe-detail-cooking-pot-guis}.
+ * recipe-detail-cooking-pot-guis.
  */
 public final class RecipeEditorGuiConfig {
 
@@ -83,7 +83,7 @@ public final class RecipeEditorGuiConfig {
     }
 
     /**
-     * @return the editor layout for the given custom pot group (returns the default layout when the group is
+     * the editor layout for the given custom pot group (returns the default layout when the group is
      *         null/blank or has no dedicated config section); returns null when no editor config section is configured at all.
      */
     @Nullable

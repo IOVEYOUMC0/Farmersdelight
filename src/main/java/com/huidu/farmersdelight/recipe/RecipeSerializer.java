@@ -12,10 +12,10 @@ import java.util.Set;
 
 /**
  * Converts the in-memory recipe model back into the YAML string form the recipe parser understands
- * (i.e. the inverse of {@link RecipeParsingSupport} and the managers' {@code parseRecipe} methods).
+ * (i.e. the inverse of RecipeParsingSupport and the managers' parseRecipe methods).
  *
  * The string conversions here are pure functions (no Bukkit/CraftEngine state), so round-trip
- * consistency can be verified by unit tests. Item resolution ({@link #itemIdString(ItemStack)}) is the only
+ * consistency can be verified by unit tests. Item resolution (#itemIdString(ItemStack)) is the only
  * method that touches CraftEngine, which is why it is split out separately.
  */
 public final class RecipeSerializer {
@@ -25,7 +25,7 @@ public final class RecipeSerializer {
 
     /**
      * Serializes an ingredient (a cooking-pot ingredient slot, or a cutting-board input) into its YAML
-     * string: an item key, a {@code #tag} with optional {@code ,!exclusions}, or {@code a|b} choices.
+     * string: an item key, a #tag with optional ,!exclusions, or a|b choices.
      */
     public static String serializeIngredient(RecipeIngredient ingredient) {
         if (ingredient instanceof RecipeIngredient.Item item) {
@@ -50,7 +50,7 @@ public final class RecipeSerializer {
 
     /**
      * Serializes a cutting-board tool requirement. The tool key matches as either an item id or a tag,
-     * treated identically, so it is output as the raw key plus any {@code ,!exclusions}.
+     * treated identically, so it is output as the raw key plus any ,!exclusions.
      */
     public static String serializeTool(CuttingBoardRecipe.ToolRequirement tool) {
         return serializeKeyWithExclusions(tool.getKey().toString(), tool.getExcludedItems(), tool.getExcludedTags());
@@ -79,7 +79,7 @@ public final class RecipeSerializer {
 
     /**
      * Resolves an item stack to a recipe item id string: its CraftEngine custom id if present,
-     * otherwise {@code minecraft:<material>}.
+     * otherwise minecraft:<material>.
      */
     public static String itemIdString(ItemStack item) {
         if (item == null) {

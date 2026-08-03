@@ -22,23 +22,23 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Renders per-player buff state pushed via {@link com.huidu.farmersdelight.api.buff.BuffBossbar} to one
+ * Renders per-player buff state pushed via com.huidu.farmersdelight.api.buff.BuffBossbar to one
  * or more display Channels (config buff.display.channels), so an admin can route around a
- * plugin that already occupies a given channel: {@code bossbar} (boss bar), {@code actionbar} (action
- * bar line), {@code tab_footer} (player-list footer). Any combination may run at once; default is
+ * plugin that already occupies a given channel: bossbar (boss bar), actionbar (action
+ * bar line), tab_footer (player-list footer). Any combination may run at once; default is
  * boss bar only.
  *
- * <p>The boss bar channel has two layout modes (config-driven):
- * <ul>
- *   <li>{@code stacked} — every active buff shows its own bossbar simultaneously (vanilla style).</li>
- *   <li>{@code rotating} — only one bar visible at a time, advances every
- *       buff.display.rotation-interval-ticks.</li>
- * </ul>
+ * The boss bar channel has two layout modes (config-driven):
+ * 
+ *   - stacked — every active buff shows its own bossbar simultaneously (vanilla style).
+ *   - rotating — only one bar visible at a time, advances every
+ *       buff.display.rotation-interval-ticks.
+ * 
  * The action bar / tab footer always list every active buff (joined on one line / one per line).
  *
- * <p>Lifecycle: created in {@link FarmersDelightPlugin#onEnable}; {@link #start} kicks off the
- * rotation tick (no-op in stacked mode). {@link #stop} hides every bar then clears state.
- * {@link PlayerQuitEvent} also flushes per-player bars so the map can't grow on long-running servers.
+ * Lifecycle: created in FarmersDelightPlugin#onEnable; #start kicks off the
+ * rotation tick (no-op in stacked mode). #stop hides every bar then clears state.
+ * PlayerQuitEvent also flushes per-player bars so the map can't grow on long-running servers.
  */
 public final class BuffBossbarManager implements Listener {
 
@@ -59,13 +59,13 @@ public final class BuffBossbarManager implements Listener {
      * A place the active-buff state can be rendered. Any combination may be enabled at once via
      * buff.display.channels, so an admin can route around another plugin that already occupies a
      * given channel (that plugin's boss bar / action bar / tab footer).
-     * <ul>
-     *   <li>{@code BOSSBAR} — one boss bar per buff, laid out per {@link LayoutMode}.</li>
-     *   <li>{@code ACTIONBAR} — every active buff joined onto the action bar line, auto-refreshed so
-     *       it does not fade.</li>
-     *   <li>{@code TAB_FOOTER} — active buffs listed in the player-list (TAB) footer; only the footer
-     *       is touched, never the header.</li>
-     * </ul>
+     * 
+     *   - BOSSBAR — one boss bar per buff, laid out per LayoutMode.
+     *   - ACTIONBAR — every active buff joined onto the action bar line, auto-refreshed so
+     *       it does not fade.
+     *   - TAB_FOOTER — active buffs listed in the player-list (TAB) footer; only the footer
+     *       is touched, never the header.
+     * 
      */
     public enum Channel {
         BOSSBAR, ACTIONBAR, TAB_FOOTER;
@@ -390,7 +390,7 @@ public final class BuffBossbarManager implements Listener {
         }
     }
 
-    /** Joins the active buffs' titles with {@code separator} (insertion order, matching the boss bars).
+    /** Joins the active buffs' titles with separator (insertion order, matching the boss bars).
      *  Empty component when the player has no buffs, which clears the action bar / footer. */
     private static Component joinTitles(PlayerBars state, Component separator) {
         Component out = Component.empty();

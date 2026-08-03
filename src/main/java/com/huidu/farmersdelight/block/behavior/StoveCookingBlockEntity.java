@@ -3,9 +3,9 @@ package com.huidu.farmersdelight.block.behavior;
 /**
  * Legacy stove helper. The instance-based state model and tick loop that once lived here have been removed:
  * runtime stove logic is now handled entirely by
- * {@link com.huidu.farmersdelight.manager.StoveManager} (which maintains its own
- * {@link com.huidu.farmersdelight.util.CampfireRecipeCache}). Only the static
- * {@link #clearRecipeCache()} hook is kept, since the reload/disable flow still references it.
+ * com.huidu.farmersdelight.manager.StoveManager (which maintains its own
+ * com.huidu.farmersdelight.util.CampfireRecipeCache). Only the static
+ * #clearRecipeCache() hook is kept, since the reload/disable flow still references it.
  */
 @Deprecated(forRemoval = false)
 public final class StoveCookingBlockEntity {

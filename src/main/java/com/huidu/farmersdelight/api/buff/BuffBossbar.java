@@ -10,12 +10,12 @@ import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Per-player buff bossbar display API. Addons (or FD itself) push the live state of an active buff
- * — title, progress 0..1, color, overlay — keyed by a stable {@link NamespacedKey}. FD renders all
+ * — title, progress 0..1, color, overlay — keyed by a stable NamespacedKey. FD renders all
  * pushed buffs on the admin-configured display channels (boss bar / action bar / tab footer) and
  * boss-bar layout; the addon doesn't choose the channel or layout, the server admin does.
  *
- * <p>Idempotent: calling {@link #update} repeatedly for the same {@code (player, key)} mutates the
- * existing bossbar; pass a fresh title/progress to refresh. Call {@link #hide} when the buff ends.
+ * Idempotent: calling #update repeatedly for the same (player, key) mutates the
+ * existing bossbar; pass a fresh title/progress to refresh. Call #hide when the buff ends.
  * Player quit and FD disable both flush all bars; addons don't have to clean up on quit.
  *
  * Channels, layout and the display toggle live in FD's config.yml under buff.display; the whole buff
@@ -36,16 +36,16 @@ public final class BuffBossbar {
     }
 
     /**
-     * Create or update the bar for {@code (player, key)}. No-op when the master toggle is off or the
-     * player is offline. Progress is clamped to {@code [0,1]}.
+     * Create or update the bar for (player, key). No-op when the master toggle is off or the
+     * player is offline. Progress is clamped to [0,1].
      *
-     * @param owner   the addon plugin pushing the update (logged on errors; future per-plugin features)
-     * @param player  the player whose bar to update
-     * @param key     a stable identifier; same key across calls updates the same bar
-     * @param title   the bar's display name (use {@link Component#translatable} so each viewer's client renders in its own locale)
-     * @param progress 0..1; clamped automatically
-     * @param color   {@link BossBar.Color} (PINK, BLUE, RED, GREEN, YELLOW, PURPLE, WHITE)
-     * @param overlay {@link BossBar.Overlay} (PROGRESS, NOTCHED_6, NOTCHED_10, NOTCHED_12, NOTCHED_20)
+     * owner the addon plugin pushing the update (logged on errors; future per-plugin features)
+     * player the player whose bar to update
+     * key a stable identifier; same key across calls updates the same bar
+     * title the bar's display name (use Component#translatable so each viewer's client renders in its own locale)
+     * progress 0..1; clamped automatically
+     * color BossBar.Color (PINK, BLUE, RED, GREEN, YELLOW, PURPLE, WHITE)
+     * overlay BossBar.Overlay (PROGRESS, NOTCHED_6, NOTCHED_10, NOTCHED_12, NOTCHED_20)
      */
     public static void update(Plugin owner, Player player, NamespacedKey key,
                               Component title, float progress,
@@ -56,7 +56,7 @@ public final class BuffBossbar {
         }
     }
 
-    /** Remove the bar identified by {@code key} from {@code player}. Safe to call on a key that
+    /** Remove the bar identified by key from player. Safe to call on a key that
      *  isn't currently shown. */
     public static void hide(Plugin owner, Player player, NamespacedKey key) {
         BuffBossbarManager manager = manager();
@@ -65,7 +65,7 @@ public final class BuffBossbar {
         }
     }
 
-    /** Remove ALL bars an addon registered for {@code player}. Call this when the addon stops
+    /** Remove ALL bars an addon registered for player. Call this when the addon stops
      *  caring about the player's state (rarely needed — quit + plugin disable flush automatically). */
     public static void hideAll(Plugin owner, Player player) {
         BuffBossbarManager manager = manager();
@@ -81,8 +81,8 @@ public final class BuffBossbar {
     }
 
     /** Parse a YAML-friendly color name (case-insensitive, hyphens/underscores OK) to a
-     *  {@link BossBar.Color}. Returns {@code fallback} when {@code raw} is null/blank/unknown — lets
-     *  config loaders accept any of {@code pink / blue / red / green / yellow / purple / white}
+     *  BossBar.Color. Returns fallback when raw is null/blank/unknown — lets
+     *  config loaders accept any of pink / blue / red / green / yellow / purple / white
      *  without crashing on typos. */
     public static BossBar.Color parseColor(String raw, BossBar.Color fallback) {
         if (raw == null) return fallback;
@@ -96,8 +96,8 @@ public final class BuffBossbar {
     }
 
     /** Parse a YAML-friendly overlay name (case-insensitive, hyphens/underscores OK) to a
-     *  {@link BossBar.Overlay}. Returns {@code fallback} on unknown — accepts
-     *  {@code progress / notched_6 / notched_10 / notched_12 / notched_20}. */
+     *  BossBar.Overlay. Returns fallback on unknown — accepts
+     *  progress / notched_6 / notched_10 / notched_12 / notched_20. */
     public static BossBar.Overlay parseOverlay(String raw, BossBar.Overlay fallback) {
         if (raw == null) return fallback;
         String norm = raw.trim().toUpperCase(java.util.Locale.ROOT).replace('-', '_');

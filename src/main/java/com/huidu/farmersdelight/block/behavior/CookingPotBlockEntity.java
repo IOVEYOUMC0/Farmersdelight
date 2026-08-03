@@ -105,7 +105,7 @@ public class CookingPotBlockEntity {
         return inventoryLock;
     }
 
-    /** Runs {@code action} while holding the inventory lock, so a caller can make a compound read-modify-write
+    /** Runs action while holding the inventory lock, so a caller can make a compound read-modify-write
      * (e.g. the GUI's authoritative-state refresh then write-back) atomic against the cook tick, which consumes
      * ingredients under this same lock. Re-entrant: the block entity's own locked accessors nest safely. */
     public void withInventoryLock(Runnable action) {
@@ -344,9 +344,9 @@ public class CookingPotBlockEntity {
         }
     }
 
-    /** Headline meal item for the broken-pot lore + fill bar: prefer the {@code pending-output} slot
-     *  (the just-cooked meal still inside the pot), fall back to {@code output} when pending is empty.
-     *  Differs from {@link #getMealDisplayItem()}, which only ever reads the output slot. */
+    /** Headline meal item for the broken-pot lore + fill bar: prefer the pending-output slot
+     *  (the just-cooked meal still inside the pot), fall back to output when pending is empty.
+     *  Differs from #getMealDisplayItem(), which only ever reads the output slot. */
     public ItemStack getPackedMealDisplayItem() {
         synchronized (inventoryLock) {
             ItemStack pending = getFirstItem(layout.pendingOutputSlots());
@@ -783,7 +783,7 @@ public class CookingPotBlockEntity {
         }
     }
 
-    /** Picks a slot index to charge one consumption unit of {@code ingredient}. When {@code preferFresh} is
+    /** Picks a slot index to charge one consumption unit of ingredient. When preferFresh is
      * true, skips slots already used in this cook cycle so 2× same-ingredient recipes naturally pull one
      * from each matching slot. Returns -1 when no slot is eligible (caller falls back to a non-fresh pass). */
     private int pickConsumptionSlot(int[] slots, int[] consume, RecipeIngredient ingredient, boolean preferFresh) {
@@ -822,8 +822,8 @@ public class CookingPotBlockEntity {
         }
     }
 
-    /** Bukkit has no built-in {@code BlockFace.counterClockWise()}; this returns the horizontal CCW
-     * neighbor, matching Forge's {@code Direction.getCounterClockWise()} for N/S/E/W. Null for any
+    /** Bukkit has no built-in BlockFace.counterClockWise(); this returns the horizontal CCW
+     * neighbor, matching Forge's Direction.getCounterClockWise() for N/S/E/W. Null for any
      * non-horizontal or unknown facing — caller falls back to the centered drop. */
     private static BlockFace counterClockwise(BlockFace facing) {
         if (facing == null) return null;
@@ -1153,11 +1153,11 @@ public class CookingPotBlockEntity {
         return getAvailableSpace(layout.outputSlots(), item);
     }
 
-    /** True if {@code provided} is the container {@code required} demands (custom-id match, else
-     *  isSimilar). Unlike {@link #isContainerValid} this validates against the passed argument, not
+    /** True if provided is the container required demands (custom-id match, else
+     *  isSimilar). Unlike #isContainerValid this validates against the passed argument, not
      *  the mealContainerStack field — needed for the direct-store path where the field is still null
      *  (a null field made isContainerValid accept ANY item, so a wrong container in a C-slot was
-     *  counted and consumed). {@code required} null/air = no requirement (matches anything). */
+     *  counted and consumed). required null/air = no requirement (matches anything). */
     private boolean isSameContainer(ItemStack required, ItemStack provided) {
         if (required == null || required.getType().isAir()) return true;
         if (provided == null || provided.getType().isAir()) return false;
@@ -1381,6 +1381,8 @@ public class CookingPotBlockEntity {
         return first.isSimilar(second);
     }
 
+    // Pure utility, cannot delegate to ItemUtils — ItemUtils' static initializer depends on
+    // Bukkit Registry which isn't available in unit test environments.
     private static String normalizeBlank(String value) {
         if (value == null) {
             return null;

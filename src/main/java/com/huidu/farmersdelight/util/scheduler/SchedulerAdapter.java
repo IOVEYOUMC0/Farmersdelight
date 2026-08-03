@@ -38,7 +38,7 @@ public final class SchedulerAdapter {
     }
 
     /**
-     * Whether the current thread owns {@code location}'s region. Always true on Paper (single main
+     * Whether the current thread owns location's region. Always true on Paper (single main
      * thread). On Folia, callers that must touch a block/block-entity synchronously (rather than via
      * runAt) should gate on this so a cross-region access does not throw. Reflection failure returns
      * true (do not block) so the guard degrades to pre-existing behavior if the API is absent.
@@ -87,7 +87,7 @@ public final class SchedulerAdapter {
     }
 
     /**
-     * Like {@link #runForEntity(Entity, Runnable)} but with a {@code retired} callback invoked if the
+     * Like Runnable) but with a retired callback invoked if the
      * entity is removed before the task runs (Folia). Without it, a task queued for an entity that is
      * retired mid-flight is silently dropped and any bookkeeping the task's finally block would do
      * (e.g. clearing an "already scheduled" guard set) never happens, leaking that entry forever. On

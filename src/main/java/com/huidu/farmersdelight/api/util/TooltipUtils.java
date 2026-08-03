@@ -9,14 +9,14 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 /** Tooltip-related helpers for CraftEngine items. Addon-facing (kept stable in the api package), but
- *  signatures use CraftEngine's {@code Item} wrapper since callers are already in CE-land. */
+ *  signatures use CraftEngine's Item wrapper since callers are already in CE-land. */
 public final class TooltipUtils {
 
     private TooltipUtils() {}
 
-    /** Hides the advanced-tooltip "Durability: X / Y" text line on {@code wrapped} by adding
-     *  {@code minecraft:damage} and {@code minecraft:max_damage} to
-     *  {@code minecraft:tooltip_display.hidden_components}, merging with any pre-existing entries.
+    /** Hides the advanced-tooltip "Durability: X / Y" text line on wrapped by adding
+     *  minecraft:damage and minecraft:max_damage to
+     *  minecraft:tooltip_display.hidden_components, merging with any pre-existing entries.
      *  Use when an item's damage value encodes something other than tool wear (a fill bar, a serving
      *  count, etc.) so the raw number isn't shown to the player. */
     @SuppressWarnings("unchecked")

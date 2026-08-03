@@ -13,8 +13,8 @@ import java.util.regex.Pattern;
 
 /**
  * Renders a template string into an Adventure Component: substitutes string placeholders, resolves
- * {@code <l10n:>}/{@code <lang:>} translation tags for a viewer, resolves CraftEngine {@code <image:ns:id>}
- * and {@code <shift:N>} glyph tags into image-font output, then parses MiniMessage + legacy color codes.
+ * <l10n:>/<lang:> translation tags for a viewer, resolves CraftEngine <image:ns:id>
+ * and <shift:N> glyph tags into image-font output, then parses MiniMessage + legacy color codes.
  * Component placeholders (e.g. an item display name) can be spliced in directly.
  */
 public final class PresentationUtils {
@@ -44,7 +44,7 @@ public final class PresentationUtils {
         return spliceComponents(text, components);
     }
 
-    /** Resolves CraftEngine {@code <shift:N>} and {@code <image:ns:id>} tags into image-font MiniMessage output. */
+    /** Resolves CraftEngine <shift:N> and <image:ns:id> tags into image-font MiniMessage output. */
     public static String resolveGlyphTags(String input) {
         if (input == null || input.isEmpty()) {
             return "";
@@ -107,7 +107,7 @@ public final class PresentationUtils {
         return buffer.toString();
     }
 
-    /** Parses {@code text} as MiniMessage, splicing each {@code {key}} occurrence with its Component value. */
+    /** Parses text as MiniMessage, splicing each {key} occurrence with its Component value. */
     private static Component spliceComponents(String text, Map<String, Component> components) {
         Component out = Component.empty();
         int i = 0;

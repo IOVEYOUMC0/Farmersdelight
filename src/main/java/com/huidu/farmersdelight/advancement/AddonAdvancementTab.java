@@ -27,8 +27,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * A single addon-defined UltimateAdvancementAPI tab, built from plain {@link AdvancementDef} data (no UAA types
- * leak to the addon). Mirrors {@link AdvancementManager}'s tree-building and grant/check logic, but the tree is
+ * A single addon-defined UltimateAdvancementAPI tab, built from plain AdvancementDef data (no UAA types
+ * leak to the addon). Mirrors AdvancementManager's tree-building and grant/check logic, but the tree is
  * data-driven and the tab name is supplied by the addon. Titles/descriptions are client translation keys (or
  * plain literal text, which clients render verbatim when the key is unknown), matching FarmersDelight's own tab.
  */

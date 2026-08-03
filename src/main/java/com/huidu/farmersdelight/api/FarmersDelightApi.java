@@ -25,7 +25,7 @@ import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Stable, addon-facing entry point for FarmersDelight services (scheduling + experience). Lives in the
- * name-stable {@code api} package; every signature uses only Bukkit / java / other {@code api} types so
+ * name-stable api package; every signature uses only Bukkit / java / other api types so
  * addons keep working against the obfuscated jar. Method bodies delegate to renamed internals freely.
  *
  * Version your integration with apiVersion() and hasFeature(String) rather than
@@ -134,7 +134,7 @@ public final class FarmersDelightApi {
         return feature != null && FEATURES.contains(feature.trim().toLowerCase(java.util.Locale.ROOT));
     }
 
-    /** Registers an addon's block namespace (e.g. {@code "brewinandchewin"}) so its CraftEngine blocks are
+    /** Registers an addon's block namespace (e.g. "brewinandchewin") so its CraftEngine blocks are
      * counted in FarmersDelight's block-state usage report. Idempotent; a trailing ':' is tolerated. */
     public void registerAddonBlockNamespace(String namespace) {
         if (namespace == null) {
@@ -181,8 +181,8 @@ public final class FarmersDelightApi {
     /**
      * Registers (or replaces) a FarmersDelight cooking-pot recipe at runtime, so addon dishes are cooked
      * by the real cooking pot. Ingredient specs use the recipe-file syntax ("ns:id", "#ns:tag", "a|b").
-     * {@code container} is the required bowl/bottle (null = none); {@code result} carries its own amount.
-     * The recipe persists across {@code /fd reload}. No-op when FarmersDelight is unavailable.
+     * container is the required bowl/bottle (null = none); result carries its own amount.
+     * The recipe persists across /fd reload. No-op when FarmersDelight is unavailable.
      */
     public void registerCookingPotRecipe(String id, List<String> ingredients, ItemStack container,
                                          ItemStack result, double experience, int cookTime, String category) {
@@ -195,7 +195,7 @@ public final class FarmersDelightApi {
                 (float) experience, cookTime, category);
     }
 
-    /** Removes a cooking-pot recipe registered via {@link #registerCookingPotRecipe}. */
+    /** Removes a cooking-pot recipe registered via #registerCookingPotRecipe. */
     public void unregisterCookingPotRecipe(String id) {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         if (plugin != null && isAvailable() && id != null) {
@@ -205,9 +205,9 @@ public final class FarmersDelightApi {
 
     /**
      * Registers (or replaces) a FarmersDelight cutting-board recipe at runtime, so addon items can be cut
-     * on the real cutting board. {@code input}/{@code tool} use the recipe-file syntax ("ns:id", "#ns:tag");
-     * each {@code results} stack carries its own amount; {@code sound} is a sound id (null = default knife).
-     * The recipe persists across {@code /fd reload}. No-op when FarmersDelight is unavailable.
+     * on the real cutting board. input/tool use the recipe-file syntax ("ns:id", "#ns:tag");
+     * each results stack carries its own amount; sound is a sound id (null = default knife).
+     * The recipe persists across /fd reload. No-op when FarmersDelight is unavailable.
      */
     public void registerCuttingBoardRecipe(String id, String input, String tool,
                                            List<ItemStack> results, String sound) {
@@ -224,7 +224,7 @@ public final class FarmersDelightApi {
         plugin.getCuttingBoardRecipes().registerExternalRecipe(id, input, tool, copies, sound);
     }
 
-    /** Removes a cutting-board recipe registered via {@link #registerCuttingBoardRecipe}. */
+    /** Removes a cutting-board recipe registered via #registerCuttingBoardRecipe. */
     public void unregisterCuttingBoardRecipe(String id) {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         if (plugin != null && isAvailable() && id != null) {
@@ -243,13 +243,13 @@ public final class FarmersDelightApi {
         return typeId == null ? null : recipeTypes.get(typeId);
     }
 
-    /** Opens the standalone recipe book (no Fill button) for {@code player}. */
+    /** Opens the standalone recipe book (no Fill button) for player. */
     public void openRecipeBook(Player player) {
         openRecipeBook(player, null);
     }
 
     /**
-     * Opens the recipe book for {@code player} with a {@link RecipeFiller}. When non-null, recipe detail
+     * Opens the recipe book for player with a RecipeFiller. When non-null, recipe detail
      * shows a Fill button that fills the filler's station; pass null for a read-only standalone book.
      */
     public void openRecipeBook(Player player, RecipeFiller filler) {
@@ -259,10 +259,10 @@ public final class FarmersDelightApi {
     }
 
     /**
-     * Opens the book directly to a single registered type ({@code typeId}), as an independent book — never
+     * Opens the book directly to a single registered type (typeId), as an independent book — never
      * the shared category menu, so it won't pile in with other addons' types. If the type provides its own
-     * {@link RecipeType#listLayout()}/{@link RecipeType#detailLayout()}, those drive the look. Falls back to
-     * the shared book when {@code typeId} isn't registered.
+     * RecipeType#listLayout()/RecipeType#detailLayout(), those drive the look. Falls back to
+     * the shared book when typeId isn't registered.
      */
     public void openRecipeBook(Player player, String typeId, RecipeFiller filler) {
         if (player == null) {
@@ -276,7 +276,7 @@ public final class FarmersDelightApi {
         }
     }
 
-    /** Opens the generic recipe editor for {@code recipeId} of a registered type (null id = new recipe). */
+    /** Opens the generic recipe editor for recipeId of a registered type (null id = new recipe). */
     public void openRecipeEditor(Player player, String typeId, String recipeId) {
         RecipeType type = recipeType(typeId);
         if (player != null && type != null && type.editor() != null) {
@@ -295,19 +295,19 @@ public final class FarmersDelightApi {
     }
 
     /**
-     * Resolves translation tags ({@code <l10n:key>} / {@code <lang:key>} / {@code <i18n:key>}) in {@code text}
-     * to {@code player}'s locale (falling back to the default/en locale, then the raw key), leaving other
+     * Resolves translation tags (<l10n:key> / <lang:key> / <i18n:key>) in text
+     * to player's locale (falling back to the default/en locale, then the raw key), leaving other
      * content — including MiniMessage markup — untouched. Keys resolve through FarmersDelight's lang files and
      * CraftEngine's translations, so addons can put localized placeholders in their own GUI config strings.
-     * {@code player} may be null (uses the default locale).
+     * player may be null (uses the default locale).
      */
     public String resolveTranslations(String text, Player player) {
         return com.huidu.farmersdelight.util.ItemUtils.resolveTranslationTags(text, player);
     }
 
     /**
-     * Formats a server-console log line from FarmersDelight's lang files: {@code key} is resolved under the
-     * {@code console.} prefix in the active console locale, with {@code args} substituted as name/value pairs
+     * Formats a server-console log line from FarmersDelight's lang files: key is resolved under the
+     * console. prefix in the active console locale, with args substituted as name/value pairs
      * ("count", 3, "file", name, ...); an unknown key returns itself. Lets addons emit console logs through the
      * same shared lang system rather than hardcoding English. Callers still choose the log level/logger.
      */
@@ -327,19 +327,19 @@ public final class FarmersDelightApi {
         return plugin != null && plugin.isDebugEnabled(category);
     }
 
-    /** True if {@code block} is a configured heat source (cooking-pot heating). */
+    /** True if block is a configured heat source (cooking-pot heating). */
     public boolean isHeatSource(Block block) {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         return plugin != null && block != null && plugin.getHeatSourceConfig().isHeatSource(block);
     }
 
-    /** True if {@code block} is a configured heat conductor (passes heat from a source below it). */
+    /** True if block is a configured heat conductor (passes heat from a source below it). */
     public boolean isConductor(Block block) {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         return plugin != null && block != null && plugin.getHeatSourceConfig().isConductor(block);
     }
 
-    // ── Packet item displays ─────────────────────────────────────────────────────────────────────
+    // Packet item displays
     // Server-side, packet-only ItemDisplay proxies (no real entity is spawned): FarmersDelight tracks them,
     // syncs them to nearby players (join / chunk-load / teleport) and cleans them up on world unload. Use
     // these instead of world.spawn(ItemDisplay) so an addon's decoration displays don't persist to disk,
@@ -395,7 +395,7 @@ public final class FarmersDelightApi {
         }
     }
 
-    /** Runs {@code task} on the region owning {@code location} (Folia-safe; immediate on Paper). */
+    /** Runs task on the region owning location (Folia-safe; immediate on Paper). */
     public void runAtLocation(Location location, Runnable task) {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         if (plugin == null || task == null) {
@@ -404,7 +404,7 @@ public final class FarmersDelightApi {
         plugin.scheduler().runAt(location, task);
     }
 
-    /** Runs {@code task} {@code delayTicks} later on the region owning {@code location} (Folia-safe). */
+    /** Runs task delayTicks later on the region owning location (Folia-safe). */
     public void runLaterAtLocation(Location location, Runnable task, long delayTicks) {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         if (plugin == null || task == null) {
@@ -434,9 +434,9 @@ public final class FarmersDelightApi {
     }
 
     /**
-     * Awards crafting experience to {@code player} for a produced {@code result}, mirroring the cooking
-     * pot: optional vanilla XP orbs dropped at {@code location} (gated by the cooking-pot XP config),
-     * AuraSkills XP, and a {@link ProfessionCookingExperienceEvent} carrying {@code source}. Folia-safe.
+     * Awards crafting experience to player for a produced result, mirroring the cooking
+     * pot: optional vanilla XP orbs dropped at location (gated by the cooking-pot XP config),
+     * AuraSkills XP, and a ProfessionCookingExperienceEvent carrying source. Folia-safe.
      */
     public void awardCraftingExperience(Player player, Location location, ItemStack result,
                                         double baseExperience, String source) {

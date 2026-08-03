@@ -34,7 +34,7 @@ public class FarmersDelightProduceEvent extends Event {
         return playerId;
     }
 
-    /** The producing station, e.g. {@code "cooking_pot"} or an addon's id like {@code "keg"}. */
+    /** The producing station, e.g. "cooking_pot" or an addon's id like "keg". */
     public String getSource() {
         return source;
     }

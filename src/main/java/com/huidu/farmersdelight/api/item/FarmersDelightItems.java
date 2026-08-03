@@ -17,7 +17,7 @@ import java.util.Set;
  * Stable, addon-facing item helpers for FarmersDelight. Resolves and matches items across CraftEngine
  * custom items, vanilla materials, and item tags (custom + vanilla).
  *
- * This class lives in {@code com.huidu.farmersdelight.api.**}, the only package kept name-stable
+ * This class lives in com.huidu.farmersdelight.api.**, the only package kept name-stable
  * through obfuscation, so addons may call it directly. Signatures use only Bukkit / java types.
  */
 @ApiStatus.NonExtendable
@@ -26,7 +26,7 @@ public final class FarmersDelightItems {
     private FarmersDelightItems() {
     }
 
-    /** CraftEngine custom id, else {@code minecraft:<material>}, else null for empty/air. */
+    /** CraftEngine custom id, else minecraft:<material>, else null for empty/air. */
     public static String idOf(ItemStack item) {
         return ItemUtils.resolveItemId(item);
     }
@@ -36,29 +36,29 @@ public final class FarmersDelightItems {
         return ItemUtils.createItem(itemId);
     }
 
-    /** True if {@code item} resolves to the given namespaced id (CraftEngine or vanilla). */
+    /** True if item resolves to the given namespaced id (CraftEngine or vanilla). */
     public static boolean matchesId(ItemStack item, String itemId) {
         return ItemUtils.matchesItemId(item, itemId);
     }
 
-    /** True if {@code item} carries the given tag id ({@code #ns:tag} or {@code ns:tag}); matches both CraftEngine custom and vanilla tags. */
+    /** True if item carries the given tag id (#ns:tag or ns:tag); matches both CraftEngine custom and vanilla tags. */
     public static boolean matchesTag(ItemStack item, String tagId) {
         return ItemUtils.matchesCustomOrVanillaTag(item, tagId);
     }
 
-    /** The item's display name component, localized for {@code player} (player may be null). */
+    /** The item's display name component, localized for player (player may be null). */
     public static Component displayNameOf(ItemStack item, Player player) {
         return ItemUtils.getDisplayComponent(item, player);
     }
 
     /**
-     * Purely-translatable display name (no player viewer): a {@code Component.translatable(key)} the
+     * Purely-translatable display name (no player viewer): a Component.translatable(key) the
      * receiving client can render in its own locale via the resource pack's lang JSON, with a
-     * server-side-resolved {@code .fallback(...)} text so clients whose pack lacks the lang entry
-     * still see a readable name (server default locale) rather than the raw {@code item.ns.id} key.
+     * server-side-resolved .fallback(...) text so clients whose pack lacks the lang entry
+     * still see a readable name (server default locale) rather than the raw item.ns.id key.
      *
-     * <p>Use for lore lines / chat broadcasts persisted on an {@link ItemStack} or sent to many
-     * viewers, where {@link #displayNameOf(ItemStack, Player)} would freeze the text to one player's
+     * Use for lore lines / chat broadcasts persisted on an ItemStack or sent to many
+     * viewers, where Player) would freeze the text to one player's
      * locale. An anvil-renamed name is honoured as-is.
      */
     public static Component translatableDisplayNameOf(ItemStack item) {
@@ -66,11 +66,11 @@ public final class FarmersDelightItems {
     }
 
     /**
-     * Same as {@link #translatableDisplayNameOf(ItemStack)} but ignores any player-applied anvil rename
-     * — the visible name follows each viewer's client locale via {@code Component.translatable(key)},
-     * with a server-resolved {@code .fallback(...)} so missing-pack clients still see readable text.
+     * Same as #translatableDisplayNameOf(ItemStack) but ignores any player-applied anvil rename
+     * — the visible name follows each viewer's client locale via Component.translatable(key),
+     * with a server-resolved .fallback(...) so missing-pack clients still see readable text.
      *
-     * <p>Use for lore lines persisted on an {@link ItemStack} where the embedded item name should
+     * Use for lore lines persisted on an ItemStack where the embedded item name should
      * switch with each viewer's language but must not freeze to one player's anvil typo.
      */
     public static Component translatableDisplayNameOfNoAnvilOf(ItemStack item) {
@@ -79,11 +79,11 @@ public final class FarmersDelightItems {
 
     /**
      * Display name resolved entirely on the server in the server's default locale. Ignores any
-     * player-applied anvil rename and never returns a {@code Component.translatable} — the text is
+     * player-applied anvil rename and never returns a Component.translatable — the text is
      * fully baked here so every client renders the same characters regardless of its own locale or
      * resource-pack state.
      *
-     * <p>Use for lore lines persisted on an {@link ItemStack} when the visible name must match the
+     * Use for lore lines persisted on an ItemStack when the visible name must match the
      * server language (and stay stable across viewers) rather than the receiver's client locale.
      */
     public static Component serverDisplayNameOf(ItemStack item) {
@@ -100,18 +100,18 @@ public final class FarmersDelightItems {
         return ItemUtils.getItemTagIds(item);
     }
 
-    /** True if {@code item} is a CraftEngine custom item (not a plain vanilla material). */
+    /** True if item is a CraftEngine custom item (not a plain vanilla material). */
     public static boolean isCustomItem(ItemStack item) {
         return ItemUtils.isCustomItem(item);
     }
 
-    /** The CraftEngine custom id of {@code item}, or null when it is a plain vanilla material / empty. */
+    /** The CraftEngine custom id of item, or null when it is a plain vanilla material / empty. */
     public static String customIdOf(ItemStack item) {
         return ItemUtils.getCustomItemId(item);
     }
 
     /**
-     * The crafting remainder for a single {@code item} (e.g. bucket from a milk bucket, glass bottle from a
+     * The crafting remainder for a single item (e.g. bucket from a milk bucket, glass bottle from a
      * honey bottle, or a CraftEngine-configured container return), or null when none. Mirrors FarmersDelight's
      * own stations, so addon recipes can return containers consistently.
      */
@@ -120,8 +120,8 @@ public final class FarmersDelightItems {
     }
 
     /**
-     * Sets {@code item}'s display name and lore from templates, rendered per {@code viewer} via
-     * {@link FarmersDelightText} (string/Component placeholders, {@code <l10n:>} tags, CraftEngine glyphs,
+     * Sets item's display name and lore from templates, rendered per viewer via
+     * FarmersDelightText (string/Component placeholders, <l10n:> tags, CraftEngine glyphs,
      * MiniMessage + legacy colors), with the vanilla lore italic stripped. Null name/lore templates are left
      * untouched. Use this so addon item tooltips and GUI icons share FarmersDelight's rendering.
      */
@@ -145,8 +145,8 @@ public final class FarmersDelightItems {
     }
 
     /**
-     * Builds a GUI icon from {@code itemId} (CraftEngine custom item or vanilla material) with a rendered name
-     * and lore (see {@link #applyDisplay}). Returns null when {@code itemId} can't be resolved.
+     * Builds a GUI icon from itemId (CraftEngine custom item or vanilla material) with a rendered name
+     * and lore (see #applyDisplay). Returns null when itemId can't be resolved.
      */
     public static ItemStack buildIcon(String itemId, String nameTemplate, List<String> loreTemplates,
                                       Player viewer, Map<String, String> placeholders) {

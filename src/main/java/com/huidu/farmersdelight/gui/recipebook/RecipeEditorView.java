@@ -18,9 +18,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Generic recipe editor backed by a {@link RecipeEditor}: editable item slots + result, numeric-field
+ * Generic recipe editor backed by a RecipeEditor: editable item slots + result, numeric-field
  * buttons (left +, right -), a result-count button, and save/delete/cancel. Persists by handing an
- * {@link EditableRecipe} back to the addon's editor.
+ * EditableRecipe back to the addon's editor.
  */
 public final class RecipeEditorView implements InventoryHolder {
 

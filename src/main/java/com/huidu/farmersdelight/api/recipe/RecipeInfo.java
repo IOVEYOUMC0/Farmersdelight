@@ -1,5 +1,6 @@
 package com.huidu.farmersdelight.api.recipe;
 
+import com.huidu.farmersdelight.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
@@ -7,17 +8,17 @@ import java.util.List;
 
 /**
  * Read-only snapshot of a FarmersDelight recipe, carrying only Bukkit / java types so it crosses the
- * obfuscation-stable {@code api} boundary. Ingredients and tools are id strings in the recipe-file syntax
- * ({@code "ns:id"}, {@code "#ns:tag"}, {@code "a|b"} for a choice); {@link ItemStack} fields are cloned on
+ * obfuscation-stable api boundary. Ingredients and tools are id strings in the recipe-file syntax
+ * ("ns:id", "#ns:tag", "a|b" for a choice); ItemStack fields are cloned on
  * access so callers cannot mutate the underlying recipe.
  */
 public record RecipeInfo(String id, String type, List<String> ingredients, List<String> tools,
                          ItemStack container, List<ItemStack> results, int cookTimeTicks,
                          double experience, String category) {
 
-    /** {@link #type()} value for cooking-pot recipes. */
+    /** #type() value for cooking-pot recipes. */
     public static final String TYPE_COOKING_POT = "cooking_pot";
-    /** {@link #type()} value for cutting-board recipes. */
+    /** #type() value for cutting-board recipes. */
     public static final String TYPE_CUTTING_BOARD = "cutting_board";
 
     public RecipeInfo {
@@ -45,7 +46,7 @@ public record RecipeInfo(String id, String type, List<String> ingredients, List<
         }
         List<ItemStack> copies = new ArrayList<>(items.size());
         for (ItemStack item : items) {
-            copies.add(item == null ? null : item.clone());
+            copies.add(ItemUtils.cloneOrNull(item));
         }
         return List.copyOf(copies);
     }

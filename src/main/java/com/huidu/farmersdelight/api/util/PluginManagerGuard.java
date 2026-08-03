@@ -15,19 +15,19 @@ import java.util.Set;
 /**
  * Cancels plugin-manager (PlugMan / PlugManX / PluginManager / ...) commands that try to enable,
  * disable, load, unload or reload a registered plugin name at runtime. Tells the sender the plugin
- * does not support live management and to {@code /stop} + restart instead.
+ * does not support live management and to /stop + restart instead.
  *
- * <p>This addresses the failure mode where CraftEngine + per-chunk block entities + scheduler tasks
+ * This addresses the failure mode where CraftEngine + per-chunk block entities + scheduler tasks
  * keep references into the plugin's classloader: once the classloader closes, every late-bound
- * lambda / event delivery throws {@code NoClassDefFoundError}. Detecting and refusing the command
- * up front is cleaner than waiting for {@code onDisable} to scream a warning after the damage is
+ * lambda / event delivery throws NoClassDefFoundError. Detecting and refusing the command
+ * up front is cleaner than waiting for onDisable to scream a warning after the damage is
  * already in flight.
  *
- * <p>Vanilla {@code /reload} bypasses this guard (it's a core command, not a plugin command); the
+ * Vanilla /reload bypasses this guard (it's a core command, not a plugin command); the
  * plugin's onEnable should still install a JVM-lifetime reload guard (e.g. a system property) so
- * the second {@code onEnable} call self-disables.
+ * the second onEnable call self-disables.
  *
- * <p>Register one instance per plugin with the exact plugin name as it appears in {@code plugin.yml}.
+ * Register one instance per plugin with the exact plugin name as it appears in plugin.yml.
  */
 public final class PluginManagerGuard implements Listener {
 
@@ -36,7 +36,7 @@ public final class PluginManagerGuard implements Listener {
             "plugman", "plm", "pluginmanager", "plugmanx", "plmx", "pluginsmanager", "pl"
     );
 
-    /** Verbs that mutate plugin state. {@code info}, {@code list}, etc. are allowed through. */
+    /** Verbs that mutate plugin state. info, list, etc. are allowed through. */
     private static final Set<String> DESTRUCTIVE_ACTIONS = Set.of(
             "unload", "reload", "disable", "enable", "load", "restart", "stop", "start"
     );
