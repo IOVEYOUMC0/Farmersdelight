@@ -14,12 +14,12 @@ import java.util.logging.Logger;
  * underneath (white_carpet by default) is what actually stops the player from sinking to floor level
  * and lets items rest on the rug.
  *
- * <p>A CE custom <i>block</i> can't supply that collision itself: a custom block's collision equals
+ * A CE custom <i>block</i> can't supply that collision itself: a custom block's collision equals
  * the collision of the vanilla state its appearance maps to, and none of CraftEngine's remappable
  * states is carpet-shaped — the thin ones (tripwire / pressure_plate / sapling) have no collision at
  * all and every collision-bearing one is a full cube. Hence the underlying-block approach.
  *
- * <p>Config shape (a {@code rugs:} section of config.yml):
+ * Config shape (a rugs: section of config.yml):
  * <pre>
  * rugs:
  *   "farmersdelight:canvas_rug":
@@ -31,9 +31,9 @@ import java.util.logging.Logger;
  * configurable, so a pack can swap white_carpet for any other thin walkable block, or register brand
  * new rug ids without touching code.
  *
- * <p>Instances are built fully, then published once to a {@code volatile} field (see
- * {@code FarmersDelightPlugin}); region-thread readers in {@code RugListener} therefore never observe
- * a half-filled config. The internal maps are never mutated after {@link #loadFromConfig} returns.
+ * Instances are built fully, then published once to a volatile field (see
+ * FarmersDelightPlugin); region-thread readers in RugListener therefore never observe
+ * a half-filled config. The internal maps are never mutated after #loadFromConfig returns.
  */
 public class RugConfig {
 
@@ -88,17 +88,17 @@ public class RugConfig {
         this.underlyingMaterials = Set.copyOf(underlyingByRug.values());
     }
 
-    /** True if {@code id} (a namespaced furniture id string) is a managed rug. */
+    /** True if id (a namespaced furniture id string) is a managed rug. */
     public boolean isRug(String id) {
         return id != null && underlyingByRug.containsKey(id);
     }
 
-    /** The vanilla collision block configured for {@code id} (default white_carpet if unlisted). */
+    /** The vanilla collision block configured for id (default white_carpet if unlisted). */
     public Material underlyingOf(String id) {
         return underlyingByRug.getOrDefault(id, DEFAULT_UNDERLYING);
     }
 
-    /** Fast gate for block-event hot paths: is {@code material} an underlying block of any rug? */
+    /** Fast gate for block-event hot paths: is material an underlying block of any rug? */
     public boolean isUnderlyingMaterial(Material material) {
         return material != null && underlyingMaterials.contains(material);
     }

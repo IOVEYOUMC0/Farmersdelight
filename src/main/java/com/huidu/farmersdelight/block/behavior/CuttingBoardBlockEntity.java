@@ -2,7 +2,7 @@ package com.huidu.farmersdelight.block.behavior;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.config.CuttingBoardDisplayConfig;
-import com.huidu.farmersdelight.util.DisplayTransformUtils;
+import com.huidu.farmersdelight.util.compat.DisplayTransformUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
 import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.visual.ItemDisplayManager;
@@ -36,7 +36,7 @@ public class CuttingBoardBlockEntity {
     private int displayedCount;
     private CuttingBoardDisplayConfig.DisplayOverride displayedOverride;
 
-    /** Adds this cutting board's live proxy display ids to {@code out} (for orphan-only {@code /fd cleanup}). */
+    /** Adds this cutting board's live proxy display ids to out (for orphan-only /fd cleanup). */
     void collectDisplayIds(java.util.Set<Integer> out) {
         out.addAll(displayEntityIds);
     }
@@ -182,7 +182,7 @@ public class CuttingBoardBlockEntity {
                                     int desiredCount, ItemStack visualItem,
                                     CuttingBoardDisplayConfig.DisplayOverride displayOverride) {
         while (displayEntityIds.size() > desiredCount) {
-            int entityId = displayEntityIds.remove(displayEntityIds.size() - 1);
+            int entityId = displayEntityIds.removeLast();
             if (entityId != NO_DISPLAY) {
                 visualManager.destroyDisplay(entityId);
             }

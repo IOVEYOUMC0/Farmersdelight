@@ -12,12 +12,12 @@ import java.util.Map;
  * A type-agnostic, displayable recipe shown in the generic recipe book. Addons adapt their own recipes
  * to this so FarmersDelight's recipe book can render them without knowing the addon's internal types.
  *
- * Lives in the name-stable {@code api} package; uses only Bukkit / Adventure / java types.
+ * Lives in the name-stable api package; uses only Bukkit / Adventure / java types.
  */
 @ApiStatus.OverrideOnly
 public interface ViewableRecipe {
 
-    /** Unique id within its {@link RecipeType} (used for detail/editor lookup). */
+    /** Unique id within its RecipeType (used for detail/editor lookup). */
     String id();
 
     /** Input/ingredient items to display (already resolved to concrete stacks). */
@@ -47,9 +47,9 @@ public interface ViewableRecipe {
 
     /**
      * Extra display items keyed by a custom role name, for a type that supplies its own detail layout
-     * (see {@link RecipeType#detailLayout()}). The detail view places each role's items into the layout
-     * slots whose legend maps to that role — e.g. {@code {"fluid": [...], "return": [...]}} for the keg.
-     * Roles {@code ingredient}/{@code result} are handled by {@link #inputs()}/{@link #result()} and need
+     * (see RecipeType#detailLayout()). The detail view places each role's items into the layout
+     * slots whose legend maps to that role — e.g. {"fluid": [...], "return": [...]} for the keg.
+     * Roles ingredient/result are handled by #inputs()/#result() and need
      * not be repeated here. Defaults to none.
      */
     default Map<String, List<ItemStack>> displaySlots() {
@@ -69,7 +69,7 @@ public interface ViewableRecipe {
     }
 
     /**
-     * Whether {@code player} can currently make this recipe (has the required inputs). Used by the recipe
+     * Whether player can currently make this recipe (has the required inputs). Used by the recipe
      * book's optional "craftable only" filter. Defaults to true (always shown) for types that don't
      * implement an inventory check.
      */

@@ -13,19 +13,19 @@ import java.util.List;
  * Central text renderer for everything the plugin shows players: GUI item names, GUI item lore,
  * chat messages, and action bars.
  *
- * A single string may freely mix MiniMessage tags ({@code <green>}, {@code <#ff8800>},
- * {@code <gradient:..>}, {@code <bold>}, ...) and legacy {@code &}/{@code §} color codes (including
- * {@code &#rrggbb} and Bukkit's {@code §x§r§r..} hex). Legacy codes are converted to MiniMessage,
+ * A single string may freely mix MiniMessage tags (<green>, <#ff8800>,
+ * <gradient:..>, <bold>, ...) and legacy &/§ color codes (including
+ * &#rrggbb and Bukkit's §x§r§r.. hex). Legacy codes are converted to MiniMessage,
  * and the whole string is parsed once by MiniMessage, so old configs still work and new MiniMessage
  * configs render too.
  *
- * {@link #name(String)} and {@link #lore(String)} also fix two long-standing visual issues
+ * #name(String) and #lore(String) also fix two long-standing visual issues
  * with NBT-driven text:
  * (1) Italics &mdash; custom item names and lore render italic by default. These helpers
  * disable italics unless the text explicitly requests it.
  * (2) Dark-purple lore &mdash; uncolored lore lines fall back to the vanilla
- * {@code dark_purple} default. {@link #lore(String)} supplies {@code gray} (and
- * {@link #name(String)} supplies {@code white}), only when the text sets no color itself.
+ * dark_purple default. #lore(String) supplies gray (and
+ * #name(String) supplies white), only when the text sets no color itself.
  */
 public final class Text {
 
@@ -103,8 +103,8 @@ public final class Text {
     }
 
     /**
-     * Converts legacy {@code &}/{@code §} color codes (including {@code &#rrggbb} and Bukkit's
-     * {@code §x§r§r§g§g§b§b} hex) into MiniMessage tags, leaving any existing MiniMessage tags and
+     * Converts legacy &/§ color codes (including &#rrggbb and Bukkit's
+     * §x§r§r§g§g§b§b hex) into MiniMessage tags, leaving any existing MiniMessage tags and
      * all other text unchanged. Package-private for direct unit testing.
      */
     static String legacyToMiniMessage(String input) {
@@ -185,9 +185,9 @@ public final class Text {
     }
 
     /**
-     * Checks for a Bukkit expanded-hex sequence starting at {@code i}, where {@code s.charAt(i)} is
-     * the color character and {@code s.charAt(i + 1)} is {@code x}/{@code X}: followed by six
-     * {@code <colourChar><hexDigit>} pairs (14 characters total).
+     * Checks for a Bukkit expanded-hex sequence starting at i, where s.charAt(i) is
+     * the color character and s.charAt(i + 1) is x/X: followed by six
+     * <colourChar><hexDigit> pairs (14 characters total).
      */
     private static boolean isBukkitHex(String s, int i) {
         if (i + 14 > s.length()) {

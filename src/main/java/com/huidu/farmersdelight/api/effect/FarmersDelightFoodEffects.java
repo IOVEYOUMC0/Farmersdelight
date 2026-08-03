@@ -10,7 +10,7 @@ import org.bukkit.entity.Player;
  * saturated; Nourishment = suppressed exhaustion). Addons can apply/query/clear effects directly, or register
  * their own custom food items so eating them triggers an effect.
  *
- * Lives in the name-stable {@code api} package; every signature uses only Bukkit / java types. Method bodies
+ * Lives in the name-stable api package; every signature uses only Bukkit / java types. Method bodies
  * delegate to renamed internals.
  *
  * Threading: the apply/remove methods mutate player state and send messages, so they must run on the player's
@@ -21,12 +21,12 @@ public final class FarmersDelightFoodEffects {
     private FarmersDelightFoodEffects() {
     }
 
-    /** Applies (or refreshes, keeping the longer) the Comfort effect for {@code durationSeconds} at level 1. */
+    /** Applies (or refreshes, keeping the longer) the Comfort effect for durationSeconds at level 1. */
     public static void applyComfort(Player player, int durationSeconds) {
         applyComfort(player, durationSeconds, 1);
     }
 
-    /** Applies the Comfort effect at {@code level} (1-based) for {@code durationSeconds}, stacking against any
+    /** Applies the Comfort effect at level (1-based) for durationSeconds, stacking against any
      *  active dose by the vanilla rule (stronger replaces + refreshes, equal extends, weaker is ignored). */
     public static void applyComfort(Player player, int durationSeconds, int level) {
         if (player != null && durationSeconds > 0) {
@@ -34,37 +34,37 @@ public final class FarmersDelightFoodEffects {
         }
     }
 
-    /** Applies (or refreshes, keeping the longer) the Nourishment effect for {@code durationSeconds} at level 1. */
+    /** Applies (or refreshes, keeping the longer) the Nourishment effect for durationSeconds at level 1. */
     public static void applyNourishment(Player player, int durationSeconds) {
         applyNourishment(player, durationSeconds, 1);
     }
 
-    /** Applies the Nourishment effect at {@code level} (1-based) for {@code durationSeconds}, with the same
-     *  vanilla stacking rule as {@link #applyComfort(Player, int, int)}. */
+    /** Applies the Nourishment effect at level (1-based) for durationSeconds, with the same
+     *  vanilla stacking rule as int, int). */
     public static void applyNourishment(Player player, int durationSeconds, int level) {
         if (player != null && durationSeconds > 0) {
             EffectManager.applyNourishment(player, durationSeconds, level);
         }
     }
 
-    /** True while {@code player} has an active Comfort effect. */
+    /** True while player has an active Comfort effect. */
     public static boolean hasComfort(Player player) {
         return player != null && EffectManager.hasComfort(player);
     }
 
-    /** True while {@code player} has an active Nourishment effect. */
+    /** True while player has an active Nourishment effect. */
     public static boolean hasNourishment(Player player) {
         return player != null && EffectManager.hasNourishment(player);
     }
 
-    /** Clears the Comfort effect from {@code player}. */
+    /** Clears the Comfort effect from player. */
     public static void removeComfort(Player player) {
         if (player != null) {
             EffectManager.removeComfort(player);
         }
     }
 
-    /** Clears the Nourishment effect from {@code player}. */
+    /** Clears the Nourishment effect from player. */
     public static void removeNourishment(Player player) {
         if (player != null) {
             EffectManager.removeNourishment(player);
@@ -72,9 +72,9 @@ public final class FarmersDelightFoodEffects {
     }
 
     /**
-     * Registers an addon food item id ({@code "ns:id"}, CraftEngine custom or {@code minecraft:..}) so eating it
-     * grants Comfort for {@code durationSeconds}. Works regardless of the {@code comfort-foods} config toggle and
-     * survives {@code /fd reload}. No-op when FarmersDelight is unavailable.
+     * Registers an addon food item id ("ns:id", CraftEngine custom or minecraft:..) so eating it
+     * grants Comfort for durationSeconds. Works regardless of the comfort-foods config toggle and
+     * survives /fd reload. No-op when FarmersDelight is unavailable.
      */
     public static void registerComfortFood(String itemId, int durationSeconds) {
         FoodEatListener listener = listener();
@@ -84,8 +84,8 @@ public final class FarmersDelightFoodEffects {
     }
 
     /**
-     * Registers an addon food item id so eating it grants Nourishment for {@code durationSeconds}. Works
-     * regardless of the {@code nourishment-foods} config toggle and survives {@code /fd reload}.
+     * Registers an addon food item id so eating it grants Nourishment for durationSeconds. Works
+     * regardless of the nourishment-foods config toggle and survives /fd reload.
      */
     public static void registerNourishmentFood(String itemId, int durationSeconds) {
         FoodEatListener listener = listener();
@@ -94,7 +94,7 @@ public final class FarmersDelightFoodEffects {
         }
     }
 
-    /** Removes an addon comfort-food mapping registered via {@link #registerComfortFood}. */
+    /** Removes an addon comfort-food mapping registered via #registerComfortFood. */
     public static void unregisterComfortFood(String itemId) {
         FoodEatListener listener = listener();
         if (listener != null) {
@@ -102,7 +102,7 @@ public final class FarmersDelightFoodEffects {
         }
     }
 
-    /** Removes an addon nourishment-food mapping registered via {@link #registerNourishmentFood}. */
+    /** Removes an addon nourishment-food mapping registered via #registerNourishmentFood. */
     public static void unregisterNourishmentFood(String itemId) {
         FoodEatListener listener = listener();
         if (listener != null) {

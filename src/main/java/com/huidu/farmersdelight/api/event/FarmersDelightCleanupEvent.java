@@ -7,11 +7,11 @@ import org.jetbrains.annotations.ApiStatus;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Fired by {@code /fd cleanup} after FarmersDelight has cleaned its own orphan display / tray entities, so
+ * Fired by /fd cleanup after FarmersDelight has cleaned its own orphan display / tray entities, so
  * addons can clean their own state in the same admin pass. Listeners report how many entities they removed
- * via {@link #addRemoved(int)}; the command sums those counts into its final reply.
+ * via #addRemoved(int); the command sums those counts into its final reply.
  *
- * <p>Mirrors {@link FarmersDelightReloadEvent} as the cleanup-side hook for addons. Listeners should treat
+ * Mirrors FarmersDelightReloadEvent as the cleanup-side hook for addons. Listeners should treat
  * this as a one-shot admin signal (not periodic) and may do best-effort regional scheduling on Folia — the
  * count is allowed to be "scheduled for removal" rather than "removed before this method returns".
  */

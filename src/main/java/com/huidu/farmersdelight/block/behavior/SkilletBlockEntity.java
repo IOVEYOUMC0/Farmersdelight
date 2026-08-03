@@ -3,7 +3,7 @@ package com.huidu.farmersdelight.block.behavior;
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
-import com.huidu.farmersdelight.util.DisplayTransformUtils;
+import com.huidu.farmersdelight.util.compat.DisplayTransformUtils;
 import com.huidu.farmersdelight.visual.ItemDisplayManager;
 import net.momirealms.craftengine.core.world.BlockPos;
 import org.bukkit.Location;
@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Legacy skillet state model, kept for the recipe-cache helper methods and compatibility with old saved state.
- * Runtime skillet logic is handled by {@link com.huidu.farmersdelight.manager.SkilletManager}.
+ * Runtime skillet logic is handled by com.huidu.farmersdelight.manager.SkilletManager.
  */
 @Deprecated(forRemoval = false)
 public class SkilletBlockEntity {

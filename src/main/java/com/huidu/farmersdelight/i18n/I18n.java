@@ -4,7 +4,6 @@ import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.api.config.ConfigFileUpdater;
 import com.huidu.farmersdelight.util.Text;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.TranslatableComponent;
 import net.kyori.adventure.translation.GlobalTranslator;
 import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.plugin.locale.TranslationManager;
@@ -38,7 +37,7 @@ public class I18n {
 
     /**
      * Immutable snapshot of the locale lookup state: locales, currentLocale, and defaultLocale are always consistent.
-     * Reload replaces only the single volatile {@link #state} reference wholesale, so readers see either the complete old
+     * Reload replaces only the single volatile #state reference wholesale, so readers see either the complete old
      * snapshot or the complete new one, avoiding clear()/put() corrupting the underlying HashMap while a region thread reads it
      * (which could cause wrong results, NPEs, or a region thread spinning forever on a corrupted bucket chain).
      */
@@ -360,7 +359,7 @@ public class I18n {
             return bundled;
         }
 
-        // CraftEngine 翻译（直接调用公开 API，不再用反射）
+        // CraftEngine translation via public API (no reflection)
         try {
             String ceResult = craftEngineTranslate(key, locale);
             if (ceResult != null && !ceResult.equals(key)) {
@@ -369,7 +368,7 @@ public class I18n {
         } catch (LinkageError ignored) {
         }
 
-        // Adventure 全局翻译器（原版 Minecraft 翻译 key）
+        // Adventure GlobalTranslator for vanilla Minecraft translation keys
         try {
             java.util.Locale loc = locale != null && !locale.isEmpty()
                     ? java.util.Locale.forLanguageTag(locale.replace('_', '-'))
@@ -386,7 +385,7 @@ public class I18n {
     }
 
     /**
-     * 通过 CraftEngine 的公开 API 翻译，不再使用反射。
+     * Translate via CraftEngine public API without reflection.
      */
     private static String craftEngineTranslate(String key, String locale) {
         try {
@@ -571,16 +570,16 @@ public class I18n {
         return Text.deserialize(formatNamed(key, player, placeholders));
     }
 
-    /** Returns a {@link Component#translatable(String) Component.translatable(key)} that each player's
+    /** Returns a Component.translatable(key) that each player's
      * client renders from its own resource-pack lang file. Use this for any user-visible GUI text so the
      * server sends a translation key (not a pre-rendered string) and the player sees their own language
      * without needing to re-open the GUI when they switch client language. The key must exist in the
-     * resource pack's {@code assets/farmersdelight/lang/<locale>.json}. */
+     * resource pack's assets/farmersdelight/lang/<locale>.json. */
     public static Component translatable(String key) {
         return Component.translatable(key);
     }
 
-    /** Plain-text translation in the server's default locale via {@link com.huidu.farmersdelight.util.ItemUtils#translate}.
+    /** Plain-text translation in the server's default locale via com.huidu.farmersdelight.util.ItemUtils#translate.
      *  Walks FD lang files, then CraftEngine's TranslationManager, then Adventure's GlobalTranslator, then
      *  returns the key itself if nothing has a value. Use for bossbar titles and lore lines where the
      *  visible text must NOT depend on the receiving client's locale or resource-pack contents. */
@@ -588,9 +587,9 @@ public class I18n {
         return com.huidu.farmersdelight.util.ItemUtils.translate(key, state.defaultLocale());
     }
 
-    /** {@link #serverText(String)} formatted with positional {@code %s} args and wrapped in a
-     *  {@code Component.text}. Falls back to the unformatted text if the args don't match the placeholders.
-     *  Args that are themselves {@link Component} get serialized through plain-text first so colored
+    /** #serverText(String) formatted with positional %s args and wrapped in a
+     *  Component.text. Falls back to the unformatted text if the args don't match the placeholders.
+     *  Args that are themselves Component get serialized through plain-text first so colored
      *  sub-components are not silently dropped (the result is a flat text Component anyway). */
     public static Component serverComponent(String key, Object... args) {
         String resolved = serverText(key);
@@ -613,10 +612,10 @@ public class I18n {
         return Text.deserialize(formatted);
     }
 
-    /** {@code Component.translatable(key, args)} carrying a server-resolved {@code .fallback(...)} string,
+    /** Component.translatable(key, args) carrying a server-resolved .fallback(...) string,
      *  so clients whose resource pack lacks the lang entry see readable text in the server's default locale
-     *  instead of the raw key. Non-{@link Component} args get wrapped in {@code Component.text(String.valueOf(arg))}
-     *  for the client-side render; the fallback string formats the {@code %s} placeholders with the args'
+     *  instead of the raw key. Non-Component args get wrapped in Component.text(String.valueOf(arg))
+     *  for the client-side render; the fallback string formats the %s placeholders with the args'
      *  plain-text serialisation. */
     public static Component translatableWithFallback(String key, Object... args) {
         if (args == null) args = new Object[0];
@@ -647,9 +646,9 @@ public class I18n {
         return Component.translatable(key, argComponents).fallback(fallback);
     }
 
-    /** Translatable with positional {@code %s} args. Each arg is wrapped in a {@code Component.text(...)}
+    /** Translatable with positional %s args. Each arg is wrapped in a Component.text(...)
      * unless it's already a Component, so colored sub-components pass through unchanged. Order of args must
-     * match the order of {@code %s} placeholders in the lang value. */
+     * match the order of %s placeholders in the lang value. */
     public static Component translatable(String key, Object... args) {
         if (args.length == 0) return Component.translatable(key);
         Component[] components = new Component[args.length];

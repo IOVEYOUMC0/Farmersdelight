@@ -34,9 +34,9 @@ public interface ItemDisplayManager {
     int cleanup();
 
     /**
-     * Removes only orphaned displays — those whose entity id is NOT in {@code liveIds} (the set still
+     * Removes only orphaned displays — those whose entity id is NOT in liveIds (the set still
      * referenced by a live block owner). Legitimate, in-use displays are left untouched. Returns the
-     * number removed. Unlike {@link #cleanup()} (a full wipe used on disable), this is the {@code /fd
+     * number removed. Unlike #cleanup() (a full wipe used on disable), this is the /fd
      * cleanup} command's path so it never removes a display a block still owns.
      */
     int cleanupOrphans(java.util.Set<Integer> liveIds);

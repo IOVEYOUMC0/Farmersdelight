@@ -9,7 +9,7 @@ import org.bukkit.inventory.ItemStack;
 /**
  * Invisible marker on a copy of the cooking pot's background filler, dropped into otherwise-empty output /
  * pending-output slots so the painted GUI background shows through instead of a bare slot — mirrors the keg's
- * placeholder pattern. Stored as a flag inside the item's {@code minecraft:custom_data} component (via the
+ * placeholder pattern. Stored as a flag inside the item's minecraft:custom_data component (via the
  * project's CraftEngine sparrow-tag helpers), so every code path can recognise and skip it.
  */
 public final class CookingPotPlaceholder {
@@ -19,7 +19,7 @@ public final class CookingPotPlaceholder {
     private CookingPotPlaceholder() {
     }
 
-    /** A tagged copy of {@code base} (the background filler), or null if base is empty. */
+    /** A tagged copy of base (the background filler), or null if base is empty. */
     public static ItemStack mark(ItemStack base) {
         if (base == null || base.getType().isAir()) {
             return null;

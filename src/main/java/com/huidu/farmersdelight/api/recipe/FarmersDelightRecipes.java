@@ -12,8 +12,8 @@ import java.util.List;
 
 /**
  * Read-only queries into FarmersDelight's cooking pot and cutting board recipes. Returns only Bukkit
- * types ({@link ItemStack}) — internal recipe records never cross the API boundary. Lives in the
- * name-stable {@code api} package.
+ * types (ItemStack) — internal recipe records never cross the API boundary. Lives in the
+ * name-stable api package.
  */
 @ApiStatus.NonExtendable
 public final class FarmersDelightRecipes {
@@ -47,13 +47,13 @@ public final class FarmersDelightRecipes {
         return result == null ? null : result.clone();
     }
 
-    /** True if any cutting board recipe accepts {@code input}. */
+    /** True if any cutting board recipe accepts input. */
     public static boolean hasCuttingBoardRecipe(ItemStack input) {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         return plugin != null && plugin.getCuttingBoardRecipes().hasAnyRecipeFor(input);
     }
 
-    /** The result items of the cutting board recipe matching {@code input} + {@code tool} (empty if none). */
+    /** The result items of the cutting board recipe matching input + tool (empty if none). */
     public static List<ItemStack> cuttingBoardResults(ItemStack input, ItemStack tool) {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         if (plugin == null) {
@@ -81,7 +81,7 @@ public final class FarmersDelightRecipes {
         return new ArrayList<>(plugin.getCookingPotRecipes().getRecipes().keySet());
     }
 
-    /** Read-only details of the cooking-pot recipe with id {@code id}, or null when none. */
+    /** Read-only details of the cooking-pot recipe with id id, or null when none. */
     public static RecipeInfo cookingPotRecipe(String id) {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         if (plugin == null || id == null) {
@@ -110,7 +110,7 @@ public final class FarmersDelightRecipes {
         return new ArrayList<>(plugin.getCuttingBoardRecipes().getRecipes().keySet());
     }
 
-    /** Read-only details of the cutting-board recipe with id {@code id}, or null when none. */
+    /** Read-only details of the cutting-board recipe with id id, or null when none. */
     public static RecipeInfo cuttingBoardRecipe(String id) {
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         if (plugin == null || id == null) {
@@ -137,7 +137,7 @@ public final class FarmersDelightRecipes {
                 null, results, 0, 0.0d, null);
     }
 
-    /** Renders an internal ingredient spec back to the recipe-file syntax ({@code ns:id} / {@code #ns:tag} / {@code a|b}). */
+    /** Renders an internal ingredient spec back to the recipe-file syntax (ns:id / #ns:tag / a|b). */
     private static String ingredientToString(RecipeIngredient ingredient) {
         if (ingredient instanceof RecipeIngredient.Item item) {
             return String.valueOf(item.key());

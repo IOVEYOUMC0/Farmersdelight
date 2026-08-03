@@ -8,12 +8,12 @@ import java.util.Collection;
 import java.util.Set;
 
 /**
- * Fired by {@code /fd cleanup} BEFORE FarmersDelight removes orphan proxy item-displays, so addons that own
+ * Fired by /fd cleanup BEFORE FarmersDelight removes orphan proxy item-displays, so addons that own
  * their own packet item-displays (e.g. the items shown on a coaster) can mark theirs as live and keep them
- * from being swept as orphans. Listeners add their display entity ids via {@link #addLiveId(int)} /
- * {@link #addLiveIds(Collection)}; FarmersDelight then treats every id in the set as in-use.
+ * from being swept as orphans. Listeners add their display entity ids via #addLiveId(int) /
+ * #addLiveIds(Collection); FarmersDelight then treats every id in the set as in-use.
  *
- * <p>Mirrors {@link FarmersDelightCleanupEvent}, but runs first and is protective (it prevents removals)
+ * Mirrors FarmersDelightCleanupEvent, but runs first and is protective (it prevents removals)
  * rather than reporting removals. Listeners must only ADD ids — the set already holds FarmersDelight's own
  * live displays.
  */
@@ -28,7 +28,7 @@ public class FarmersDelightCollectLiveDisplaysEvent extends Event {
         this.liveIds = liveIds;
     }
 
-    /** Mark a display entity id as live so {@code /fd cleanup} keeps it. */
+    /** Mark a display entity id as live so /fd cleanup keeps it. */
     public void addLiveId(int entityId) {
         liveIds.add(entityId);
     }

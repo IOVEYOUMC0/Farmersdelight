@@ -11,7 +11,7 @@ import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
 /**
- * A single Bukkit listener that routes inventory events to the {@link EditorGui} owning the currently open top inventory.
+ * A single Bukkit listener that routes inventory events to the EditorGui owning the currently open top inventory.
  * Registered lazily only once (following RecipeViewGui's dispatcher pattern).
  */
 public final class RecipeEditorListener implements Listener {

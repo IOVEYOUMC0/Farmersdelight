@@ -9,7 +9,7 @@ import org.bukkit.entity.Player;
 /**
  * Grants vanilla advancements that FarmersDelight actions would earn if they used vanilla mechanics.
  * FarmersDelight crops are CraftEngine custom blocks placed programmatically (CraftEngineBlocks.place),
- * so vanilla's {@code minecraft:placed_block} trigger never fires and the corresponding advancement is
+ * so vanilla's minecraft:placed_block trigger never fires and the corresponding advancement is
  * never awarded. These helpers complete it manually via the Bukkit Advancement API.
  */
 public final class VanillaAdvancements {

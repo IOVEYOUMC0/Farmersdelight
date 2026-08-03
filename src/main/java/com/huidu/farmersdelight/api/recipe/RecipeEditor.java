@@ -4,11 +4,11 @@ import org.jetbrains.annotations.ApiStatus;
 import java.util.List;
 
 /**
- * Describes how a {@link RecipeType}'s recipes are edited in the generic editor GUI, and how edits are
+ * Describes how a RecipeType's recipes are edited in the generic editor GUI, and how edits are
  * persisted. The addon owns the actual storage (its yml files); the editor only drives the GUI and
- * hands back an {@link EditableRecipe} to save/delete.
+ * hands back an EditableRecipe to save/delete.
  *
- * Lives in the name-stable {@code api} package; uses only api / java types.
+ * Lives in the name-stable api package; uses only api / java types.
  */
 @ApiStatus.OverrideOnly
 public interface RecipeEditor {
@@ -19,7 +19,7 @@ public interface RecipeEditor {
     /** Editable numeric fields (e.g. ferment time, experience). May be empty. */
     List<NumericField> numericFields();
 
-    /** Loads an existing recipe into a draft, or a blank draft when {@code id} is null/blank. */
+    /** Loads an existing recipe into a draft, or a blank draft when id is null/blank. */
     EditableRecipe load(String id);
 
     /** Persists the draft (write to the addon's storage + reload). Returns true on success. */

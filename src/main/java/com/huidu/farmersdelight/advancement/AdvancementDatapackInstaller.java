@@ -16,7 +16,7 @@ import java.util.stream.Stream;
 
 /**
  * Installs / removes FarmersDelight's advancement datapack files under a world's
- * {@code datapacks/advancements} folder. Extracted from the plugin main class so the datapack file IO
+ * datapacks/advancements folder. Extracted from the plugin main class so the datapack file IO
  * (copy-if-changed, prune obsolete, atomic writes) lives in one focused place. All operations are
  * idempotent and return whether they changed anything on disk (so the caller can decide to reload packs).
  */
@@ -48,7 +48,7 @@ public final class AdvancementDatapackInstaller {
         this.plugin = plugin;
     }
 
-    /** Syncs the bundled advancement files into {@code datapackRoot}, pruning obsolete ones. Returns
+    /** Syncs the bundled advancement files into datapackRoot, pruning obsolete ones. Returns
      *  true if anything on disk changed. */
     public boolean sync(Path datapackRoot, String worldName) {
         if (datapackRoot == null || worldName == null || worldName.isBlank()) {
@@ -72,7 +72,7 @@ public final class AdvancementDatapackInstaller {
         return updated;
     }
 
-    /** Removes the advancement datapack from {@code datapackRoot}. Returns true if anything was removed. */
+    /** Removes the advancement datapack from datapackRoot. Returns true if anything was removed. */
     public boolean remove(Path datapackRoot) {
         if (datapackRoot == null || !Files.exists(datapackRoot)) {
             return false;

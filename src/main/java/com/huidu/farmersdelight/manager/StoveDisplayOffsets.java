@@ -7,8 +7,8 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Parses the stove's per-slot item-display offsets from config into the {@code [slot][x,y,z]} matrix the visual
- * layer rotates and renders at. Extracted from {@link StoveManager} so the offset config-parsing (a pure,
+ * Parses the stove's per-slot item-display offsets from config into the [slot][x,y,z] matrix the visual
+ * layer rotates and renders at. Extracted from StoveManager so the offset config-parsing (a pure,
  * config-time-only concern) lives apart from the manager's concurrent index + tick machinery. Every method is
  * static and returns a fresh array — it holds no state and never touches the manager's live maps or locks.
  */
@@ -37,9 +37,9 @@ final class StoveDisplayOffsets {
         return result;
     }
 
-    /** Loads {@code slotCount} slot offsets from {@code stove.display} / {@code display-visuals.stove}, falling
-     *  back to the defaults for any slot the config omits or malforms. Supports both the {@code slot-offsets}
-     *  list form and the {@code slots.<n>} section form. */
+    /** Loads slotCount slot offsets from stove.display / display-visuals.stove, falling
+     *  back to the defaults for any slot the config omits or malforms. Supports both the slot-offsets
+     *  list form and the slots.<n> section form. */
     static double[][] load(FarmersDelightPlugin plugin, int slotCount) {
         double[][] loaded = copy(DEFAULT);
         ConfigurationSection section = plugin.getFirstConfigSection("stove.display", "display-visuals.stove");

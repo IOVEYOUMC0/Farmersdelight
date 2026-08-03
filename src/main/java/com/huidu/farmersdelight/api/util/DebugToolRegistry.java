@@ -9,7 +9,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** Static registry of addon-provided {@link DebugToolExtension}s. Looked up by lowercase target name. */
+/** Static registry of addon-provided DebugToolExtensions. Looked up by lowercase target name. */
 @ApiStatus.NonExtendable
 public final class DebugToolRegistry {
 
@@ -23,7 +23,7 @@ public final class DebugToolRegistry {
         EXTENSIONS.put(extension.name().toLowerCase(Locale.ROOT), extension);
     }
 
-    /** Removes the extension registered under {@code name}. Call from your plugin's {@code onDisable} so
+    /** Removes the extension registered under name. Call from your plugin's onDisable so
      *  a stale reference (e.g. a manager that's been torn down) doesn't outlive the plugin lifecycle. */
     public static void unregister(String name) {
         if (name == null) return;

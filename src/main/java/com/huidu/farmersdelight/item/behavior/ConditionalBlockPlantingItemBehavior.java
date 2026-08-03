@@ -1,7 +1,7 @@
 package com.huidu.farmersdelight.item.behavior;
 
 import com.huidu.farmersdelight.util.CustomBlockUtils;
-import com.huidu.farmersdelight.util.ProtectionCompat;
+import com.huidu.farmersdelight.util.compat.ProtectionCompat;
 import com.huidu.farmersdelight.util.VanillaAdvancements;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
 import net.momirealms.craftengine.bukkit.block.BukkitBlockManager;
@@ -33,15 +33,15 @@ import java.util.Optional;
 
 /**
  * Item behavior that picks a CraftEngine block to place based on which block the player right-clicked.
- * Each rule maps a clicked block id (CE custom id or {@code minecraft:<material>}) to a CE block id;
+ * Each rule maps a clicked block id (CE custom id or minecraft:<material>) to a CE block id;
  * on click the behavior identifies the clicked block, looks it up in the rules, and places the mapped
  * CE block at the slot adjacent to the clicked face. When no rule matches it returns
- * {@link InteractionResult#PASS}, leaving the next behavior — or the unmodified vanilla item logic —
+ * InteractionResult#PASS, leaving the next behavior — or the unmodified vanilla item logic —
  * to handle the click. So a wheat-seed-style click on plain farmland falls through to vanilla wheat,
  * while a click on a configured custom soil places the configured CE crop instead.
  *
  * YAML:
- * <pre>{@code
+ * <pre>
  * items:
  *   minecraft:wheat_seeds:
  *     behavior:
@@ -51,8 +51,8 @@ import java.util.Optional;
  *           block:  farmersdelight:rich_wheat
  * }</pre>
  *
- * Both {@code target} and {@code block} are namespaced ids. Vanilla blocks are matched as
- * {@code minecraft:<material_name_lowercase>}.
+ * Both target and block are namespaced ids. Vanilla blocks are matched as
+ * minecraft:<material_name_lowercase>.
  */
 public final class ConditionalBlockPlantingItemBehavior extends ItemBehavior {
 
@@ -124,7 +124,7 @@ public final class ConditionalBlockPlantingItemBehavior extends ItemBehavior {
         return InteractionResult.SUCCESS;
     }
 
-    /** CE custom id if the block is a CraftEngine block, else {@code minecraft:<material>}. */
+    /** CE custom id if the block is a CraftEngine block, else minecraft:<material>. */
     private static Key identifyBlock(Block block) {
         String customId = CustomBlockUtils.getId(block);
         if (customId != null) {
