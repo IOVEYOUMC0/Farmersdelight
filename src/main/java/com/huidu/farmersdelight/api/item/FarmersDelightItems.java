@@ -46,6 +46,14 @@ public final class FarmersDelightItems {
         return ItemUtils.matchesCustomOrVanillaTag(item, tagId);
     }
 
+    /**
+     * True when {@code item} matches the {@code farmersdelight:tools/knives} (or
+     * {@code c:tools/knife}) tag. Convenience shorthand for the most common tool check addons need.
+     */
+    public static boolean isKnife(ItemStack item) {
+        return matchesTag(item, "farmersdelight:tools/knives");
+    }
+
     /** The item's display name component, localized for player (player may be null). */
     public static Component displayNameOf(ItemStack item, Player player) {
         return ItemUtils.getDisplayComponent(item, player);
