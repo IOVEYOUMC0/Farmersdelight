@@ -16,30 +16,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Concurrency invariants on {@link CookingPotBlockEntity} that protect against the three failure modes
- * a multi-player setup can produce. Each test runs a deterministic burst against
- * {@code takeOutputSlotPortionForDelivery} and {@code setInventorySlot} — both guarded by
- * {@code inventoryLock} — and asserts the no-duplication invariant.
- *
- * <ol>
- *   <li><b>Multi-viewer race on the same output slot</b> — 8 viewer threads burst-click the meal slot
- *       at the same instant; the sum of items each receives must equal the starting stack. No
- *       duplication, no over-delivery.</li>
- *   <li><b>Oversubscribed concurrent requests are capped at stock</b> — 8 viewers each shift-click
- *       for 16 from a 64 stack; sum still 64.</li>
- *   <li><b>Take from a slot a peer just cleared</b> — the block-break dup vector that
- *       {@code closeOpenGuisAt} guards against. Take must see the cleared slot and return null, never
- *       a phantom item.</li>
- *   <li><b>Interleaved stock/clear under a take stream never out-delivers stock</b> — stronger version
- *       of (3); proves the lock serialises every transition.</li>
- * </ol>
- *
- * <p>Bukkit is NOT bootstrapped — {@code new ItemStack(Material.STONE, n)} would lazy-trigger
- * {@code Material.asItemType} which needs the server registry. We sidestep it with {@link StubStack},
- * a minimal subclass that uses {@code ItemStack}'s protected no-arg constructor (skipping the
- * craftDelegate init) and overrides every method this test path touches.
- */
 class CookingPotConcurrencyTest {
 
     private static final int OUTPUT_SLOT = 8;  // CookingPotLayout.DEFAULT's single output slot.
@@ -167,13 +143,6 @@ class CookingPotConcurrencyTest {
         for (Thread t : workers) t.join();
     }
 
-    /**
-     * Test-only ItemStack subclass — invokes {@code ItemStack}'s protected no-arg constructor
-     * (skipping {@code Material.asItemType} which needs a live Bukkit registry) and overrides every
-     * method {@link CookingPotBlockEntity}'s take path actually calls. {@code clone()} returns a fresh
-     * {@code StubStack} so the BE's {@code splitItemFromSlot} can set independent amounts on the clone
-     * and the source.
-     */
     static final class StubStack extends ItemStack {
         private int amount;
 
