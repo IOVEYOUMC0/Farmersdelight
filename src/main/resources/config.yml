@@ -24,7 +24,7 @@ datapacks:
 enchantments:
   enabled: true
   # Whether to install the built-in enchantment datapack (farmersdelight_enchant, contains the
-  # backstabbing enchant definition + tag files). The datapack is copied into each whitelisted
+  # backstabbing enchant definition + tag files). The datapack is installed into the primary
   # world's datapacks/ folder and requires a server restart (or /reload) to take effect; admin
   # edits to already-installed files survive plugin updates. Set to false to skip the install
   # (e.g. when authoring the enchantment yourself). Reinstall via /fd reload enchant.
@@ -127,8 +127,8 @@ debug:
   categories: []
 
 # Vanilla damage-type injection (farmersdelight_damage datapack): the custom farmersdelight:stove_burn
-# damage type used by the stove grilling surface, plus its no_knockback tag entry. Installed into each
-# whitelisted world's datapacks/ folder and requires a server restart (or /reload) to take effect.
+# damage type used by the stove grilling surface, plus its no_knockback tag entry. Installed into
+# the primary world's datapacks/ folder and requires a server restart (or /reload) to take effect.
 # Split from the loot datapack so the two can be toggled and reinstalled independently; old installs
 # that wrote these files under the loot datapack are migrated (legacy files removed) on the next
 # install. Reinstall via /fd reload damage.
