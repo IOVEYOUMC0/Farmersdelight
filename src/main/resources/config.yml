@@ -8,12 +8,15 @@
 # Affects plugin logs, console text and text with no player context; player GUI/messages still prefer the player client language.
 language: ''
 
-# Datapacks are server-wide when loaded from the primary world, so writing another copy into every
-# Multiverse/resource/dungeon world only creates unused files. Entries are exact Bukkit world names.
-# $primary resolves to server.properties level-name; * restores the old all-world behavior; [] disables writes.
+# Datapacks are server-wide when loaded from the primary world's datapacks folder, so ALL registry
+# data packs (tags, enchantments, damage types, advancements) are written there once and shared by
+# every world. CraftEngine items keep their tags in the CE configs.
 datapacks:
-  world-whitelist:
-    - $primary
+  # Whether to export the common-item tags (farmersdelight_tags) into the primary world's datapacks
+  # folder. Only vanilla members are written; CraftEngine items keep their tags in the CE configs.
+  # Registry tags are server-global (shared by every world), so the pack is written once into the
+  # primary world only - a per-world inject would be redundant. Requires a server restart to load.
+  tags-enabled: true
 
 # Enchantments added by FarmersDelight. Knife and skillet enchantments are configured separately.
 # Registry properties (weight, valid cost range, conflicts and anvil cost) are read from Paper at runtime;
@@ -444,7 +447,7 @@ cutting-board:
 # knife achievements all read it, as do addon drop rules registered without their own tool list.
 knife-items:
   tags:
-    - farmersdelight:knives
+    - farmersdelight:tools/knives
   items:
     - farmersdelight:flint_knife
     - farmersdelight:iron_knife
@@ -459,7 +462,7 @@ drops:
   # For example, to let an iron sword also trigger mob extra drops, add minecraft:iron_sword under items.
   mob-extra-tools:
     tags:
-      - farmersdelight:knives
+      - farmersdelight:tools/knives
     items:
       - farmersdelight:flint_knife
       - farmersdelight:iron_knife
