@@ -106,6 +106,31 @@ public final class ConfigBootstrap {
             "items",
             "tags");
 
+    /**
+     * The four auxiliary files plus {@code config.yml}, all treated the same way: install when missing or
+     * unreadable, back up before replacing, never overwrite an existing file. Only the first install differs:
+     * {@code config.yml} is written through Bukkit so the plugin's own defaults stay in sync with the file.
+     */
+    private static final List<ManagedFile> MANAGED_FILES = List.of(
+            new ManagedFile("config.yml", true),
+            new ManagedFile("gui.yml", false),
+            new ManagedFile(WORLD_DATA_FILE, false),
+            new ManagedFile(DROPS_FILE, false),
+            new ManagedFile(DISPLAY_OVERRIDES_FILE, false));
+
+    private record ManagedFile(String fileName, boolean mainConfig) {
+
+        void install(FarmersDelightPlugin plugin, Path target) throws IOException {
+            if (mainConfig) {
+                ConfigFileUpdater.installBundledResource(plugin, fileName, target, true);
+                return;
+            }
+            // replace=true only in the restore case, where the unreadable file is intentionally overwritten;
+            // for a first install an existing file must stay untouched.
+            ConfigFileUpdater.installBundledResource(plugin, fileName, target, Files.exists(target));
+        }
+    }
+
     private final FarmersDelightPlugin plugin;
 
     public ConfigBootstrap(FarmersDelightPlugin plugin) {
@@ -114,45 +139,20 @@ public final class ConfigBootstrap {
 
     public void ensureConfigDefaults() {
         Path dataFolder = plugin.getDataFolder().toPath();
-        Path configPath = dataFolder.resolve("config.yml");
-        Path guiPath = dataFolder.resolve("gui.yml");
-        Path worldDataPath = dataFolder.resolve(WORLD_DATA_FILE);
-        Path dropsPath = dataFolder.resolve(DROPS_FILE);
-        Path displayOverridesPath = dataFolder.resolve(DISPLAY_OVERRIDES_FILE);
         try {
             Files.createDirectories(dataFolder);
-            if (Files.notExists(configPath)) {
-                writeBundledConfig(configPath);
-            }
-            writeBundledResourceIfMissing(guiPath);
-            writeBundledResourceIfMissing(worldDataPath, WORLD_DATA_FILE);
-            writeBundledResourceIfMissing(dropsPath, DROPS_FILE);
-            writeBundledResourceIfMissing(displayOverridesPath, DISPLAY_OVERRIDES_FILE);
-
-            if (ConfigFileUpdater.needsRestore(configPath)) {
-                ConfigFileUpdater.backup(configPath);
-                writeBundledConfig(configPath);
-                I18n.logWarning("plugin.config_restored_unreadable", "file", "config.yml");
-            }
-            if (ConfigFileUpdater.needsRestore(guiPath)) {
-                ConfigFileUpdater.backup(guiPath);
-                ConfigFileUpdater.installBundledResource(plugin, "gui.yml", guiPath, true);
-                I18n.logWarning("plugin.config_restored_unreadable", "file", "gui.yml");
-            }
-            if (ConfigFileUpdater.needsRestore(worldDataPath)) {
-                ConfigFileUpdater.backup(worldDataPath);
-                ConfigFileUpdater.installBundledResource(plugin, WORLD_DATA_FILE, worldDataPath, true);
-                I18n.logWarning("plugin.config_restored_unreadable", "file", WORLD_DATA_FILE);
-            }
-            if (ConfigFileUpdater.needsRestore(dropsPath)) {
-                ConfigFileUpdater.backup(dropsPath);
-                ConfigFileUpdater.installBundledResource(plugin, DROPS_FILE, dropsPath, true);
-                I18n.logWarning("plugin.config_restored_unreadable", "file", DROPS_FILE);
-            }
-            if (ConfigFileUpdater.needsRestore(displayOverridesPath)) {
-                ConfigFileUpdater.backup(displayOverridesPath);
-                ConfigFileUpdater.installBundledResource(plugin, DISPLAY_OVERRIDES_FILE, displayOverridesPath, true);
-                I18n.logWarning("plugin.config_restored_unreadable", "file", DISPLAY_OVERRIDES_FILE);
+            for (ManagedFile file : MANAGED_FILES) {
+                Path path = dataFolder.resolve(file.fileName());
+                if (Files.notExists(path)) {
+                    file.install(plugin, path);
+                }
+                // A file that is unreadable (truncated, wrong encoding) is replaced with the bundled copy after
+                // taking a backup, so a broken hand edit cannot take the plugin down on the next start.
+                if (ConfigFileUpdater.needsRestore(path)) {
+                    ConfigFileUpdater.backup(path);
+                    file.install(plugin, path);
+                    I18n.logWarning("plugin.config_restored_unreadable", "file", file.fileName());
+                }
             }
         } catch (IOException e) {
             I18n.logWarning("plugin.config_prepare_failed", "error", e.getMessage());
@@ -193,9 +193,9 @@ public final class ConfigBootstrap {
             return;
         }
         List<String> issues = new ArrayList<>();
-        Set<String> registry = new HashSet<>(registrySections);
+        Set<String> registry = registrySections.isEmpty() ? Set.of() : new HashSet<>(registrySections);
         for (String path : bundled.getKeys(true)) {
-            if (isUnderRegistry(path, registry)) {
+            if (!registry.isEmpty() && isUnderRegistry(path, registry)) {
                 continue;
             }
             if (bundled.isConfigurationSection(path)) {
@@ -224,7 +224,8 @@ public final class ConfigBootstrap {
 
     private static boolean isUnderRegistry(String path, Set<String> registrySections) {
         for (String section : registrySections) {
-            if (path.startsWith(section + ".")) {
+            // path is always prefixed by "section.", so the prefix test replaces a per-key string concat.
+            if (path.startsWith(section)) {
                 return true;
             }
         }
@@ -518,8 +519,8 @@ public final class ConfigBootstrap {
 
     private YamlConfiguration readBundledYaml(String resourcePath) {
         try {
-            return ConfigFileUpdater.readBundledYaml(plugin, resourcePath);
-        } catch (Exception e) {
+            return ConfigResources.yaml(plugin, resourcePath);
+        } catch (IOException e) {
             I18n.logWarning("plugin.config_merge_failed", "file", resourcePath, "error", e.getMessage());
             return null;
         }
@@ -543,20 +544,6 @@ public final class ConfigBootstrap {
         } catch (IOException e) {
             I18n.logWarning("plugin.config_backup_failed", "file", configPath.getFileName().toString(),
                     "error", e.getMessage());
-        }
-    }
-
-    private void writeBundledConfig(Path configPath) throws IOException {
-        ConfigFileUpdater.installBundledResource(plugin, "config.yml", configPath, true);
-    }
-
-    private void writeBundledResourceIfMissing(Path targetPath) throws IOException {
-        writeBundledResourceIfMissing(targetPath, "gui.yml");
-    }
-
-    private void writeBundledResourceIfMissing(Path targetPath, String resourcePath) throws IOException {
-        if (Files.notExists(targetPath)) {
-            ConfigFileUpdater.installBundledResource(plugin, resourcePath, targetPath, false);
         }
     }
 }

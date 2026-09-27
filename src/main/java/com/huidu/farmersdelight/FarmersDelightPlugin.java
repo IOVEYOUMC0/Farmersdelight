@@ -428,7 +428,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             I18n.logWarning("plugin.debug_tools_build");
         }
 
-        configBootstrap.ensureConfigDefaults();
+        // onLoad already ensured the files exist; re-running the install pass here would only repeat its
+        // per-file existence and readability checks before migrateConfigKeys() merges the same files.
         configBootstrap.migrateConfigKeys();
         // Startup detail logging reads these flags during I18n initialization and Folia detection.
         loadDebugFlags();
