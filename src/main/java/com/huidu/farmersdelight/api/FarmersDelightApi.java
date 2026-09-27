@@ -55,7 +55,7 @@ import java.util.function.Function;
 @ApiStatus.NonExtendable
 public final class FarmersDelightApi {
 
-    private static final int API_VERSION = 3;
+    private static final int API_VERSION = 4;
 
     private static final Set<String> FEATURES = Set.of(
             // Runtime recipe registration + the generic recipe book / editor (registerRecipeType,
@@ -545,6 +545,16 @@ public final class FarmersDelightApi {
         if (player != null && type != null && type.editor() != null) {
             RecipeBookGui.openEditor(player, type, recipeId);
         }
+    }
+
+    /**
+     * Kept for addons that branched on the paid edition.
+     *
+     * <p>The plugin is a single open-source build now, so every feature this API exposes is present and this
+     * always returns {@code true}. New code should probe the feature it needs instead.
+     */
+    public boolean isPremiumEdition() {
+        return true;
     }
 
     public boolean isAvailable() {
