@@ -547,16 +547,6 @@ public final class FarmersDelightApi {
         }
     }
 
-    /**
-     * Kept for addons that branched on the paid edition.
-     *
-     * <p>The plugin is a single open-source build now, so every feature this API exposes is present and this
-     * always returns {@code true}. New code should probe the feature it needs instead.
-     */
-    public boolean isPremiumEdition() {
-        return true;
-    }
-
     public boolean isAvailable() {
         return FarmersDelightPlugin.getInstance() != null && FarmersDelightPlugin.isEnabled0();
     }

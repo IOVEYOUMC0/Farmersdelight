@@ -122,8 +122,6 @@ public class SkilletManager {
     private volatile double fireAspectBonus = DEFAULT_FIRE_ASPECT_BONUS;
     private volatile boolean handheldCookingEnabled = true;
     private volatile boolean handheldProgressDisplayEnabled = true;
-    // One console line per process when the config asks for handheld cooking but this edition cannot provide
-    // it, so an operator who enabled it gets an explanation instead of a silent no-op.
 
     public SkilletManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;

@@ -96,7 +96,7 @@ public final class RecipeEditorListener implements Listener {
     }
 
     // The addon recipe editor view used to be handled by the core's recipe-book listener; it moved here with
-    // the view itself, so the community build's listener no longer knows about either type.
+    // the view itself, so that listener no longer knows about either type.
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onEditorViewClick(InventoryClickEvent event) {

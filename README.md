@@ -37,7 +37,7 @@ The build resolves CraftEngine 26.9.1 from its official Maven repository; pass `
 
 GNU Affero General Public License v3.0 only. See [LICENSE](LICENSE).
 
-The plugin is fully open source: the recipe editor, recipe-to-recipe jumps and handheld skillet cooking are part of this repository, with no paid edition and no gated build. You may use, modify and redistribute it, including for a fee, as long as AGPL-3.0 is honoured: keep the copyright and licence notices, ship the complete corresponding source of the version you distribute, license your modified version under AGPL-3.0, and if you run a modified version as a network service, offer its source to the users of that service.
+The plugin is fully open source: the recipe editor, recipe-to-recipe jumps and handheld skillet cooking are all in this repository. You may use, modify and redistribute it, including for a fee, as long as AGPL-3.0 is honoured: keep the copyright and licence notices, ship the complete corresponding source of the version you distribute, license your modified version under AGPL-3.0, and if you run a modified version as a network service, offer its source to the users of that service.
 
 Third-party content (the ported Farmer's Delight assets and the bundled libraries, all MIT) keeps its own notices; see [NOTICE.md](NOTICE.md).
 
