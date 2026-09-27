@@ -717,11 +717,10 @@ buff:
   # Use farmersdelight:nourishment as an on-consume function to add it to another CE food.
 
 # ---------------------------------------------------------------------------
-# Premium edition switches.
+# Feature switches.
 #
-# Only the premium build has code behind this section: the community build never reads these keys, so they
-# change nothing there and leaving them in place is harmless. The two editions ship under the same jar file
-# name, so replacing the jar with the premium one is what makes this section take effect.
+# Everything below is part of the single open-source build; these keys only let an operator turn a feature
+# off per server.
 # ---------------------------------------------------------------------------
 recipe-editor:
   # Enable the in-game recipe editor ('/fd recipe edit' and the edit button in the recipe viewer).
@@ -731,6 +730,5 @@ recipe-editor:
 # Jumping between a recipe and the recipes that produce or use its items (and between a special recipe and
 # the recipes it belongs to), in the recipe viewer and the addon recipe book.
 recipe-navigation:
-  # Premium edition only: the community build reads this key and then leaves the jumps switched off, so a
-  # click on a linked item answers with the premium hint instead of navigating.
+  # When false, clicking a linked item does nothing and the jump icons are inert.
   jumps: true
