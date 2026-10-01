@@ -5,12 +5,16 @@ import com.huidu.farmersdelight.manager.TickManager;
 import com.huidu.farmersdelight.util.BlockPosKey;
 import com.huidu.farmersdelight.util.Constants;
 import com.huidu.farmersdelight.util.CustomBlockUtils;
+import com.huidu.farmersdelight.util.compat.SleepingTickerBridge;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
 import net.momirealms.craftengine.bukkit.world.BukkitContainer;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
+import net.momirealms.craftengine.core.block.ImmutableBlockState;
+import net.momirealms.craftengine.core.block.entity.tick.BlockEntityTicker;
+import net.momirealms.craftengine.core.world.CEWorld;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
 import net.momirealms.craftengine.core.item.component.DataComponentKeys;
@@ -34,6 +38,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class CookingPotBlockEntityController extends BlockEntityController implements BukkitContainer, WorldlyContainer, InventoryHolder {
 
@@ -73,6 +78,11 @@ public final class CookingPotBlockEntityController extends BlockEntityController
     // The block pos is fixed for this controller's lifetime; cache the key so getItem/contents
     // (called per slot during container scans) need not reallocate it on every access.
     private BlockPosKey cachedPosKey;
+    private volatile SleepingTickerBridge<CookingPotBlockEntityController> sleepingTicker;
+    private final AtomicBoolean wakeQueued = new AtomicBoolean();
+    private volatile boolean tickLoaded;
+    private int ticksUntilWork = 4;
+    private long observedInventoryVersion = Long.MIN_VALUE;
 
     public CookingPotBlockEntityController(FarmersDelightPlugin plugin, BlockEntity blockEntity, CookingPotBlockBehavior behavior) {
         super(blockEntity);
@@ -91,6 +101,87 @@ public final class CookingPotBlockEntityController extends BlockEntityController
     public Object container() {
         return this.container;
     }
+
+    @Override
+    public <C extends BlockEntityController> BlockEntityTicker<C> createBlockEntityTicker(CEWorld world, ImmutableBlockState state) {
+        if (!SleepingTickerBridge.isSupported()) return null;
+        if (sleepingTicker == null) {
+            sleepingTicker = SleepingTickerBridge.create((level, pos, blockState, controller) -> controller.tickCooking());
+        }
+        tickLoaded = true;
+        registerNativeTick();
+        requestTickWake();
+        return createTickerHelper(sleepingTicker.ticker());
+    }
+
+    @Override
+    public void onLoad() {
+        tickLoaded = true;
+        registerNativeTick();
+        requestTickWake();
+    }
+
+    @Override
+    public void onUnload() { retireNativeTick(); }
+
+    @Override
+    public void onRemove() { retireNativeTick(); }
+
+    private void registerNativeTick() {
+        if (sleepingTicker != null && plugin != null && plugin.getTickManager() != null) {
+            ticksUntilWork = 4;
+            plugin.getTickManager().registerNativePot(getBukkitWorld(), new BlockPosKey(blockEntity.pos), this);
+        }
+    }
+
+    private void retireNativeTick() {
+        tickLoaded = false;
+        if (plugin != null && plugin.getTickManager() != null) {
+            plugin.getTickManager().unregisterNativePot(getBukkitWorld(), new BlockPosKey(blockEntity.pos), this);
+        }
+        if (sleepingTicker != null) sleepingTicker.sleep();
+    }
+
+    private void tickCooking() {
+        if (!tickLoaded || plugin == null || plugin.getTickManager() == null) return;
+        if (--ticksUntilWork > 0) return;
+        ticksUntilWork = 4;
+        if (getEntityIfLoaded() == null) {
+            loadPendingDataIfReady();
+            getOrCreateEntity();
+        }
+        // Four actual awake callbacks form one work pass; sleeping time never becomes catch-up time.
+        if (!plugin.getTickManager().tickNativePot(getBukkitWorld(), new BlockPosKey(blockEntity.pos), this)) {
+            sleepingTicker.sleep();
+            plugin.getTickManager().nativePotStateChanged(getBukkitWorld(), new BlockPosKey(blockEntity.pos), this, true);
+        }
+    }
+
+    /** Coalesces external notifications and mutates CraftEngine's ticker only on its owning thread. */
+    public void requestTickWake() {
+        if (sleepingTicker == null || !tickLoaded || plugin == null || !plugin.isEnabled()) return;
+        World world = getBukkitWorld();
+        if (world == null || !wakeQueued.compareAndSet(false, true)) return;
+        try {
+            plugin.scheduler().runAt(world, blockEntity.pos.x() >> 4, blockEntity.pos.z() >> 4, () -> {
+                wakeQueued.set(false);
+                TickManager manager = plugin.getTickManager();
+                if (!tickLoaded || manager == null || !manager.isNativePotRegistered(world, new BlockPosKey(blockEntity.pos), this)) return;
+                if (sleepingTicker.isSleeping()) {
+                    ticksUntilWork = 4;
+                    sleepingTicker.wakeUp();
+                    manager.nativePotStateChanged(world, new BlockPosKey(blockEntity.pos), this, false);
+                }
+            });
+        } catch (RuntimeException rejected) {
+            wakeQueued.set(false);
+            if (plugin.isEnabled()) throw rejected;
+        }
+    }
+
+    public boolean isTickSleeping() { return sleepingTicker != null && sleepingTicker.isSleeping(); }
+    public long tickSleepCount() { return sleepingTicker == null ? 0 : sleepingTicker.sleepCount(); }
+    public long tickWakeCount() { return sleepingTicker == null ? 0 : sleepingTicker.wakeCount(); }
 
     @Override
     public void saveCustomData(CompoundTag tag) {
@@ -321,6 +412,11 @@ public final class CookingPotBlockEntityController extends BlockEntityController
     public void setChangedFromEntity(CookingPotBlockEntity entity) {
         if (entity != null) {
             refreshFromEntity(entity);
+            long version = entity.getInventoryVersion();
+            if (version != observedInventoryVersion) {
+                observedInventoryVersion = version;
+                requestTickWake();
+            }
         }
         CustomBlockUtils.markBlockEntityDirty(this.blockEntity);
     }
@@ -391,7 +487,7 @@ public final class CookingPotBlockEntityController extends BlockEntityController
         entity.tryMovePendingToOutput();
         refreshFromEntity(entity);
 
-        if (plugin != null && plugin.getTickManager() != null && entity.hasStoredContents()) {
+        if (plugin != null && plugin.getTickManager() != null) {
             plugin.getTickManager().markActive(world, new BlockPosKey(this.blockEntity.pos), TickManager.BlockType.COOKING_POT);
         }
 

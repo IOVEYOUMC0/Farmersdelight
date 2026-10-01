@@ -35,6 +35,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.Map;
@@ -85,6 +86,11 @@ public class BlockPlaceListener implements Listener {
             }
         }
         pendingPlacedItems.clear();
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        CookingPotBlockBehavior.clearPlacementGuard(event.getPlayer().getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -180,7 +186,7 @@ public class BlockPlaceListener implements Listener {
         AdvancementManager am = plugin.getAdvancementManager();
 
         if (isCookingPotPlacement(blockLocation)) {
-            CookingPotBlockBehavior.markRecentlyPlaced(blockLocation);
+            CookingPotBlockBehavior.markRecentlyPlaced(player, blockLocation);
             CookingPotBlockEntity entity = CookingPotBlockBehavior.getOrCreateBlockEntity(blockLocation);
             restoreCookingPotDataFromPlacedItem(entity, blockLocation.getWorld(), placedItem);
             if (plugin.getTrayManager() != null) {

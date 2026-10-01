@@ -35,7 +35,7 @@ import java.util.stream.Stream;
 public final class EnchantmentDatapackInstaller implements Listener {
 
     private static final String DATAPACK_DIRECTORY = "farmersdelight_enchant";
-    private static final String PACK_DESCRIPTION = "FarmersDelight configurable enchantments";
+    private static final String PACK_DESCRIPTION = "Farmersdelight-Plugin-Pro configurable enchantments";
 
     private static final int MIN_COST_BASE = 15;
     private static final int MIN_COST_PER_LEVEL = 9;
@@ -117,7 +117,7 @@ public final class EnchantmentDatapackInstaller implements Listener {
                     I18n.logInfo("plugin.enchantment_datapack_redundant_removed", "world", world.getName());
                 }
             } catch (IOException e) {
-                plugin.getLogger().warning("FarmersDelight enchant datapack: failed to remove redundant folder under "
+                plugin.getLogger().warning("Farmersdelight-Plugin-Pro enchant datapack: failed to remove redundant folder under "
                         + redundant + ": " + e.getMessage());
             }
         }
@@ -151,7 +151,7 @@ public final class EnchantmentDatapackInstaller implements Listener {
             NamespacedId supportedTag = NamespacedId.parse(SUPPORTED_ITEMS_TAG);
             List<GeneratedFile> generated = new ArrayList<>();
             generated.add(new GeneratedFile(datapackDir.resolve("pack.mcmeta"), renderPackMetadata()));
-            // Every FarmersDelight-managed enchant shares the one (empty) supported-items tag: the enchant
+            // Every Farmersdelight-Plugin-Pro-managed enchant shares the one (empty) supported-items tag: the enchant
             // filter is the distributor, so vanilla must never offer them by supported_items.
             generated.add(new GeneratedFile(datapackDir.resolve("data")
                     .resolve(supportedTag.namespace())
@@ -280,7 +280,7 @@ public final class EnchantmentDatapackInstaller implements Listener {
                 definition.anvilCost(), definition.slots());
     }
 
-    // All FarmersDelight-managed enchants (built-in backstab + API-registered) share the one empty
+    // All Farmersdelight-Plugin-Pro-managed enchants (built-in backstab + API-registered) share the one empty
     // supported-items tag, since the enchant filter — not vanilla supported_items — distributes them.
     private static String renderEnchantJson(String translationKey, String fallbackName, int weight, int maxLevel,
                                             int minCostBase, int minCostPerLevel, int maxCostBase,

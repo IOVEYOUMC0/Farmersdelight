@@ -1,6 +1,6 @@
 # 来源与授权
 
-本仓库（FarmersDelight）采用 **AGPL-3.0**（GNU Affero General Public License version 3）授权，
+本仓库（Farmersdelight-Plugin-Pro）采用 **AGPL-3.0**（GNU Affero General Public License version 3）授权，
 全文见 [LICENSE](LICENSE)。
 
 允许使用、修改、再分发，也允许收费分发；但再分发时必须满足 AGPL-3.0 的条件：保留版权与授权声明、

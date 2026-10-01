@@ -42,7 +42,7 @@ LANG_DIR = "src/main/resources/lang"
 #   "plain"   - the key is looked up as written,
 #   "console" - the helper prefixes "console." unless the caller already wrote it (I18n.formatConsole and the
 #               log* wrappers built on it, plus the shared FarmersDelightApi.consoleMessage),
-#   "shared"  - the key resolves against FarmersDelight's own files on behalf of another plugin.
+#   "shared"  - the key resolves against Farmersdelight-Plugin-Pro's own files on behalf of another plugin.
 STATIC_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # Console helpers
     (re.compile(r'\bI18n\.(?:logInfo|logWarning|logSevere|formatConsole)\(\s*"([^"]+)"'), "console"),
@@ -112,7 +112,7 @@ def scan() -> tuple[dict[str, str], dict[str, str], list[tuple[str, str, int]]]:
                     continue
                 target = static
                 if mode == "shared":
-                    # FarmersDelightApi.consoleMessage resolves against FarmersDelight's own language files.
+                    # FarmersDelightApi.consoleMessage resolves against Farmersdelight-Plugin-Pro's own language files.
                     target = shared
                     if not key.startswith("console."):
                         key = f"console.{key}"
@@ -183,7 +183,7 @@ def main() -> int:
                     and ".i18n." not in key)
     problems += len(missing) + len(only_en) + len(only_zh) + len(blank)
 
-    print(f"== FarmersDelight: referenced={len(static)} defined en={len(en)} zh={len(zh)} "
+    print(f"== Farmersdelight-Plugin-Pro: referenced={len(static)} defined en={len(en)} zh={len(zh)} "
           f"missing={len(missing)} only_en={len(only_en)} only_zh={len(only_zh)} "
           f"blank={len(blank)} dynamic={len(dynamic)}")
     for key, source in missing:

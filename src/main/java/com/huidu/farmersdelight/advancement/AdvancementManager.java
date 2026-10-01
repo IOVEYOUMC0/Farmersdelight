@@ -86,7 +86,7 @@ public class AdvancementManager {
             // RicePlantListener places the rice block and bails out when it is not registered.
             node("plant_rice", "get_fd_seed", "farmersdelight:rice", Material.WHEAT_SEEDS, AdvancementFrameType.TASK, 2, 3,
                     ContentRequirement.anyBlock(Constants.BLOCK_RICE)),
-            // Its vanilla subtasks keep it obtainable whatever happens to the FarmersDelight crops.
+            // Its vanilla subtasks keep it obtainable whatever happens to the Farmersdelight-Plugin-Pro crops.
             multiNode("plant_all_crops", "plant_rice", "farmersdelight:cabbage", Material.IRON_SHOVEL, 3, 3,
                     CROPS, ContentRequirement.ALWAYS),
             // Right-clicking the rope-grown tomato block.

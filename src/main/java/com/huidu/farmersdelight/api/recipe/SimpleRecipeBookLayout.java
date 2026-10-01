@@ -20,7 +20,7 @@ import java.util.Map;
  *
  * <p>Build one with {@link #fromConfig}; do not re-implement the parse. Sharing only the record was not
  * enough — every addon then wrote the same grid/legend/decoration reader, and the copies each lost
- * something FarmersDelight's own reader has (translation keys on decorations, the
+ * something Farmersdelight-Plugin-Pro's own reader has (translation keys on decorations, the
  * {@code title-layout.craftengine} tokens, glyph resolution in the title).
  */
 public record SimpleRecipeBookLayout(Component title, int rows, List<String> layout,

@@ -1,4 +1,4 @@
-FarmersDelight is a Paper/Folia port of the Minecraft mod Farmer's Delight by vectorwing.
+Farmersdelight-Plugin-Pro is a Paper/Folia port of the Minecraft mod Farmer's Delight by vectorwing.
 
 The mod's assets, recipes, item values and game behaviour were carried over, so the
 original work's licence and copyright travel with this plugin.

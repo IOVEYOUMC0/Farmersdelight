@@ -17,7 +17,7 @@ public final class FarmersDelightCommandRegistrar {
     public static void register(FarmersDelightPlugin plugin) {
         FarmersDelightCommand commandHandler = new FarmersDelightCommand(plugin);
         plugin.getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
-                event.registrar().register("farmersdelight", "Main FarmersDelight command", List.of("fd"),
+                event.registrar().register("farmersdelight", "Main Farmersdelight-Plugin-Pro command", List.of("fd"),
                         new BasicCommand() {
                             @Override
                             public void execute(CommandSourceStack source,

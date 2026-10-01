@@ -159,7 +159,7 @@ public final class AddonPackSections extends AbstractConfigParser {
 
     /**
      * The same claim without diagnostics, for callers that report the outcome themselves
-     * (FarmersDelight uses its own console keys).
+     * (Farmersdelight-Plugin-Pro uses its own console keys).
      */
     public static AddonPackSections claim(PackManager packManager, String typeId, String stageName,
                                           Map<String, String> roots) {

@@ -1,6 +1,7 @@
 package com.huidu.farmersdelight.gui.editor;
 
 import com.huidu.farmersdelight.api.config.ConfigFileUpdater;
+import com.huidu.farmersdelight.config.YamlFileTransactions;
 import com.huidu.farmersdelight.recipe.RecipeFileLoader;
 import com.huidu.farmersdelight.recipe.RecipeIngredient;
 import com.huidu.farmersdelight.recipe.RecipeItemCodec;
@@ -19,14 +20,11 @@ import org.bukkit.inventory.ItemStack;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 public final class RecipeEditorStore {
 
@@ -46,74 +44,113 @@ public final class RecipeEditorStore {
         this.plugin = plugin;
     }
 
+    private record Edit(File file, String localPath, YamlMutation mutation) {
+    }
+
     public boolean saveCookingPotRecipe(CookingPotRecipe recipe, String customGroupId) {
-        if (customGroupId == null || customGroupId.isBlank()) {
-            RecipeOwner owner =
-                    AddonRecipeFiles.ownerOf(
-                            "cooking_pot", recipe.getId());
+        return captureAndReload(() -> cookingPotEdit(recipe, customGroupId));
+    }
+
+    public CompletableFuture<Boolean> saveCookingPotRecipeAsync(CookingPotRecipe recipe, String customGroupId) {
+        return captureAsync(() -> cookingPotEdit(recipe, customGroupId));
+    }
+
+    private Edit cookingPotEdit(CookingPotRecipe recipe, String group) {
+        // CraftEngine/NMS item serialization belongs to the caller's owning thread.
+        Map<String, Object> body = buildCookingPotBody(recipe);
+        if (group == null || group.isBlank()) {
+            RecipeOwner owner = AddonRecipeFiles.ownerOf("cooking_pot", recipe.getId());
             if (owner != null) {
-                return mutateExternal(owner, yaml -> yaml.set(owner.yamlPath(), buildCookingPotBody(recipe)));
+                return external(owner, yaml -> yaml.set(owner.yamlPath(), body));
             }
             if (plugin.getCookingPotRecipes().isExternalRecipe(recipe.getId())) {
-                return mutate(COOKING_POT_FILE, yaml -> {
-                    putRecipe(yaml, COOKING_POT_ROOT, recipe.getId(), buildCookingPotBody(recipe));
+                return local(COOKING_POT_FILE, yaml -> {
+                    putRecipe(yaml, COOKING_POT_ROOT, recipe.getId(), body);
                     setExternalOverride(yaml, "cooking_pot", recipe.getId(), true);
                 });
             }
         }
-        String path = cookingPotPath(recipe.getId(), customGroupId);
-        return mutate(COOKING_POT_FILE, yaml -> yaml.set(path, buildCookingPotBody(recipe)));
+        String path = cookingPotPath(recipe.getId(), group);
+        return local(COOKING_POT_FILE, yaml -> yaml.set(path, body));
     }
 
     public boolean deleteCookingPotRecipe(String recipeId, String customGroupId) {
-        if (customGroupId == null || customGroupId.isBlank()) {
-            RecipeOwner owner =
-                    AddonRecipeFiles.ownerOf("cooking_pot", recipeId);
+        return captureAndReload(() -> deleteCookingPotEdit(recipeId, customGroupId));
+    }
+
+    public CompletableFuture<Boolean> deleteCookingPotRecipeAsync(String recipeId, String customGroupId) {
+        return captureAsync(() -> deleteCookingPotEdit(recipeId, customGroupId));
+    }
+
+    private Edit deleteCookingPotEdit(String id, String group) {
+        if (group == null || group.isBlank()) {
+            RecipeOwner owner = AddonRecipeFiles.ownerOf("cooking_pot", id);
             if (owner != null) {
-                return mutateExternal(owner, yaml -> yaml.set(owner.yamlPath(), null));
+                return external(owner, yaml -> yaml.set(owner.yamlPath(), null));
             }
-            if (plugin.getCookingPotRecipes().isExternalRecipe(recipeId)) {
-                return mutate(COOKING_POT_FILE, yaml -> {
-                    putRecipe(yaml, COOKING_POT_ROOT, recipeId, null);
-                    setExternalOverride(yaml, "cooking_pot", recipeId, false);
+            if (plugin.getCookingPotRecipes().isExternalRecipe(id)) {
+                return local(COOKING_POT_FILE, yaml -> {
+                    putRecipe(yaml, COOKING_POT_ROOT, id, null);
+                    setExternalOverride(yaml, "cooking_pot", id, false);
                 });
             }
         }
-        String path = cookingPotPath(recipeId, customGroupId);
-        return mutate(COOKING_POT_FILE, yaml -> yaml.set(path, null));
+        String path = cookingPotPath(id, group);
+        return local(COOKING_POT_FILE, yaml -> yaml.set(path, null));
     }
 
     public boolean saveCuttingBoardRecipe(CuttingBoardRecipe recipe) {
-        RecipeOwner owner =
-                AddonRecipeFiles.ownerOf(
-                        "cutting_board", recipe.getId());
+        return captureAndReload(() -> cuttingBoardEdit(recipe));
+    }
+
+    public CompletableFuture<Boolean> saveCuttingBoardRecipeAsync(CuttingBoardRecipe recipe) {
+        return captureAsync(() -> cuttingBoardEdit(recipe));
+    }
+
+    private Edit cuttingBoardEdit(CuttingBoardRecipe recipe) {
+        Map<String, Object> body = buildCuttingBoardBody(recipe);
+        String id = recipe.getId();
+        RecipeOwner owner = AddonRecipeFiles.ownerOf("cutting_board", id);
         if (owner != null) {
-            return mutateExternal(owner, yaml -> yaml.set(owner.yamlPath(), buildCuttingBoardBody(recipe)));
+            return external(owner, yaml -> yaml.set(owner.yamlPath(), body));
         }
-        if (plugin.getCuttingBoardRecipes().isExternalRecipe(recipe.getId())) {
-            return mutate(CUTTING_BOARD_FILE, yaml -> {
-                putRecipe(yaml, CUTTING_BOARD_ROOT, recipe.getId(), buildCuttingBoardBody(recipe));
-                setExternalOverride(yaml, "cutting_board", recipe.getId(), true);
+        if (plugin.getCuttingBoardRecipes().isExternalRecipe(id)) {
+            return local(CUTTING_BOARD_FILE, yaml -> {
+                putRecipe(yaml, CUTTING_BOARD_ROOT, id, body);
+                setExternalOverride(yaml, "cutting_board", id, true);
             });
         }
-        String path = CUTTING_BOARD_ROOT + "." + recipe.getId();
-        return mutate(CUTTING_BOARD_FILE, yaml -> yaml.set(path, buildCuttingBoardBody(recipe)));
+        return local(CUTTING_BOARD_FILE, yaml -> yaml.set(CUTTING_BOARD_ROOT + "." + id, body));
     }
 
     public boolean deleteCuttingBoardRecipe(String recipeId) {
-        RecipeOwner owner =
-                AddonRecipeFiles.ownerOf("cutting_board", recipeId);
+        return captureAndReload(() -> deleteCuttingBoardEdit(recipeId));
+    }
+
+    public CompletableFuture<Boolean> deleteCuttingBoardRecipeAsync(String recipeId) {
+        return captureAsync(() -> deleteCuttingBoardEdit(recipeId));
+    }
+
+    private Edit deleteCuttingBoardEdit(String id) {
+        RecipeOwner owner = AddonRecipeFiles.ownerOf("cutting_board", id);
         if (owner != null) {
-            return mutateExternal(owner, yaml -> yaml.set(owner.yamlPath(), null));
+            return external(owner, yaml -> yaml.set(owner.yamlPath(), null));
         }
-        if (plugin.getCuttingBoardRecipes().isExternalRecipe(recipeId)) {
-            return mutate(CUTTING_BOARD_FILE, yaml -> {
-                putRecipe(yaml, CUTTING_BOARD_ROOT, recipeId, null);
-                setExternalOverride(yaml, "cutting_board", recipeId, false);
+        if (plugin.getCuttingBoardRecipes().isExternalRecipe(id)) {
+            return local(CUTTING_BOARD_FILE, yaml -> {
+                putRecipe(yaml, CUTTING_BOARD_ROOT, id, null);
+                setExternalOverride(yaml, "cutting_board", id, false);
             });
         }
-        String path = CUTTING_BOARD_ROOT + "." + recipeId;
-        return mutate(CUTTING_BOARD_FILE, yaml -> yaml.set(path, null));
+        return local(CUTTING_BOARD_FILE, yaml -> yaml.set(CUTTING_BOARD_ROOT + "." + id, null));
+    }
+
+    private Edit local(String path, YamlMutation mutation) {
+        return new Edit(new File(plugin.getDataFolder(), path), path, mutation);
+    }
+
+    private Edit external(RecipeOwner owner, YamlMutation mutation) {
+        return new Edit(owner.file(), null, mutation);
     }
 
     private String cookingPotPath(String recipeId, String customGroupId) {
@@ -217,41 +254,80 @@ public final class RecipeEditorStore {
         void apply(YamlConfiguration yaml);
     }
 
-    private boolean mutate(String relativePath, YamlMutation mutation) {
+    private boolean apply(Edit edit) {
         try {
-            // Load without bundled-recipe reconciliation: this path reads the file only to write it straight
-            // back, so a merge here would re-add in the same operation the very recipe an admin just deleted
-            // in the editor.
-            YamlConfiguration yaml = RecipeFileLoader.loadRecipeFile(plugin, relativePath, false);
-            if (yaml == null) {
-                // The file is unreadable: writing the mutation would replace every remaining entry with the
-                // mutated empty configuration, so the edit is refused and the operator keeps the file.
-                I18n.logWarning("plugin.recipe_save_failed", "file", relativePath,
-                        "error", I18n.formatConsole("plugin.recipe_unreadable"));
-                return false;
+            return YamlFileTransactions.execute(edit.file().toPath(), () -> {
+                YamlConfiguration yaml;
+                if (edit.localPath() != null) {
+                    yaml = RecipeFileLoader.loadPlainRecipeFile(plugin, edit.localPath());
+                    if (yaml == null) {
+                        throw new IOException("Cannot read recipe file; edit was refused");
+                    }
+                } else {
+                    // Strict plain parsing keeps legacy serialization maps untouched during worker I/O.
+                    yaml = com.huidu.farmersdelight.config.PlainYamlDocuments.read(edit.file().toPath());
+                }
+                edit.mutation().apply(yaml);
+                writeAtomically(edit.file(), yaml.saveToString());
+                return true;
+            });
+        } catch (Exception error) {
+            if (error instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
             }
-            mutation.apply(yaml);
-            writeAtomically(new File(plugin.getDataFolder(), relativePath), yaml.saveToString());
-            plugin.reloadRecipeFiles();
-            return true;
-        } catch (Exception e) {
-            I18n.logWarning("plugin.recipe_save_failed", "file", relativePath, "error", e.getMessage());
+            I18n.logWarning("plugin.recipe_save_failed", "file", edit.file().getPath(), "error", error.getMessage());
             return false;
         }
     }
 
-    private boolean mutateExternal(RecipeOwner owner,
-                                   YamlMutation mutation) {
+    private boolean captureAndReload(java.util.function.Supplier<Edit> capture) {
         try {
-            YamlConfiguration yaml = YamlConfiguration.loadConfiguration(owner.file());
-            mutation.apply(yaml);
-            writeAtomically(owner.file(), yaml.saveToString());
-            plugin.reloadRecipeFiles();
-            return true;
-        } catch (Exception e) {
-            I18n.logWarning("plugin.recipe_save_failed", "file", owner.file().getPath(), "error", e.getMessage());
+            return applyAndReload(capture.get());
+        } catch (RuntimeException | LinkageError error) {
+            plugin.getLogger().log(java.util.logging.Level.WARNING, "Could not capture recipe edit", error);
             return false;
         }
+    }
+
+    private CompletableFuture<Boolean> captureAsync(java.util.function.Supplier<Edit> capture) {
+        try {
+            return applyAsync(capture.get());
+        } catch (RuntimeException | LinkageError error) {
+            return CompletableFuture.failedFuture(error);
+        }
+    }
+
+    private boolean applyAndReload(Edit edit) {
+        if (!apply(edit)) {
+            return false;
+        }
+        plugin.reloadRecipeFiles();
+        return true;
+    }
+
+    private CompletableFuture<Boolean> applyAsync(Edit edit) {
+        CompletableFuture<Boolean> result = new CompletableFuture<>();
+        if (!plugin.scheduler().tryRunAsync(() -> {
+            try {
+                if (!apply(edit)) {
+                    result.complete(false);
+                    return;
+                }
+                if (!plugin.isEnabled()) {
+                    result.complete(true); // Disk commit succeeded; startup will publish it next time.
+                    return;
+                }
+                plugin.reloadEditedRecipeFilesAsync().whenComplete((ignored, error) -> {
+                    if (error == null) result.complete(true);
+                    else result.completeExceptionally(error);
+                });
+            } catch (RuntimeException | LinkageError error) {
+                result.completeExceptionally(error);
+            }
+        })) {
+            result.complete(false);
+        }
+        return result;
     }
 
     private static void putRecipe(YamlConfiguration yaml, String rootName, String id, Object value) {
@@ -277,20 +353,7 @@ public final class RecipeEditorStore {
         yaml.set(path, ids.isEmpty() ? null : ids);
     }
 
-    // Package-private and static so RecipeDiscoveryManager flushes the same way: a torn write there loses
-    // every player's unlocks at once.
     static void writeAtomically(File target, String content) throws IOException {
-        Path targetPath = target.toPath();
-        Path parent = targetPath.getParent();
-        if (parent != null) {
-            Files.createDirectories(parent);
-        }
-        Path temp = targetPath.resolveSibling(target.getName() + ".tmp");
-        Files.writeString(temp, content, StandardCharsets.UTF_8);
-        try {
-            Files.move(temp, targetPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (IOException atomicFailure) {
-            Files.move(temp, targetPath, StandardCopyOption.REPLACE_EXISTING);
-        }
+        ConfigFileUpdater.writeStringAtomically(target.toPath(), content, true);
     }
 }

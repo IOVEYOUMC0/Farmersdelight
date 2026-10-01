@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
  * Language-file manager for addons. Bundled lang files are copied to plugins/&lt;Plugin&gt;/lang/ so
  * operators can edit them; init() merges missing keys and restores corrupted files, reload() re-reads
  * the data folder. The locale follows the addon's config.yml "language" setting; when it is left
- * empty it inherits FarmersDelight's own resolved server locale (I18n.getDefaultLocale()), then
+ * empty it inherits Farmersdelight-Plugin-Pro's own resolved server locale (I18n.getDefaultLocale()), then
  * CraftEngine's forced locale, then the JVM locale, then a configurable fallback (zh_cn by default).
  * Call init() from onEnable after saveDefaultConfig(), reload() from the addon's reload hook. get()
  * fills {name} placeholders from alternating key/value args.
@@ -237,7 +237,7 @@ public final class AddonLanguage {
             }
             warning("i18n.configured_missing", "locale", configured);
         }
-        // When the addon leaves its own language empty, inherit FarmersDelight's resolved server
+        // When the addon leaves its own language empty, inherit Farmersdelight-Plugin-Pro's resolved server
         // locale so a single config.yml entry drives every addon's console text.
         String farmersDelightLocale = selectFarmersDelightLocale();
         if (farmersDelightLocale != null) {
@@ -280,7 +280,7 @@ public final class AddonLanguage {
         try {
             return normalizeLocale(I18n.getDefaultLocale(), false);
         } catch (RuntimeException | LinkageError ignored) {
-            // FarmersDelight not loaded / locale state not initialised yet; fall through to CE then JVM.
+            // Farmersdelight-Plugin-Pro not loaded / locale state not initialised yet; fall through to CE then JVM.
             return null;
         }
     }
@@ -340,7 +340,7 @@ public final class AddonLanguage {
         String message = get(keyPrefix + "." + key, args);
         if (key.startsWith("i18n.") && message.equals(keyPrefix + "." + key)) {
             // The language-file messages themselves are shared by every plugin in the family, so they live in
-            // FarmersDelight's own language files; an addon can still override one by defining <prefix>.<key>.
+            // Farmersdelight-Plugin-Pro's own language files; an addon can still override one by defining <prefix>.<key>.
             message = I18n.formatConsole(key, args);
         }
         if (info) {

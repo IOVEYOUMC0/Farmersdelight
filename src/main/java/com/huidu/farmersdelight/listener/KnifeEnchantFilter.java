@@ -200,7 +200,7 @@ public final class KnifeEnchantFilter implements Listener {
         // configs), so scrub any backstab the vanilla result leaked onto the item. We police only our own
         // datapack enchant here, never vanilla enchants.
         if (groupId == null || !current.group(groupId).anvilEnabled()) {
-            // If the incoming book holds a FarmersDelight-managed enchant (backstab or a registered addon),
+            // If the incoming book holds a Farmersdelight-Plugin-Pro-managed enchant (backstab or a registered addon),
             // merely stripping it leaves the anvil clickable: the player spends the book and levels but the
             // enchant never lands. Block the whole combine so the slot shows grey and cannot be clicked.
             if (hasManagedEnchant(second)) {
@@ -286,7 +286,7 @@ public final class KnifeEnchantFilter implements Listener {
         }, 1L);
     }
 
-    // True when an incoming anvil book carries any FarmersDelight-managed enchant (backstab or an API
+    // True when an incoming anvil book carries any Farmersdelight-Plugin-Pro-managed enchant (backstab or an API
     // registered addon). Used to block such books from combining onto a non-knife target outright.
     private boolean hasManagedEnchant(ItemStack book) {
         if (isEmpty(book)) {
@@ -348,7 +348,7 @@ public final class KnifeEnchantFilter implements Listener {
         event.setResult(first != null && result.isSimilar(first) ? null : result);
     }
 
-    // The FarmersDelight-managed knife-only enchants (built-in backstab + every API-registered enchant): the
+    // The Farmersdelight-Plugin-Pro-managed knife-only enchants (built-in backstab + every API-registered enchant): the
     // only enchants scrubbed off a non-knife anvil result. Vanilla enchants a creative player applies to
     // arbitrary items are left alone.
     private Set<Enchantment> managedEnchants() {

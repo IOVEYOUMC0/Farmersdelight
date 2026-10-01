@@ -325,7 +325,7 @@ public final class FarmersDelightApi {
      *
      * @deprecated every result is registered at chance 1.0. A recipe with any result that is not
      *     guaranteed must use {@link #registerCuttingBoardRecipeWithChances}, which is what the
-     *     configuration loader and FarmersDelight's own recipes use. This overload exists so callers
+     *     configuration loader and Farmersdelight-Plugin-Pro's own recipes use. This overload exists so callers
      *     written against it keep working.
      */
     @Deprecated
@@ -399,7 +399,7 @@ public final class FarmersDelightApi {
 
     /**
      * Config-driven registration: parses one special-recipe entry from a YAML section and registers it.
-     * Same format as FarmersDelight's own {@code special_recipes.yml}; lets addons drive their special
+     * Same format as Farmersdelight-Plugin-Pro's own {@code special_recipes.yml}; lets addons drive their special
      * recipes from a released config file like their other recipes. Throws on a malformed section so the
      * addon loader can fail the specific entry and keep going (matching FD's per-entry isolation).
      */
@@ -492,7 +492,7 @@ public final class FarmersDelightApi {
         return plugin.getSpecialRecipeRegistry().getAll();
     }
 
-    /** Add a right-click handler for FarmersDelight cutting boards; first to consume wins. */
+    /** Add a right-click handler for Farmersdelight-Plugin-Pro cutting boards; first to consume wins. */
     public void registerCuttingBoardInteractionHandler(CuttingBoardInteractionHandler handler) {
         FarmersDelightPlugin plugin = availablePlugin();
         if (plugin != null && handler != null) {
@@ -600,7 +600,7 @@ public final class FarmersDelightApi {
         return plugin != null && block != null && plugin.getHeatSourceConfig().isConductor(block);
     }
 
-    // FarmersDelight rebuilds the whole heat-source table on every config reload. Registrations made
+    // Farmersdelight-Plugin-Pro rebuilds the whole heat-source table on every config reload. Registrations made
     // through the API are remembered here so the rebuild replays them, the same way registerCommonTags
     // survives a reload. Without this an addon that registers in onEnable (the natural place) would
     // silently lose its heat source on the first /fd reload, with no log line.
@@ -661,7 +661,7 @@ public final class FarmersDelightApi {
     }
 
     /**
-     * Replays every addon heat-source registration into a freshly built table. Called by FarmersDelight
+     * Replays every addon heat-source registration into a freshly built table. Called by Farmersdelight-Plugin-Pro
      * right after it reloads its own heat-source config; addons never call this.
      */
     @ApiStatus.Internal
@@ -754,10 +754,10 @@ public final class FarmersDelightApi {
     }
 
     // Packet item displays
-    // Server-side, packet-only ItemDisplay proxies (no real entity is spawned): FarmersDelight tracks them,
+    // Server-side, packet-only ItemDisplay proxies (no real entity is spawned): Farmersdelight-Plugin-Pro tracks them,
     // syncs them to nearby players (join / chunk-load / teleport) and cleans them up on world unload. Use
     // these instead of world.spawn(ItemDisplay) so an addon's decoration displays don't persist to disk,
-    // never become orphans, and share FarmersDelight's Folia-safe visibility handling. The returned int is a
+    // never become orphans, and share Farmersdelight-Plugin-Pro's Folia-safe visibility handling. The returned int is a
     // handle for updateItemDisplay / removeItemDisplay; a return of -1 means the display was not created.
 
     public int createItemDisplay(Location location, ItemStack item,

@@ -1,10 +1,10 @@
 """Enforce the addon/plugin API boundary mechanically.
 
-The rule (see the project readme): an addon may only depend on FarmersDelight's `api.**` facade at
+The rule (see the project readme): an addon may only depend on Farmersdelight-Plugin-Pro's `api.**` facade at
 compile time. Everything else is internal and may be refactored or moved without notice.
 
 Two checks, both mechanical:
-  1. no file outside FarmersDelight/ may import a `com.huidu.farmersdelight.*` package that is not
+  1. no file outside Farmersdelight-Plugin-Pro/ may import a `com.huidu.farmersdelight.*` package that is not
      `api` (this is the rule the whole addon split rests on);
   2. no `api/**` class may *declare* a public signature that mentions an internal FD type — that is
      what would leak an implementation type through the facade to a caller.
@@ -14,7 +14,7 @@ class name (resolved by the file's own imports). It deliberately does not try to
 resolver; it flags what is written down, which is what a reviewer would catch.
 
 Usage:
-    python tools/check_api_boundary.py            # from FarmersDelight/, uses ../<addon> dirs
+    python tools/check_api_boundary.py            # from Farmersdelight-Plugin-Pro/, uses ../<addon> dirs
     python tools/check_api_boundary.py --quiet    # problems only
 Exit code is 0 when clean, 1 when a violation is found.
 """
@@ -42,12 +42,12 @@ SKIP_PARTS = ("\\build\\", "/build/", "\\Reference\\", "/Reference/", "\\.git\\"
 
 
 def repo_root() -> Path:
-    """FarmersDelight/ is the repo; its parent holds the sibling addon checkouts."""
+    """Farmersdelight-Plugin-Pro/ is the repo; its parent holds the sibling addon checkouts."""
     here = Path(__file__).resolve()
     for parent in here.parents:
         if (parent / "src" / "main" / "java").is_dir():
             return parent
-    sys.exit("could not locate the FarmersDelight module root from " + str(here))
+    sys.exit("could not locate the Farmersdelight-Plugin-Pro module root from " + str(here))
 
 
 def is_api(imported: str) -> bool:
@@ -163,7 +163,7 @@ def main() -> int:
         print(f"  rule: addons may import only {FD_PACKAGE}.api.*")
 
     if addon_problems:
-        print(f"\naddon imports an internal FarmersDelight package ({len(addon_problems)}):")
+        print(f"\naddon imports an internal Farmersdelight-Plugin-Pro package ({len(addon_problems)}):")
         for problem in addon_problems[:40]:
             print("  " + problem)
 

@@ -35,31 +35,30 @@ import java.util.stream.Collectors;
 public class CuttingBoardRecipeManager {
 
     private final FarmersDelightPlugin plugin;
-    // Rebuilt as a whole on reload; published as a whole via volatile writes so readers on Folia
-    // region/entity threads never observe a half-cleared map. Never mutate in place after publishing.
-    private volatile Map<String, CuttingBoardRecipe> recipes = Map.of();
-    // Recipes whose winning definition came from a CraftEngine pack section; published with the maps above
-    // so the startup summary can tell the plugin's own file, pack content and runtime registrations apart.
-    private volatile int packRecipeCount;
-    private volatile List<CuttingBoardRecipe> sortedRecipes = List.of();
-    // Input index for matchRecipe — narrows the candidate set without changing match order. Splits recipes
-    // into two buckets at load time:
-    //   - byInputItemId: Item-typed recipes keyed by their input's literal item id (e.g. "minecraft:carrot")
-    //   - tagInputRecipeIds: every Tag-typed recipe's id (these always need a full matchesTaggedItem check
-    //     because vanilla tags aren't surfaced through ItemUtils.getItemTagIds, so we can't index them)
-    // Query gathers candidates = byInputItemId[input.ids] ∪ tagInputRecipeIds, then iterates sortedRecipes
-    // filtered by that set — sortedRecipes order (priority + id) preserved exactly.
-    private volatile Map<String, Set<String>> byInputItemId = Map.of();
-    private volatile Set<String> tagInputRecipeIds = Set.of();
-    // Reverse index result item id -> producing recipes, built at load time and published as a whole
-    // (single volatile write) so API cross-reference / GUI can answer "which recipes produce X" in O(1).
-    private volatile Map<String, List<CuttingBoardRecipe>> resultToRecipes = Map.of();
-    private volatile List<CuttingBoardRecipe.ToolRequirement> toolRequirements = List.of();
+    private volatile Snapshot snapshot = Snapshot.empty();
+    private volatile YamlConfiguration lastFileDocument;
+    private volatile RecipeParseCache<CuttingBoardRecipe> parsedRecipes;
+
+    record Snapshot(Map<String, CuttingBoardRecipe> recipes, int packRecipeCount,
+                    List<CuttingBoardRecipe> sortedRecipes, Map<String, Set<String>> byInputItemId,
+                    Set<String> tagInputRecipeIds, Map<String, List<CuttingBoardRecipe>> resultToRecipes,
+                    List<CuttingBoardRecipe.ToolRequirement> toolRequirements) {
+        static Snapshot empty() {
+            return new Snapshot(Map.of(), 0, List.of(), Map.of(), Set.of(), Map.of(), List.of());
+        }
+    }
+
+    public record ParseMetrics(int parsed, int reused) { }
+    public ParseMetrics parseMetrics() {
+        RecipeParseCache<CuttingBoardRecipe> current = parsedRecipes;
+        return current == null ? new ParseMetrics(0, 0) : new ParseMetrics(current.parsed(), current.reused());
+    }
+
     // Recipes registered at runtime by addons via the public API; kept separate so they survive a
     // /fd reload (which rebuilds the file-backed map) and merged into the published map in loadRecipes().
     private final Map<String, CuttingBoardRecipe> externalRecipes = new ConcurrentHashMap<>();
     // External (un)register republishing is coalesced to the next tick (one loadRecipes() per batch).
-    private volatile boolean externalRepublishScheduled = false;
+    private final java.util.concurrent.atomic.AtomicBoolean externalRepublishScheduled = new java.util.concurrent.atomic.AtomicBoolean();
     // Caches CraftEngine's vanillaItemIdsByTag result per tag so matchesTaggedItem doesn't re-stream
     // the full vanilla tag membership on every cutting click (mirrors CookingPotRecipeManager).
     // Cleared in loadRecipes(). Concurrent: read on Folia region/entity threads.
@@ -71,19 +70,23 @@ public class CuttingBoardRecipeManager {
     }
 
     public void loadRecipes() {
+        loadRecipes(RecipeFileLoader.loadRecipeFile(plugin, "recipes/cutting_board_recipes.yml"), false);
+    }
+
+    public void loadRecipesIncrementally() {
+        loadRecipes(RecipeFileLoader.loadRecipeFile(plugin, "recipes/cutting_board_recipes.yml"), true);
+    }
+
+    private synchronized void loadRecipes(YamlConfiguration mainConfig, boolean incremental) {
+        if (mainConfig == null) return;
+        RecipeParseCache<CuttingBoardRecipe> parsing = new RecipeParseCache<>(incremental ? parsedRecipes : null);
         Map<String, CuttingBoardRecipe> newRecipes = new LinkedHashMap<>();
         // Ids whose winning definition came from a CraftEngine pack section; see getPackRecipeCount().
         Set<String> packIds = new HashSet<>();
-        YamlConfiguration mainConfig = RecipeFileLoader.loadRecipeFile(plugin, "recipes/cutting_board_recipes.yml");
-        if (mainConfig == null) {
-            // Unreadable file (the loader already warned): keep the recipes published last rather than
-            // rebuilding from an empty configuration.
-            return;
-        }
         Set<String> overriddenExternalIds = externalOverrideIds(mainConfig, "cutting_board");
         RecipeFileLoader.loadRecipeSections(plugin,
                 mainConfig, "cutting_board_recipes", "cutting board", "recipes/cutting_board_recipes.yml",
-                (recipeId, section) -> newRecipes.put(recipeId, parseRecipe(recipeId, section)));
+                (recipeId, section) -> newRecipes.put(recipeId, parsing.parse("file", recipeId, section, () -> parseRecipe(recipeId, section))));
 
         // Recipes a CraftEngine pack declares under cutting_recipes. Loaded after the plugin's own file so a
         // pack can never silently replace a built-in recipe, and before the API merge below so an explicit
@@ -97,7 +100,7 @@ public class CuttingBoardRecipeManager {
                             I18n.logWarning("recipe.pack_duplicate_skipped", "id", recipeId, "source", packSection.source());
                             return;
                         }
-                        newRecipes.put(recipeId, parseRecipe(recipeId, section));
+                        newRecipes.put(recipeId, parsing.parse(packSection.source(), recipeId, section, () -> parseRecipe(recipeId, section)));
                         packIds.add(recipeId);
                     });
         }
@@ -147,17 +150,14 @@ public class CuttingBoardRecipeManager {
             frozenByItemId.put(e.getKey(), Set.copyOf(e.getValue()));
         }
 
-        this.recipes = newRecipes;
-        this.packRecipeCount = packIds.size();
-        this.sortedRecipes = newSorted;
-        this.byInputItemId = Map.copyOf(frozenByItemId);
-        this.tagInputRecipeIds = Set.copyOf(newTagInputRecipeIds);
         LinkedHashSet<CuttingBoardRecipe.ToolRequirement> uniqueTools = new LinkedHashSet<>();
-        for (CuttingBoardRecipe recipe : newSorted) {
-            uniqueTools.addAll(recipe.getTools());
-        }
-        this.toolRequirements = List.copyOf(uniqueTools);
-        this.resultToRecipes = buildResultIndex(newSorted);
+        for (CuttingBoardRecipe recipe : newSorted) uniqueTools.addAll(recipe.getTools());
+        Snapshot next = new Snapshot(RecipeCollections.freezeMap(newRecipes), packIds.size(), List.copyOf(newSorted),
+                RecipeCollections.freezeSets(frozenByItemId), Set.copyOf(newTagInputRecipeIds),
+                RecipeCollections.freezeLists(buildResultIndex(newSorted)), List.copyOf(uniqueTools));
+        lastFileDocument = mainConfig;
+        parsedRecipes = parsing;
+        snapshot = next;
         vanillaItemIdsByTagCache.clear();
         // Invalidate the recipe-list GUI display cache: this republish path (incl. addon register/
         // unregister) bypasses RecipeViewGui.clearConfigCache.
@@ -354,7 +354,7 @@ public class CuttingBoardRecipeManager {
     }
 
     private boolean toolHasMembers(CuttingBoardRecipe.ToolRequirement requirement) {
-        // These are FarmersDelight action selectors, not registry items. They are resolved by
+        // These are Farmersdelight-Plugin-Pro action selectors, not registry items. They are resolved by
         // ToolContext/matchesToolFallback at click time (axe strip/dig, pickaxe dig, shovel dig).
         if (!requirement.isTag() && isVirtualToolAction(requirement.key())) {
             return true;
@@ -386,13 +386,14 @@ public class CuttingBoardRecipeManager {
     }
 
     public CuttingBoardRecipe matchRecipe(ItemStack input, ItemStack tool) {
+        Snapshot view = snapshot;
         String toolId = ItemUtils.getCustomItemId(tool);
         // ToolContext depends only on the tool itself, not on any recipe; build it once outside the loop to avoid
         // repeating CraftEngine tag/ID lookups and set allocations per recipe (cutting is a per-click hot path).
         ToolContext toolContext = ToolContext.from(plugin, tool, toolId);
 
-        Set<String> candidates = candidateRecipeIds(input);
-        for (CuttingBoardRecipe recipe : sortedRecipes) {
+        Set<String> candidates = candidateRecipeIds(input, view);
+        for (CuttingBoardRecipe recipe : view.sortedRecipes()) {
             if (candidates != null && !candidates.contains(recipe.getId())) {
                 continue;
             }
@@ -405,9 +406,10 @@ public class CuttingBoardRecipeManager {
     }
 
     public boolean hasAnyRecipeFor(ItemStack input) {
+        Snapshot view = snapshot;
         if (input == null || input.getType().isAir()) return false;
-        Set<String> candidates = candidateRecipeIds(input);
-        for (CuttingBoardRecipe recipe : sortedRecipes) {
+        Set<String> candidates = candidateRecipeIds(input, view);
+        for (CuttingBoardRecipe recipe : view.sortedRecipes()) {
             if (candidates != null && !candidates.contains(recipe.getId())) {
                 continue;
             }
@@ -417,11 +419,12 @@ public class CuttingBoardRecipeManager {
     }
 
     public boolean isRecipeTool(ItemStack tool) {
+        Snapshot view = snapshot;
         if (tool == null || tool.getType().isAir()) {
             return false;
         }
         ToolContext context = ToolContext.from(plugin, tool, ItemUtils.getCustomItemId(tool));
-        for (CuttingBoardRecipe.ToolRequirement requirement : toolRequirements) {
+        for (CuttingBoardRecipe.ToolRequirement requirement : view.toolRequirements()) {
             if (matchesToolRequirement(requirement, context)) {
                 return true;
             }
@@ -497,6 +500,7 @@ public class CuttingBoardRecipeManager {
 
     /** Recipes that produce this item, from the reverse result index (O(1), no full scan). */
     public List<CuttingBoardRecipe> getRecipesProducing(ItemStack item) {
+        Snapshot view = snapshot;
         if (item == null || item.getType().isAir()) {
             return List.of();
         }
@@ -507,13 +511,13 @@ public class CuttingBoardRecipeManager {
         if (key == null) {
             return List.of();
         }
-        List<CuttingBoardRecipe> matches = resultToRecipes.get(key);
+        List<CuttingBoardRecipe> matches = view.resultToRecipes().get(key);
         return matches == null ? List.of() : matches;
     }
 
-    private Set<String> candidateRecipeIds(ItemStack input) {
-        Map<String, Set<String>> byId = this.byInputItemId;
-        Set<String> tagIds = this.tagInputRecipeIds;
+    private Set<String> candidateRecipeIds(ItemStack input, Snapshot view) {
+        Map<String, Set<String>> byId = view.byInputItemId();
+        Set<String> tagIds = view.tagInputRecipeIds();
         if ((byId.isEmpty() && tagIds.isEmpty()) || input == null || input.getType().isAir()) {
             return null;
         }
@@ -658,15 +662,18 @@ public class CuttingBoardRecipeManager {
     }
 
     public Map<String, CuttingBoardRecipe> getRecipes() {
-        return Collections.unmodifiableMap(recipes);
+        Snapshot view = snapshot;
+        return Collections.unmodifiableMap(view.recipes());
     }
 
     public List<CuttingBoardRecipe> getSortedRecipes() {
-        return sortedRecipes;
+        Snapshot view = snapshot;
+        return view.sortedRecipes();
     }
 
     public int getRecipeCount() {
-        return recipes.size();
+        Snapshot view = snapshot;
+        return view.recipes().size();
     }
 
     public int getExternalRecipeCount() {
@@ -675,7 +682,8 @@ public class CuttingBoardRecipeManager {
 
     /** Recipes that reached this manager through a CraftEngine pack section, not the plugin's own file. */
     public int getPackRecipeCount() {
-        return packRecipeCount;
+        Snapshot view = snapshot;
+        return view.packRecipeCount();
     }
 
     public boolean isExternalRecipe(String id) {
@@ -687,7 +695,8 @@ public class CuttingBoardRecipeManager {
     }
 
     public CuttingBoardRecipe getRecipe(String id) {
-        return recipes.get(id);
+        Snapshot view = snapshot;
+        return view.recipes().get(id);
     }
 
     public void reload() {
@@ -752,18 +761,20 @@ public class CuttingBoardRecipeManager {
     }
 
     private void scheduleExternalRepublish() {
-        if (externalRepublishScheduled) {
-            return;
+        if (!externalRepublishScheduled.compareAndSet(false, true)) return;
+        try {
+            plugin.scheduler().runLater(() -> {
+                externalRepublishScheduled.set(false);
+                loadRecipes(lastFileDocument, true);
+                // Same as the cooking pot republish: the summary was already printed by the CraftEngine
+                // readiness pass, so the cutting board count would stay a batch behind the addon recipes
+                // without this. Deduped on the counts digest, so an unchanged batch prints nothing.
+                plugin.requestContentSummary();
+            }, 1L);
+        } catch (RuntimeException stoppedScheduler) {
+            externalRepublishScheduled.set(false);
+            throw stoppedScheduler;
         }
-        externalRepublishScheduled = true;
-        plugin.scheduler().runLater(() -> {
-            externalRepublishScheduled = false;
-            loadRecipes();
-            // Same as the cooking pot republish: the summary was already printed by the CraftEngine
-            // readiness pass, so the cutting board count would stay a batch behind the addon recipes
-            // without this. Deduped on the counts digest, so an unchanged batch prints nothing.
-            plugin.requestContentSummary();
-        }, 1L);
     }
 
     private record AvailableItem(ItemStack item, ToolContext toolContext) {

@@ -12,6 +12,7 @@ import com.huidu.farmersdelight.listener.BlockPlaceListener;
 import com.huidu.farmersdelight.listener.ChunkLoadListener;
 import com.huidu.farmersdelight.listener.CraftEngineWatchdogListener;
 import com.huidu.farmersdelight.listener.CropInteractProtectionListener;
+import com.huidu.farmersdelight.listener.CookingPotWakeListener;
 import com.huidu.farmersdelight.listener.CuttingBoardDispenseListener;
 import com.huidu.farmersdelight.listener.CuttingBoardInteractListener;
 import com.huidu.farmersdelight.listener.DamageTypeDatapackInstaller;
@@ -189,7 +190,8 @@ final class ListenerRegistry {
                 // Villager and wandering trader trades use the world-data section. Composting chances and
                 // furnace burn times are configured in CraftEngine item definitions.
                 new VillagerTradeListener(),
-                new ChunkLoadListener(plugin));
+                new ChunkLoadListener(plugin),
+                new CookingPotWakeListener(plugin));
     }
 
     /**

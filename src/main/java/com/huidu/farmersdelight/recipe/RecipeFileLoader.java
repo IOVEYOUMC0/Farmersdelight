@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.recipe;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.api.config.ConfigFileUpdater;
+import com.huidu.farmersdelight.config.YamlFileTransactions;
 import com.huidu.farmersdelight.api.config.ConfigSectionReader;
 import com.huidu.farmersdelight.i18n.I18n;
 import org.bukkit.configuration.ConfigurationSection;
@@ -63,6 +64,43 @@ public final class RecipeFileLoader {
     // published last: an unreadable file parsed as an empty configuration would drop every bundled recipe
     // on the next reload, which is exactly what a single indentation mistake used to do.
     public static YamlConfiguration loadRecipeFile(FarmersDelightPlugin plugin, String relativePath, boolean reconcileWithBundled) {
+        YamlConfiguration prepared = PreparedRecipeFiles.currentDocument(plugin.getDataFolder().toPath().resolve(relativePath));
+        if (prepared != null) return prepared;
+        try {
+            return YamlFileTransactions.execute(plugin.getDataFolder().toPath().resolve(relativePath),
+                    () -> loadRecipeFileLocked(plugin, relativePath, reconcileWithBundled));
+        } catch (Exception error) {
+            if (error instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            I18n.logWarning("plugin.recipe_load_failed", "file", relativePath, "error", error.getMessage());
+            return null;
+        }
+    }
+
+    private static YamlConfiguration loadRecipeFileLocked(FarmersDelightPlugin plugin, String relativePath,
+                                                         boolean reconcileWithBundled) {
+        return readRecipeFileLocked(plugin, relativePath, reconcileWithBundled,
+                ConfigSectionReader.optionalBoolean(plugin.getConfig(), MERGE_MISSING_SETTING, false), false);
+    }
+
+    public static YamlConfiguration loadPlainRecipeFile(FarmersDelightPlugin plugin, String relativePath) {
+        try {
+            return YamlFileTransactions.execute(plugin.getDataFolder().toPath().resolve(relativePath),
+                    () -> readRecipeFileLocked(plugin, relativePath, false, false, true));
+        } catch (Exception error) {
+            if (error instanceof InterruptedException) Thread.currentThread().interrupt();
+            I18n.logWarning("plugin.recipe_load_failed", "file", relativePath, "error", error.getMessage());
+            return null;
+        }
+    }
+
+    static YamlConfiguration prepareRecipeFile(FarmersDelightPlugin plugin, String relativePath, boolean mergeMissing) {
+        return readRecipeFileLocked(plugin, relativePath, true, mergeMissing, true);
+    }
+
+    private static YamlConfiguration readRecipeFileLocked(FarmersDelightPlugin plugin, String relativePath,
+                                                          boolean reconcileWithBundled, boolean mergeMissing, boolean plain) {
         File recipesFile = new File(plugin.getDataFolder(), relativePath);
         if (!recipesFile.exists()) {
             try {
@@ -78,14 +116,21 @@ public final class RecipeFileLoader {
         // corrupted on servers whose default charset is not UTF-8 (common on Windows).
         // Buffer the stream: yaml.load() issues many small read() calls; without buffering each call
         // crosses into the OS/file-system layer (and on reload paths this runs on the main thread).
-        try (Reader reader = new BufferedReader(
-                new InputStreamReader(Files.newInputStream(recipesFile.toPath()), StandardCharsets.UTF_8), 8192)) {
-            YamlConfiguration yaml = new YamlConfiguration();
-            yaml.load(reader);
+        try {
+            YamlConfiguration yaml;
+            if (plain) {
+                yaml = com.huidu.farmersdelight.config.PlainYamlDocuments.read(recipesFile.toPath());
+            } else {
+                yaml = new YamlConfiguration();
+                try (Reader reader = new BufferedReader(new InputStreamReader(
+                        Files.newInputStream(recipesFile.toPath()), StandardCharsets.UTF_8), 8192)) {
+                    yaml.load(reader);
+                }
+            }
             // Only when the file parsed: on the failure path below the configuration is empty, and every
             // bundled recipe would look missing.
             if (reconcileWithBundled) {
-                reconcileWithBundledRecipes(plugin, relativePath, yaml);
+                reconcileWithBundledRecipes(plugin, relativePath, yaml, mergeMissing, plain);
             }
             return yaml;
         } catch (Exception e) {
@@ -94,8 +139,8 @@ public final class RecipeFileLoader {
         }
     }
 
-    private static void reconcileWithBundledRecipes(FarmersDelightPlugin plugin, String relativePath, YamlConfiguration onDisk) {
-        YamlConfiguration bundled = readBundledRecipeFile(plugin, relativePath);
+    private static void reconcileWithBundledRecipes(FarmersDelightPlugin plugin, String relativePath, YamlConfiguration onDisk, boolean mergeMissing, boolean plain) {
+        YamlConfiguration bundled = readBundledRecipeFile(plugin, relativePath, plain);
         if (bundled == null) {
             return;
         }
@@ -110,7 +155,7 @@ public final class RecipeFileLoader {
             return;
         }
 
-        if (!ConfigSectionReader.optionalBoolean(plugin.getConfig(), MERGE_MISSING_SETTING, false)) {
+        if (!mergeMissing) {
             return;
         }
 
@@ -153,14 +198,22 @@ public final class RecipeFileLoader {
         return true;
     }
 
-    private static YamlConfiguration readBundledRecipeFile(FarmersDelightPlugin plugin, String relativePath) {
+    private static YamlConfiguration readBundledRecipeFile(FarmersDelightPlugin plugin, String relativePath, boolean plain) {
         try (InputStream stream = plugin.getResource(relativePath)) {
             if (stream == null) {
                 return null;
             }
             YamlConfiguration bundled = new YamlConfiguration();
             try (Reader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8), 8192)) {
-                bundled.load(reader);
+                if (plain) {
+                    StringBuilder contents = new StringBuilder();
+                    char[] buffer = new char[8192];
+                    int count;
+                    while ((count = reader.read(buffer)) != -1) contents.append(buffer, 0, count);
+                    bundled = com.huidu.farmersdelight.config.PlainYamlDocuments.parse(contents.toString());
+                } else {
+                    bundled.load(reader);
+                }
             }
             return bundled;
         } catch (Exception e) {
@@ -181,17 +234,7 @@ public final class RecipeFileLoader {
 
     private static void writeRecipeFile(FarmersDelightPlugin plugin, String relativePath, String content) throws IOException {
         Path target = new File(plugin.getDataFolder(), relativePath).toPath();
-        Path parent = target.getParent();
-        if (parent != null) {
-            Files.createDirectories(parent);
-        }
-        Path temp = target.resolveSibling(target.getFileName() + ".tmp");
-        Files.writeString(temp, content, StandardCharsets.UTF_8);
-        try {
-            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (IOException atomicFailure) {
-            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
-        }
+        ConfigFileUpdater.writeStringAtomically(target, content, true);
     }
 
     static void loadRecipeSections(FarmersDelightPlugin plugin,

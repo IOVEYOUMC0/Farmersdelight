@@ -3,6 +3,7 @@ package com.huidu.farmersdelight.manager;
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.block.behavior.CookingPotBlockBehavior;
 import com.huidu.farmersdelight.block.behavior.CookingPotBlockEntity;
+import com.huidu.farmersdelight.block.behavior.CookingPotBlockEntityController;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.recipe.CookingPotRecipe;
 import com.huidu.farmersdelight.util.BlockPosKey;
@@ -18,8 +19,9 @@ import org.bukkit.block.Block;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.UUID;
 
 public class TickManager {
@@ -31,24 +33,24 @@ public class TickManager {
     private PluginTask cleanupTask;
     private volatile boolean running = false;
     
-    private final Set<ActiveBlock> activeBlocks = ConcurrentHashMap.newKeySet();
-    // Lock-free mark queue: producers are event-driven (GUI clicks, block interactions, chunk loads)
-    // and the single consumer is tick(). FIFO drain preserves last-operation-wins semantics per block.
-    private final ConcurrentLinkedQueue<PendingChange> pendingChanges = new ConcurrentLinkedQueue<>();
+    private final ActiveWorkRegistry<ActiveBlock, ChunkKey, UUID> activeWork =
+            new ActiveWorkRegistry<>(TickManager::chunkOf, ChunkKey::worldId);
+    private static final int MARK_DRAIN_BUDGET = 1024;
+    private final Map<ChunkKey, Object> scheduledChunks = new ConcurrentHashMap<>();
+    private final Map<ActiveBlock, CookingPotBlockEntityController> nativePots = new ConcurrentHashMap<>();
+    private final AtomicInteger nativeAwakePots = new AtomicInteger();
+    private long observedRecipeGeneration = Long.MIN_VALUE;
+    private final LongAdder submittedChunkTasks = new LongAdder();
+    private final LongAdder coalescedChunkTasks = new LongAdder();
 
-    private record PendingChange(ActiveBlock block, boolean add) {
-    }
     private final Map<ActiveBlock, Long> lastProcessedTicks = new ConcurrentHashMap<>();
     private final Map<ActiveBlock, Long> progressDisplayLastUpdateTicks = new ConcurrentHashMap<>();
     // Heat source checks (two CE state fetches: isHeatSource + isConductor) are cached per block and
     // only refreshed every HEAT_SOURCE_CHECK_INTERVAL_TICKS; a block-below heat source rarely changes.
     private final Map<ActiveBlock, Long> heatSourceLastCheckTicks = new ConcurrentHashMap<>();
     private static final int HEAT_SOURCE_CHECK_INTERVAL_TICKS = 10;
-    private final Set<ActiveBlock> scheduledActiveBlocks = ConcurrentHashMap.newKeySet();
-    private volatile List<ActiveBlock> activeBlockSnapshot = List.of();
     private volatile int activeCookingPotCount;
     private boolean activeBlockLimitWarningShown;
-    private int activeBlockCursor;
     private int cleanupCursor;
     // Reload-written on the reload/command thread, read by the global tick thread — volatile for a
     // happens-before edge (Folia keeps reload on a different thread than the tick).
@@ -91,6 +93,7 @@ public class TickManager {
                 "performance.warnings.active-block-threshold",
                 "performance.max-active-blocks-warning"));
         performanceMonitor.reloadConfig();
+        wakeAllNativePots();
     }
 
     public void start() {
@@ -114,14 +117,14 @@ public class TickManager {
             cleanupTask = null;
         }
         
-        activeBlocks.clear();
-        activeBlockSnapshot = List.of();
+        activeWork.clear();
+        nativePots.clear();
+        nativeAwakePots.set(0);
         activeCookingPotCount = 0;
-        pendingChanges.clear();
         lastProcessedTicks.clear();
         progressDisplayLastUpdateTicks.clear();
         heatSourceLastCheckTicks.clear();
-        scheduledActiveBlocks.clear();
+        scheduledChunks.clear();
         effectManager.cleanup();
 
         I18n.logDetail("startup", "tick.stopped");
@@ -292,19 +295,116 @@ public class TickManager {
     
     public void markActive(World world, BlockPosKey posKey, BlockType type) {
         if (world == null || posKey == null || type == null) return;
-        pendingChanges.add(new PendingChange(new ActiveBlock(world.getUID(), world, posKey, type), true));
+        ActiveBlock key = new ActiveBlock(world.getUID(), world, posKey, type);
+        CookingPotBlockEntityController nativePot = nativePots.get(key);
+        if (nativePot != null) nativePot.requestTickWake();
+        else activeWork.submit(key, true);
     }
 
     public void markInactive(World world, BlockPosKey posKey, BlockType type) {
         if (world == null || posKey == null || type == null) return;
-        pendingChanges.add(new PendingChange(new ActiveBlock(world.getUID(), world, posKey, type), false));
+        ActiveBlock key = new ActiveBlock(world.getUID(), world, posKey, type);
+        // Native pots decide when to sleep after applying any remaining progress decay.
+        if (!nativePots.containsKey(key)) activeWork.submit(key, false);
+    }
+
+    public void registerNativePot(World world, BlockPosKey pos, CookingPotBlockEntityController controller) {
+        if (world == null) return;
+        ActiveBlock key = new ActiveBlock(world.getUID(), world, pos, BlockType.COOKING_POT);
+        CookingPotBlockEntityController previous = nativePots.put(key, controller);
+        if (previous != controller) {
+            if (previous != null && !previous.isTickSleeping()) nativeAwakePots.decrementAndGet();
+            if (!controller.isTickSleeping()) nativeAwakePots.incrementAndGet();
+        }
+        activeWork.submit(key, false);
+        heatSourceLastCheckTicks.remove(key);
+    }
+
+    public void unregisterNativePot(World world, BlockPosKey pos, CookingPotBlockEntityController controller) {
+        if (world == null) return;
+        ActiveBlock key = new ActiveBlock(world.getUID(), world, pos, BlockType.COOKING_POT);
+        if (nativePots.remove(key, controller)) {
+            if (!controller.isTickSleeping()) nativeAwakePots.decrementAndGet();
+            heatSourceLastCheckTicks.remove(key);
+            progressDisplayLastUpdateTicks.remove(key);
+            lastProcessedTicks.remove(key);
+        }
+    }
+
+    public boolean isNativePotRegistered(World world, BlockPosKey pos, CookingPotBlockEntityController controller) {
+        return world != null && nativePots.get(new ActiveBlock(world.getUID(), world, pos, BlockType.COOKING_POT)) == controller;
+    }
+
+    public void nativePotStateChanged(World world, BlockPosKey pos, CookingPotBlockEntityController controller, boolean sleeping) {
+        if (isNativePotRegistered(world, pos, controller)) nativeAwakePots.addAndGet(sleeping ? -1 : 1);
+    }
+
+    public void wakeNativePot(World world, BlockPosKey pos) {
+        if (world == null || pos == null) return;
+        ActiveBlock key = new ActiveBlock(world.getUID(), world, pos, BlockType.COOKING_POT);
+        CookingPotBlockEntityController controller = nativePots.get(key);
+        if (controller != null) {
+            heatSourceLastCheckTicks.remove(key);
+            controller.requestTickWake();
+        }
+    }
+
+    /** A heat source can reach a pot directly, or through one conducting block. */
+    public void wakePotsAbove(World world, BlockPosKey changed) {
+        if (nativePots.isEmpty()) return;
+        wakeNativePot(world, changed);
+        wakeNativePot(world, new BlockPosKey(changed.x(), changed.y() + 1, changed.z()));
+        wakeNativePot(world, new BlockPosKey(changed.x(), changed.y() + 2, changed.z()));
+    }
+
+    public void wakeAllNativePots() {
+        nativePots.forEach((key, controller) -> {
+            heatSourceLastCheckTicks.remove(key);
+            controller.requestTickWake();
+        });
+    }
+
+    /** Called only by CraftEngine's synchronous ticker on the owning block thread. */
+    public boolean tickNativePot(World world, BlockPosKey pos, CookingPotBlockEntityController controller) {
+        if (!running) return true;
+        if (!isNativePotRegistered(world, pos, controller)) return false;
+        ActiveBlock key = new ActiveBlock(world.getUID(), world, pos, BlockType.COOKING_POT);
+        PerformanceMonitor.Session profile = performanceMonitor.recording();
+        PerformanceMonitor.Timing timing = profile == null ? null : profile.timings.get(PerformanceMonitor.Feature.COOKING_POT);
+        long started = timing == null ? 0L : System.nanoTime();
+        try {
+            return tickCookingPot(key, world, pos, TICK_INTERVAL, Bukkit.getCurrentTick());
+        } catch (Exception failure) {
+            performanceMonitor.warnFeatureFailure("native-cooking-pot", "Error ticking cooking pot at " + pos, world, failure);
+            return true;
+        } finally {
+            if (timing != null) {
+                long cost = System.nanoTime() - started;
+                timing.record(cost);
+                profile.recordBlockCost(world.getUID(), pos, cost);
+            }
+        }
+    }
+
+    public record NativeTickerSnapshot(int registered, int awake, int sleeping, long sleeps, long wakes) { }
+
+    public NativeTickerSnapshot nativeTickerSnapshot() {
+        int sleeping = 0;
+        long sleeps = 0, wakes = 0;
+        for (CookingPotBlockEntityController controller : nativePots.values()) {
+            if (controller.isTickSleeping()) sleeping++;
+            sleeps += controller.tickSleepCount();
+            wakes += controller.tickWakeCount();
+        }
+        int size = nativePots.size();
+        return new NativeTickerSnapshot(size, Math.max(0, size - sleeping), sleeping, sleeps, wakes);
     }
 
     /**
      * Queues removal of every tracked block in one unloading chunk.
      *
      * <p>The chunk-unload cleanup drops the block entities and CraftEngine's per-chunk index, but nothing
-     * told this manager, so the entries stayed in {@code activeBlocks} plus its three per-block maps. That is
+     * told this manager, so the entries stayed in the active registry plus its three per-block maps. That is
      * the same defect {@link #cleanupWorld(UUID)} documents one level up: the tick loop's chunk guard
      * ({@code !world.isChunkLoaded}) returns early, so nothing ever unregistered them, and the entries
      * accumulated for every chunk a player visited that held a station. Removing them here is safe because a
@@ -319,15 +419,12 @@ public class TickManager {
         if (world == null) {
             return;
         }
-        UUID worldId = world.getUID();
-        for (ActiveBlock block : activeBlocks) {
-            BlockPosKey key = block.posKey();
-            if (worldId.equals(block.worldId())
-                    && (key.x() >> 4) == chunkX
-                    && (key.z() >> 4) == chunkZ) {
-                pendingChanges.add(new PendingChange(block, false));
-            }
-        }
+        ChunkKey chunk = new ChunkKey(world.getUID(), chunkX, chunkZ);
+        activeWork.retireGroup(chunk);
+        scheduledChunks.remove(chunk);
+        nativePots.forEach((key, controller) -> {
+            if (chunkOf(key).equals(chunk)) unregisterNativePot(world, key.posKey(), controller);
+        });
     }
 
     /**
@@ -341,11 +438,11 @@ public class TickManager {
             return;
         }
         effectManager.cleanupWorld(worldId);
-        for (ActiveBlock block : activeBlocks) {
-            if (worldId.equals(block.worldId())) {
-                pendingChanges.add(new PendingChange(block, false));
-            }
-        }
+        activeWork.retireWorld(worldId);
+        scheduledChunks.keySet().removeIf(chunk -> chunk.worldId().equals(worldId));
+        nativePots.forEach((key, controller) -> {
+            if (key.worldId().equals(worldId)) unregisterNativePot(key.world(), key.posKey(), controller);
+        });
     }
 
     /** Drops the effect budget/viewer context of one unloading chunk; the map is otherwise never cleared. */
@@ -358,94 +455,49 @@ public class TickManager {
 
     private void tick() {
         if (!running) return;
-        // Idle fast path: nothing active, nothing queued, stats off — skip the pass entirely.
-        // CLQ.isEmpty is a single head-node probe.
-        if (activeBlockSnapshot.isEmpty() && pendingChanges.isEmpty() && !performanceMonitor.isRecording()) {
-            return;
+        if (plugin.getCookingPotRecipes() != null) {
+            long generation = plugin.getCookingPotRecipes().recipeGeneration();
+            if (generation != observedRecipeGeneration) {
+                observedRecipeGeneration = generation;
+                wakeAllNativePots();
+            }
         }
+        if (activeWork.isIdle() && !performanceMonitor.isRecording()) return;
         PerformanceMonitor.Session profile = performanceMonitor.recording();
         long startedNanos = profile == null ? 0L : System.nanoTime();
         int size = 0;
         int processed = 0;
         try {
             long currentTick = advanceCurrentTick();
-            boolean folia = plugin.scheduler().isFolia();
-
-            boolean changed = false;
-            PendingChange change;
-            while ((change = pendingChanges.poll()) != null) {
-                if (change.add()) {
-                    if (activeBlocks.add(change.block())) {
-                        changed = true;
-                        if (change.block().type() == BlockType.COOKING_POT) {
-                            activeCookingPotCount++;
-                        }
-                    }
-                    lastProcessedTicks.putIfAbsent(change.block(), currentTick);
-                } else {
-                    if (activeBlocks.remove(change.block())) {
-                        changed = true;
-                        if (change.block().type() == BlockType.COOKING_POT) {
-                            activeCookingPotCount--;
-                        }
-                    }
-                    lastProcessedTicks.remove(change.block());
-                    progressDisplayLastUpdateTicks.remove(change.block());
-                    heatSourceLastCheckTicks.remove(change.block());
-                    scheduledActiveBlocks.remove(change.block());
+            for (ActiveWorkRegistry.Change<ActiveBlock> change : activeWork.drain(MARK_DRAIN_BUDGET)) {
+                if (change.reset() || !change.active()) {
+                    lastProcessedTicks.remove(change.key());
+                    progressDisplayLastUpdateTicks.remove(change.key());
+                    heatSourceLastCheckTicks.remove(change.key());
                 }
+                if (change.active()) lastProcessedTicks.putIfAbsent(change.key(), currentTick);
             }
-            if (changed) {
-                activeBlockSnapshot = List.copyOf(activeBlocks);
-                if (activeCookingPotCount < 0) {
-                    // Never representative of a real state; shield the sneak-count invariant.
-                    activeCookingPotCount = 0;
-                }
-            }
-
-            List<ActiveBlock> snapshot = activeBlockSnapshot;
-            size = snapshot.size();
-            if (snapshot.isEmpty()) return;
-
+            size = activeWork.counts().active();
+            activeCookingPotCount = size + Math.max(0, nativeAwakePots.get());
+            if (size == 0) return;
             if (size > activeBlockWarningThreshold) {
                 if (!activeBlockLimitWarningShown) {
                     activeBlockLimitWarningShown = true;
                     plugin.getLogger().warning(I18n.formatNamedArgs("console.performance.active_blocks_exceeded",
-                            "threshold", activeBlockWarningThreshold,
-                            "count", size));
+                            "threshold", activeBlockWarningThreshold, "count", size));
                 }
             } else {
                 activeBlockLimitWarningShown = false;
             }
 
-            int budget = Math.min(cookingPotTickBudget, size);
-            int start = activeBlockCursor >= size ? 0 : activeBlockCursor;
-
-            for (int index = start; index < size; index++) {
-                ActiveBlock activeBlock = snapshot.get(index);
-                processActiveBlock(activeBlock, currentTick, folia);
-                processed++;
-                if (processed >= budget) {
-                    break;
-                }
+            List<ActiveWorkRegistry.Selection<ActiveBlock>> selected = activeWork.select(cookingPotTickBudget);
+            processed = selected.size();
+            if (plugin.scheduler().isFolia()) dispatchChunkBatches(selected);
+            else for (var selection : selected) {
+                processActiveBlockInRegion(selection, selection.key().world(), currentTick);
             }
-
-            if (processed < budget) {
-                for (int index = 0; index < start; index++) {
-                    ActiveBlock activeBlock = snapshot.get(index);
-                    processActiveBlock(activeBlock, currentTick, folia);
-                    processed++;
-                    if (processed >= budget) {
-                        break;
-                    }
-                }
-            }
-
-            activeBlockCursor = size == 0 ? 0 : (start + Math.max(1, processed)) % size;
         } finally {
-            if (profile != null) {
-                profile.recordPass(System.nanoTime() - startedNanos, size, processed);
-            }
+            if (profile != null) profile.recordPass(System.nanoTime() - startedNanos, size, processed);
         }
     }
 
@@ -475,16 +527,8 @@ public class TickManager {
     }
 
     private PerformanceSnapshot getPerformanceSnapshot(PerformanceMonitor.Snapshot profile) {
-        // Weakly-consistent walk of the mark queue (diagnostics only); duplicates count as queued ops.
-        int pendingAdditionsSize = 0;
-        int pendingRemovalsSize = 0;
-        for (PendingChange change : pendingChanges) {
-            if (change.add()) {
-                pendingAdditionsSize++;
-            } else {
-                pendingRemovalsSize++;
-            }
-        }
+        ActiveWorkRegistry.Counts counts = activeWork.counts();
+        int nativeAwake = Math.max(0, nativeAwakePots.get());
         return new PerformanceSnapshot(
                 profile.pass().calls(),
                 profile.pass().totalNanos(),
@@ -492,10 +536,10 @@ public class TickManager {
                 profile.pass().maxNanos(),
                 profile.lastActiveBlocks(),
                 profile.lastProcessedBlocks(),
-                activeBlocks.size(),
-                activeBlockSnapshot.size(),
-                pendingAdditionsSize,
-                pendingRemovalsSize,
+                counts.active() + nativeAwake,
+                counts.active() + nativeAwake,
+                counts.additions(),
+                counts.removals(),
                 cookingPotTickBudget,
                 TICK_INTERVAL,
                 profile.active(),
@@ -507,38 +551,52 @@ public class TickManager {
         );
     }
 
-    private void processActiveBlock(ActiveBlock activeBlock, long currentTick, boolean folia) {
-        World world = activeBlock.world();
-        if (world == null) return;
+    public record DispatchSnapshot(long submittedChunkTasks, long coalescedChunkTasks, int pendingChunkTasks) { }
 
-        if (folia) {
-            if (!scheduledActiveBlocks.add(activeBlock)) {
-                return;
-            }
-            int chunkX = activeBlock.posKey().x() >> 4;
-            int chunkZ = activeBlock.posKey().z() >> 4;
-            try {
-                plugin.scheduler().runAt(world, chunkX, chunkZ, () -> {
-                    try {
-                        processActiveBlockInRegion(activeBlock, world, getCurrentTick(), true);
-                    } finally {
-                        scheduledActiveBlocks.remove(activeBlock);
-                    }
-            });
-        } catch (RuntimeException e) {
-            scheduledActiveBlocks.remove(activeBlock);
-        }
-        return;
-        }
-
-        processActiveBlockInRegion(activeBlock, world, currentTick, false);
+    public DispatchSnapshot dispatchSnapshot() {
+        return new DispatchSnapshot(submittedChunkTasks.sum(), coalescedChunkTasks.sum(), scheduledChunks.size());
     }
 
-    private void processActiveBlockInRegion(ActiveBlock activeBlock, World world,
-                                            long currentTick, boolean verifyMembership) {
-        if (!running || (verifyMembership && !activeBlocks.contains(activeBlock))) {
-            return;
+    private static ChunkKey chunkOf(ActiveBlock block) {
+        return new ChunkKey(block.worldId(), block.posKey().x() >> 4, block.posKey().z() >> 4);
+    }
+
+    private void dispatchChunkBatches(List<ActiveWorkRegistry.Selection<ActiveBlock>> selected) {
+        Map<ChunkKey, List<ActiveWorkRegistry.Selection<ActiveBlock>>> batches = new LinkedHashMap<>();
+        for (var selection : selected) {
+            if (activeWork.isCurrent(selection)) {
+                batches.computeIfAbsent(chunkOf(selection.key()), ignored -> new ArrayList<>()).add(selection);
+            }
         }
+        for (var batch : batches.entrySet()) {
+            ChunkKey chunk = batch.getKey();
+            Object token = new Object();
+            if (scheduledChunks.putIfAbsent(chunk, token) != null) {
+                coalescedChunkTasks.increment();
+                continue;
+            }
+            World world = batch.getValue().getFirst().key().world();
+            try {
+                plugin.scheduler().runAt(world, chunk.x(), chunk.z(), () -> {
+                    try {
+                        long tick = getCurrentTick();
+                        for (var selection : batch.getValue()) processActiveBlockInRegion(selection, world, tick);
+                    } finally {
+                        scheduledChunks.remove(chunk, token);
+                    }
+                });
+                submittedChunkTasks.increment();
+            } catch (RuntimeException rejected) {
+                scheduledChunks.remove(chunk, token);
+            }
+        }
+    }
+
+    private void processActiveBlockInRegion(ActiveWorkRegistry.Selection<ActiveBlock> selection, World world,
+                                            long currentTick) {
+        if (!running || !activeWork.isCurrent(selection)) return;
+        ActiveBlock activeBlock = selection.key();
+        if (nativePots.containsKey(activeBlock)) return;
 
         BlockPosKey posKey = activeBlock.posKey();
         if (!world.isChunkLoaded(posKey.x() >> 4, posKey.z() >> 4)) {
@@ -574,7 +632,8 @@ public class TickManager {
         }
     }
 
-    private int consumeElapsedTicks(ActiveBlock activeBlock, long currentTick) {        Long previousTick = lastProcessedTicks.put(activeBlock, currentTick);
+    private int consumeElapsedTicks(ActiveBlock activeBlock, long currentTick) {
+        Long previousTick = lastProcessedTicks.put(activeBlock, currentTick);
         if (previousTick == null) {
             return TICK_INTERVAL;
         }
@@ -599,7 +658,7 @@ public class TickManager {
         return Bukkit.getCurrentTick();
     }
 
-    private void tickCookingPot(ActiveBlock activeBlock, World world, BlockPosKey posKey,
+    private boolean tickCookingPot(ActiveBlock activeBlock, World world, BlockPosKey posKey,
                                 int elapsedTicks, long currentTick) {
         Block block = world.getBlockAt(posKey.x(), posKey.y(), posKey.z());
         ImmutableBlockState state = CraftEngineBlocks.getCustomBlockState(block);
@@ -609,13 +668,13 @@ public class TickManager {
             // injected server block is still in the world. Skip the tick and keep everything registered:
             // deleting here would destroy a live pot's contents mid-reload.
             if (CraftEngineBlocks.isCustomBlock(block)) {
-                return;
+                return true;
             }
             unregisterCookingPotBlock(activeBlock, world, posKey);
             // Keep the CE-side stored NBT: only the break/removal callbacks delete data. A block replaced
             // behind CE's back (WorldEdit /setblock) just leaves inert leftover NBT behind.
             CookingPotBlockBehavior.removeBlockEntity(world, posKey, false);
-            return;
+            return false;
         }
 
         // Resolve the behavior once from the already-fetched state; a null result also answers "no longer a
@@ -627,14 +686,14 @@ public class TickManager {
             // callbacks); retire its floating progress display + recipe-name cache instead of leaving them to
             // linger until the periodic sweep.
             CookingPotBlockBehavior.removeProgressDisplay(world, posKey);
-            return;
+            return false;
         }
         
         CookingPotBlockEntity entity = CookingPotBlockBehavior.getBlockEntity(world, posKey);
         if (entity == null) {
             unregisterCookingPotBlock(activeBlock, world, posKey);
             CookingPotBlockBehavior.removeProgressDisplay(world, posKey);
-            return;
+            return false;
         }
 
         // Advance buffer -> output during the pot tick instead of relying on GUI refresh or manual pickup.
@@ -646,7 +705,7 @@ public class TickManager {
         if (!entity.hasStoredContents() && entity.getCookingProgress() <= 0) {
             unregisterCookingPotBlock(activeBlock, world, posKey);
             CookingPotBlockBehavior.removeProgressDisplay(world, posKey);
-            return;
+            return false;
         }
 
         boolean hasHeat;
@@ -700,7 +759,7 @@ public class TickManager {
                 Location blockLoc = ManagerSupport.toLocation(world, posKey);
                 if (blockLoc == null) {
                     unregisterCookingPotBlock(activeBlock, world, posKey);
-                    return;
+                    return false;
                 }
                 if (entity.finishCooking(world, blockLoc)) {
                     // Keep the pot active after a successful cook so remaining ingredients can immediately
@@ -729,6 +788,7 @@ public class TickManager {
             progressDisplayLastUpdateTicks.remove(activeBlock);
             CookingPotBlockBehavior.removeProgressDisplay(world, posKey);
         }
+        return entity.getCookingProgress() > 0 || (hasHeat && entity.canCook());
     }
 
     private void unregisterCookingPotBlock(ActiveBlock activeBlock, World world, BlockPosKey posKey) {
@@ -785,6 +845,8 @@ public class TickManager {
         COOKING_POT
     }
     
+    private record ChunkKey(UUID worldId, int x, int z) { }
+
     private record ActiveBlock(UUID worldId, World world, BlockPosKey posKey, BlockType type) {
         @Override
         public boolean equals(Object o) {

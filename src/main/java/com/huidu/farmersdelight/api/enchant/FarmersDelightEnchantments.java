@@ -14,14 +14,14 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Addon entry point for registering custom enchantments into FarmersDelight's knife/skillet enchant system.
- * FarmersDelight owns the two mechanical layers — the datapack registry entry and the enchanting-table/anvil
+ * Addon entry point for registering custom enchantments into Farmersdelight-Plugin-Pro's knife/skillet enchant system.
+ * Farmersdelight-Plugin-Pro owns the two mechanical layers — the datapack registry entry and the enchanting-table/anvil
  * candidate pool — while the addon owns the runtime effect through its own Bukkit listener (read the enchant
  * level off the held item.
  *
- * Call in the addon's onEnable (it hard-depends on FarmersDelight, so FarmersDelight is already up). Because an
+ * Call in the addon's onEnable (it hard-depends on Farmersdelight-Plugin-Pro, so Farmersdelight-Plugin-Pro is already up). Because an
  * enchantment is a datapack registry object, a register() enchant only becomes usable after a server restart —
- * FarmersDelight prints a restart banner when it writes the datapack.
+ * Farmersdelight-Plugin-Pro prints a restart banner when it writes the datapack.
  *
  * Register ids under the farmersdelight: namespace to stay clear of the conflict detector; other namespaces are
  * still fine because API-registered ids are whitelisted there.
@@ -36,9 +36,9 @@ public final class FarmersDelightEnchantments {
     }
 
     /**
-     * Full registration: FarmersDelight writes the datapack enchantment JSON (registry presence) AND offers it
+     * Full registration: Farmersdelight-Plugin-Pro writes the datapack enchantment JSON (registry presence) AND offers it
      * in the given groups' table/anvil pool. Takes effect after a server restart (registry object); the pool
-     * side applies on the next reload. Returns false if FarmersDelight is unavailable or the definition is null.
+     * side applies on the next reload. Returns false if Farmersdelight-Plugin-Pro is unavailable or the definition is null.
      */
     public static boolean register(EnchantmentDefinition definition) {
         if (definition == null || !available()) {
@@ -52,8 +52,8 @@ public final class FarmersDelightEnchantments {
 
     /**
      * Lighter registration for an enchantment ALREADY in the registry (a vanilla enchant, or one the addon
-     * ships in its own datapack): FarmersDelight only adds it to the given groups' candidate pool and writes no
-     * datapack. Returns false if FarmersDelight is unavailable or the id is not a namespaced id.
+     * ships in its own datapack): Farmersdelight-Plugin-Pro only adds it to the given groups' candidate pool and writes no
+     * datapack. Returns false if Farmersdelight-Plugin-Pro is unavailable or the id is not a namespaced id.
      */
     public static boolean addToPool(String enchantmentId, EnchantGroup... groups) {
         String id = normalize(enchantmentId);

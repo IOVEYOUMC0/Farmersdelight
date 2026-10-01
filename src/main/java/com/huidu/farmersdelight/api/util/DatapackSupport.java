@@ -28,11 +28,25 @@ public final class DatapackSupport {
     // Resolves the world folder that holds level.dat, i.e. the folder whose datapacks/ directory the
     // vanilla pack repository scans.
     public static Path worldRoot(World world) {
-        Path folder = world.getWorldFolder().toPath();
-        while (folder != null && !Files.exists(folder.resolve("level.dat"))) {
-            folder = folder.getParent();
+        return worldRoot(world.getWorldFolder().toPath());
+    }
+
+    static Path worldRoot(Path worldFolder) {
+        for (Path folder = worldFolder; folder != null; folder = folder.getParent()) {
+            if (Files.isRegularFile(folder.resolve("level.dat"))) {
+                return folder;
+            }
+            Path namespace = folder.getParent();
+            Path dimensions = namespace != null ? namespace.getParent() : null;
+            if (dimensions != null && dimensions.getFileName() != null
+                    && dimensions.getFileName().toString().equals("dimensions")
+                    && dimensions.getParent() != null) {
+                // Since 26.1, the first save may occur after plugins enable. Resolve the dimension
+                // layout even before level.dat exists so newly created worlds receive their packs.
+                return dimensions.getParent();
+            }
         }
-        return folder != null ? folder : world.getWorldFolder().toPath();
+        return worldFolder;
     }
 
     public static boolean sameNormalizedPath(Path first, Path second) {

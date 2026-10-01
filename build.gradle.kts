@@ -1,3 +1,5 @@
+import java.util.zip.ZipFile
+
 plugins {
     id("java")
     // Use the Shadow release that supports Gradle 9 and relocates the generated Java classes.
@@ -12,12 +14,33 @@ repositories {
     maven("https://repo.papermc.io/repository/maven-public/")
     mavenLocal()
     maven("https://repo.momirealms.net/releases/")
+    maven("https://repo.momirealms.net/snapshots/") {
+        content { includeModule("net.momirealms", "sparrow-ui") }
+    }
     maven("https://repo.extendedclip.com/content/repositories/placeholderapi/")
 }
 
 // CraftEngine is resolved from Maven. Overridable so a compatibility check can build the same sources
 // against another release without editing this file:  gradlew build -PceVersion=26.8.2
 val ceVersion = providers.gradleProperty("ceVersion").getOrElse("26.9.1")
+val ceJar = providers.gradleProperty("ceJar")
+val ceLibraries = providers.gradleProperty("ceLibraries")
+val ceSnapshotProxy = layout.buildDirectory.file("ceSnapshot/craft-engine-proxy.jar")
+val extractCraftEngineProxy = tasks.register("extractCraftEngineProxy") {
+    onlyIf { ceJar.isPresent }
+    if (ceJar.isPresent) inputs.file(ceJar.get())
+    outputs.file(ceSnapshotProxy)
+    doLast {
+        val target = ceSnapshotProxy.get().asFile
+        target.parentFile.mkdirs()
+        ZipFile(file(ceJar.get())).use { jar ->
+            val entry = jar.getEntry("proxy.jarinjar")
+                ?: throw GradleException("CraftEngine snapshot is missing proxy.jarinjar")
+            jar.getInputStream(entry).use { input -> target.outputStream().use { input.copyTo(it) } }
+        }
+    }
+}
+val ceSnapshotFiles = files(ceSnapshotProxy).builtBy(extractCraftEngineProxy)
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
@@ -26,10 +49,19 @@ dependencies {
     compileOnly("io.netty:netty-transport:4.1.135.Final")
 
     // CraftEngine from the official Maven repository.
-    compileOnly("net.momirealms:craft-engine-bukkit:$ceVersion")
-    compileOnly("net.momirealms:craft-engine-core:$ceVersion")
-    // CE 26.9.1 keeps proxy classes in its jar-in-jar proxy artifact.
-    compileOnly("net.momirealms:craft-engine-bukkit-proxy:$ceVersion")
+    if (ceJar.isPresent) {
+        // Allows compatibility checks against unpublished snapshots without bundling the server plugin.
+        compileOnly(files(ceJar.get()))
+        compileOnly(ceSnapshotFiles)
+        if (ceLibraries.isPresent) {
+            compileOnly(fileTree(ceLibraries.get()) { include("**/*-remapped.jar") })
+        }
+    } else {
+        compileOnly("net.momirealms:craft-engine-bukkit:$ceVersion")
+        compileOnly("net.momirealms:craft-engine-core:$ceVersion")
+        // CE 26.9.1 keeps proxy classes in its jar-in-jar proxy artifact.
+        compileOnly("net.momirealms:craft-engine-bukkit-proxy:$ceVersion")
+    }
 
     compileOnly("me.clip:placeholderapi:2.11.6")
     // AntiGriefLib: unified protection facade over 24+ land/claim plugins (MIT). Bundled and relocated:
@@ -41,12 +73,22 @@ dependencies {
     // bStats metrics (Maven Central). Relocated for the same reason, which is also what bStats itself
     // requires of every plugin that bundles it.
     implementation("org.bstats:bstats-bukkit:3.1.0")
+    implementation("net.momirealms:sparrow-yaml:1.0.22")
+    implementation("net.momirealms:sparrow-ui:beta.38") { isTransitive = false }
     // UltimateAdvancementAPI: separate server plugin; vendored only for offline compile against its API.
     compileOnly(files("libs/UltimateAdvancementAPI-Plugin-2.8.0-folia.jar"))
     testImplementation("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
-    testImplementation("net.momirealms:craft-engine-bukkit:$ceVersion")
-    testImplementation("net.momirealms:craft-engine-core:$ceVersion")
-    testImplementation("net.momirealms:craft-engine-bukkit-proxy:$ceVersion")
+    if (ceJar.isPresent) {
+        testImplementation(files(ceJar.get()))
+        testImplementation(ceSnapshotFiles)
+        if (ceLibraries.isPresent) {
+            testImplementation(fileTree(ceLibraries.get()) { include("**/*-remapped.jar") })
+        }
+    } else {
+        testImplementation("net.momirealms:craft-engine-bukkit:$ceVersion")
+        testImplementation("net.momirealms:craft-engine-core:$ceVersion")
+        testImplementation("net.momirealms:craft-engine-bukkit-proxy:$ceVersion")
+    }
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
     testImplementation("io.netty:netty-transport:4.1.135.Final")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -64,7 +106,7 @@ val debugToolsBuild = providers.gradleProperty("debugTools")
     .map { it.equals("true", ignoreCase = true) }
     // Debug tools require -PdebugTools=true. Runtime statistics are available through /fd stats.
     .orElse(false)
-val pluginArchiveBaseName = "farmersdelight"
+val pluginArchiveBaseName = "Farmersdelight-Plugin-Pro"
 
 java {
     toolchain {
@@ -80,6 +122,12 @@ tasks.withType<JavaCompile>().configureEach {
 
 tasks.test {
     useJUnitPlatform()
+    dependsOn("shadowJar", "apiJar")
+    inputs.file(tasks.shadowJar.flatMap { it.archiveFile }).withPropertyName("pluginJar")
+    doFirst {
+        systemProperty("fd.pluginJar", tasks.shadowJar.get().archiveFile.get().asFile.absolutePath)
+        systemProperty("fd.apiJar", tasks.named<Jar>("apiJar").get().archiveFile.get().asFile.absolutePath)
+    }
     // ApiDocsDriftTest reads the api pages from the wiki repository (checked out beside this repository's
     // parent locally, under wiki/ in CI). Declaring them as inputs keeps the task from staying "up to date"
     // when only a page changed, which is exactly the drift the test exists to catch. Only a checkout that
@@ -161,12 +209,14 @@ tasks.shadowJar {
     }
     manifest {
         attributes(
-            "Implementation-Title" to "FarmersDelight",
+            "Implementation-Title" to "Farmersdelight-Plugin-Pro",
             "Implementation-Version" to project.version
         )
     }
     relocate("org.bstats", "com.huidu.farmersdelight.libs.bstats")
     relocate("net.momirealms.antigrieflib", "com.huidu.farmersdelight.libs.antigrieflib")
+    relocate("net.momirealms.sparrow.yaml", "com.huidu.farmersdelight.libs.sparrow.yaml")
+    relocate("net.momirealms.sparrow.ui", "com.huidu.farmersdelight.libs.sparrow.ui")
 }
 
 tasks.jar {

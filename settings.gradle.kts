@@ -1,1 +1,1 @@
-rootProject.name = "farmersdelight-plugin"
+rootProject.name = "Farmersdelight-Plugin-Pro"

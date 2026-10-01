@@ -158,19 +158,8 @@ class CookingPotEffectManager {
         }
         List<Player> nearbyViewers = NEARBY_VIEWER_SCRATCH.get();
         nearbyViewers.clear();
-        double cx = center.getX();
-        double cy = center.getY();
-        double cz = center.getZ();
-        for (Player p : seeing) {
-            if (p.getWorld() != world) {
-                continue;
-            }
-            double dx = p.getX() - cx;
-            double dy = p.getY() - cy;
-            double dz = p.getZ() - cz;
-            if (dx * dx + dy * dy + dz * dz <= effectViewerDistanceSquared) {
-                nearbyViewers.add(p);
-            }
+        for (Player player : seeing) {
+            if (plugin.particles().isNearby(player, center, effectViewerDistanceSquared)) nearbyViewers.add(player);
         }
         if (nearbyViewers.isEmpty()) {
             nearbyViewers.clear();
@@ -188,8 +177,8 @@ class CookingPotEffectManager {
             double x = center.getX() + (random.nextDouble() * 0.6D - 0.3D);
             double y = center.getY() + bubble.yOffset();
             double z = center.getZ() + (random.nextDouble() * 0.6D - 0.3D);
-            ManagerSupport.spawnParticleFor(
-                    nearbyViewers, bubble.particle(),
+            plugin.particles().spawn(
+                    nearbyViewers, center, effectViewerDistanceSquared, bubble.particle(),
                     x, y, z,
                     bubble.count(),
                     bubble.offsetX(),
@@ -205,8 +194,8 @@ class CookingPotEffectManager {
             double x = center.getX() + (random.nextDouble() * 0.4D - 0.2D);
             double y = center.getY() + steam.yOffset();
             double z = center.getZ() + (random.nextDouble() * 0.4D - 0.2D);
-            ManagerSupport.spawnParticleFor(
-                    nearbyViewers, steam.particle(),
+            plugin.particles().spawn(
+                    nearbyViewers, center, effectViewerDistanceSquared, steam.particle(),
                     x, y, z,
                     steam.count(),
                     steam.offsetX(),
@@ -218,8 +207,8 @@ class CookingPotEffectManager {
             EffectSpec secondary = secondarySteamEffect;
             if (secondary.enabled() && chunkBudget.get() < cookingPotChunkEffectBudgetLimit) {
                 chunkBudget.incrementAndGet();
-                ManagerSupport.spawnParticleFor(
-                        nearbyViewers, secondary.particle(),
+                plugin.particles().spawn(
+                        nearbyViewers, center, effectViewerDistanceSquared, secondary.particle(),
                         x,
                         y + secondary.yOffset(),
                         z,

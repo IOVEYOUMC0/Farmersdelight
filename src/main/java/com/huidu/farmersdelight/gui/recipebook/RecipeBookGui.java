@@ -40,15 +40,19 @@ public final class RecipeBookGui implements InventoryHolder {
     enum View { MENU, LIST, DETAIL }
 
     private static volatile RecipeBookGuiConfig cachedConfig;
+    private static volatile ReadOnlyRecipeWindows windowService;
+    private static final Map<java.util.UUID, RecipeBookGui> OPEN_BOOKS = new java.util.concurrent.ConcurrentHashMap<>();
 
     // book instance instead of on every click on a jump icon.
 
+    private final FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
     private View view = View.MENU;
     private RecipeType type;
     private String recipeId;
     private int page;
     private RecipeFiller filler;
     private Inventory inventory;
+    private Component renderedTitle;
     // When only one recipe type is registered, skip the category chooser and open its list directly.
     private boolean singleType;
     private boolean directDetail;
@@ -56,7 +60,7 @@ public final class RecipeBookGui implements InventoryHolder {
     private boolean filterCraftable;
     private Player viewer;
     // Optional action run instead of closing when the top-level view (menu, or a single-type list with no
-    // station filler) is backed out of. Lets a caller that opened this book from its own menu (FarmersDelight's
+    // station filler) is backed out of. Lets a caller that opened this book from its own menu (Farmersdelight-Plugin-Pro's
     // recipe menu handing off to the addon book) send the player back to that menu instead of an empty screen.
     // Null keeps the original behavior: the terminal back just closes the inventory.
     private Runnable onExit;
@@ -92,7 +96,7 @@ public final class RecipeBookGui implements InventoryHolder {
         } else {
             gui.drawMenu();
         }
-        player.openInventory(gui.inventory);
+        gui.present(player);
     }
 
     public static void openEditor(Player player, RecipeType type, String recipeId) {
@@ -106,7 +110,7 @@ public final class RecipeBookGui implements InventoryHolder {
         gui.viewer = player;
         gui.singleType = true;
         gui.drawList(type, 0);
-        player.openInventory(gui.inventory);
+        gui.present(player);
     }
 
     // Opens the addon book directly at one workstation recipe's detail (used by FD's linked-recipe jumps
@@ -120,7 +124,7 @@ public final class RecipeBookGui implements InventoryHolder {
         gui.directDetail = true;
         gui.onExit = onExit;
         gui.drawDetail(type, recipeId, player);
-        player.openInventory(gui.inventory);
+        gui.present(player);
     }
 
     // Roles whose slots are filled dynamically/conditionally by the GUI (not static chrome).
@@ -242,13 +246,44 @@ public final class RecipeBookGui implements InventoryHolder {
         return inventory;
     }
 
+    private void present(Player player) {
+        OPEN_BOOKS.put(player.getUniqueId(), this);
+        windowService = plugin.recipeWindows();
+        ConfigurationSection section = plugin.getRecipeBookGuiSection();
+        boolean sparrow = section == null || "sparrow".equalsIgnoreCase(section.getString("backend", "sparrow"));
+        if (filler == null && sparrow && plugin.recipeWindows() != null
+                && plugin.recipeWindows().open(player, inventory, renderedTitle,
+                        (slot, shift) -> handleClick(player, slot, shift),
+                        () -> OPEN_BOOKS.remove(player.getUniqueId(), this))) {
+            return;
+        }
+        player.openInventory(inventory);
+    }
+
+    public static void closeAllOpenWindows() {
+        ReadOnlyRecipeWindows service = windowService;
+        if (service != null) {
+            service.closeAll();
+        }
+        OPEN_BOOKS.forEach((id, book) -> {
+            if (OPEN_BOOKS.remove(id, book) && book.viewer != null && book.plugin.isEnabled()) {
+                book.plugin.scheduler().runForEntity(book.viewer, () -> {
+                    if (book.viewer.isOnline() && book.viewer.getOpenInventory().getTopInventory().getHolder() == book) {
+                        book.viewer.closeInventory();
+                    }
+                });
+            }
+        });
+    }
+
     void drawMenu() {
         view = View.MENU;
         type = null;
         recipeId = null;
         progressSlots = List.of();
         RecipeBookGuiConfig.ViewConfig cfg = config().menu();
-        inventory = Bukkit.createInventory(this, cfg.size(), Text.title(cfg.title()));
+        renderedTitle = Text.title(cfg.title());
+        inventory = Bukkit.createInventory(this, cfg.size(), renderedTitle);
         cfg.renderChrome(inventory);
         List<Integer> categorySlots = cfg.slotsByType("category");
         List<RecipeType> types = FarmersDelightApi.get().recipeTypes();
@@ -281,7 +316,6 @@ public final class RecipeBookGui implements InventoryHolder {
     }
 
     private RecipeDiscoveryManager discovery() {
-        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         return plugin == null ? null : plugin.getRecipeDiscoveryManager();
     }
 
@@ -291,7 +325,7 @@ public final class RecipeBookGui implements InventoryHolder {
     }
 
     // Substitutes the {page}/{total} placeholders in a list title with the current page and page count, so an
-    // addon's list title can show a page counter like FarmersDelight's own recipe list. A title without the
+    // addon's list title can show a page counter like Farmersdelight-Plugin-Pro's own recipe list. A title without the
     // placeholders is returned unchanged.
     private static Component withPageInfo(Component title, int page, int total) {
         return title
@@ -310,7 +344,8 @@ public final class RecipeBookGui implements InventoryHolder {
         List<ViewableRecipe> recipes = visibleRecipes(target);
         int pages = Math.max(1, (recipes.size() + pageSize - 1) / pageSize);
         page = Math.max(0, Math.min(targetPage, pages - 1));
-        inventory = Bukkit.createInventory(this, spec.size(), withPageInfo(spec.title(), page + 1, pages));
+        renderedTitle = withPageInfo(spec.title(), page + 1, pages);
+        inventory = Bukkit.createInventory(this, spec.size(), renderedTitle);
         spec.renderChrome(inventory);
         int start = page * pageSize;
         RecipeDiscoveryManager discovery = discovery();
@@ -354,7 +389,8 @@ public final class RecipeBookGui implements InventoryHolder {
         ViewableRecipe recipe = target.recipe(id);
         // Per-recipe title override falls back to the static layout title.
         Component detailTitle = recipe != null ? recipe.detailTitle() : null;
-        inventory = Bukkit.createInventory(this, spec.size(), detailTitle != null ? detailTitle : spec.title());
+        renderedTitle = detailTitle != null ? detailTitle : spec.title();
+        inventory = Bukkit.createInventory(this, spec.size(), renderedTitle);
         spec.renderChrome(inventory);
         if (recipe != null) {
             List<Integer> ingredientSlots = spec.slotsByType("ingredient");
@@ -406,7 +442,9 @@ public final class RecipeBookGui implements InventoryHolder {
     }
 
     void onClose(Inventory closed) {
-        // Kept for the listener contract; animated textures need no per-viewer task to stop.
+        if (closed == inventory && viewer != null) {
+            OPEN_BOOKS.remove(viewer.getUniqueId(), this);
+        }
     }
 
     private static ItemStack progressFrameItem() {
@@ -455,7 +493,7 @@ public final class RecipeBookGui implements InventoryHolder {
     private void back(Player player) {
         if (!history.isEmpty()) {
             restore(history.pop(), player);
-            player.openInventory(inventory);
+            present(player);
             return;
         }
         switch (view) {
@@ -468,7 +506,7 @@ public final class RecipeBookGui implements InventoryHolder {
                     }
                 } else {
                     drawMenu();
-                    player.openInventory(inventory);
+                    present(player);
                 }
             }
             case DETAIL -> {
@@ -476,7 +514,7 @@ public final class RecipeBookGui implements InventoryHolder {
                     exitOrClose(player);
                 } else {
                     drawList(type, page);
-                    player.openInventory(inventory);
+                    present(player);
                 }
             }
         }
@@ -510,7 +548,7 @@ public final class RecipeBookGui implements InventoryHolder {
             }
             history.push(snapshot());
             drawDetail(targetType, target.recipeId(), player);
-            player.openInventory(inventory);
+            present(player);
             return;
         }
         if (!cfg.slotsByType("ingredient").contains(rawSlot)) {
@@ -526,14 +564,14 @@ public final class RecipeBookGui implements InventoryHolder {
             if (targetType != null && targetType.recipe(target.recipeId()) != null) {
                 history.push(snapshot());
                 drawDetail(targetType, target.recipeId(), player);
-                player.openInventory(inventory);
+                present(player);
                 return;
             }
             ViewState returnState = snapshot();
             if (RecipeViewGui.openLinkedRecipe(player, target, () -> {
                 viewer = player;
                 restore(returnState, player);
-                player.openInventory(inventory);
+                present(player);
             })) {
                 return;
             }
@@ -569,6 +607,9 @@ public final class RecipeBookGui implements InventoryHolder {
     }
 
     void handleClick(Player player, int rawSlot, boolean shiftClick) {
+        if (OPEN_BOOKS.get(player.getUniqueId()) != this) {
+            return;
+        }
         this.viewer = player;
         RecipeBookGuiConfig config = config();
         switch (view) {
@@ -586,7 +627,7 @@ public final class RecipeBookGui implements InventoryHolder {
                 if (index < types.size()) {
                     history.push(snapshot());
                     drawList(types.get(index), 0);
-                    player.openInventory(inventory);
+                    present(player);
                 }
             }
             case LIST -> {
@@ -595,19 +636,19 @@ public final class RecipeBookGui implements InventoryHolder {
                     back(player);
                 } else if (rawSlot == cfg.firstSlotByType("prev_page")) {
                     drawList(type, page - 1);
-                    player.openInventory(inventory);
+                    present(player);
                 } else if (rawSlot == cfg.firstSlotByType("next_page")) {
                     drawList(type, page + 1);
-                    player.openInventory(inventory);
+                    present(player);
                 } else if (rawSlot == cfg.firstSlotByType("filter")) {
                     filterCraftable = !filterCraftable;
                     drawList(type, 0);
-                    player.openInventory(inventory);
+                    present(player);
                 } else if (rawSlot == cfg.firstSlotByType("switch") && type.switchTarget() != null) {
                     RecipeType sibling = FarmersDelightApi.get().recipeType(type.switchTarget());
                     if (sibling != null) {
                         drawList(sibling, 0);
-                        player.openInventory(inventory);
+                        present(player);
                     }
                 } else {
                     List<Integer> recipeSlots = cfg.slotsByType("recipe");
@@ -622,7 +663,7 @@ public final class RecipeBookGui implements InventoryHolder {
                             } else {
                                 history.push(snapshot());
                                 drawDetail(type, clicked.id(), player);
-                                player.openInventory(inventory);
+                                present(player);
                             }
                         }
                     }
@@ -645,13 +686,13 @@ public final class RecipeBookGui implements InventoryHolder {
     }
 
     // Builds an FD-style recipe-list item: the recipe result/icon renamed and given a lore that previews the
-    // materials, so the addon book's list reads like FarmersDelight's own recipe list rather than bare icons.
+    // materials, so the addon book's list reads like Farmersdelight-Plugin-Pro's own recipe list rather than bare icons.
     // Extra per-recipe lines (e.g. keg temperature) are appended after the materials block.
     private ItemStack buildListDisplayItem(ViewableRecipe recipe, Player viewer) {
         ItemStack item = clone(recipe.icon(), Material.PAPER);
         // Resolve the recipe's real localized item name instead of whatever raw text the underlying
         // fluid/container carries (e.g. an unresolved CraftEngine placeholder such as "[item]"), so the
-        // addon book's list names line up with FarmersDelight's own recipe list.
+        // addon book's list names line up with Farmersdelight-Plugin-Pro's own recipe list.
         rename(item, ItemUtils.getDisplayComponent(recipe.result(), viewer)
                 .decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE));
         List<Component> lore = new ArrayList<>();

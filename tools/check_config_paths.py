@@ -15,7 +15,7 @@ fallbacks for migrated keys, so an old name that no longer ships is fine as long
 Registry sections are exempt: those are registry keys an operator adds, not settings we ship.
 
 Usage:
-    python tools/check_config_paths.py            # from FarmersDelight/
+    python tools/check_config_paths.py            # from Farmersdelight-Plugin-Pro/
     python tools/check_config_paths.py --quiet
 Exit code 0 when clean, 1 when a call site has no reachable path.
 """
@@ -89,7 +89,7 @@ def module_root() -> Path:
     for parent in here.parents:
         if (parent / "src" / "main" / "resources" / "config.yml").is_file():
             return parent
-    sys.exit("could not locate the FarmersDelight module root")
+    sys.exit("could not locate the Farmersdelight-Plugin-Pro module root")
 
 
 def load_shipped_keys(root: Path) -> set[str]:

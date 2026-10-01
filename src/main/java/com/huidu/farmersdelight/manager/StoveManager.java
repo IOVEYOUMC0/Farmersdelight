@@ -849,27 +849,15 @@ public class StoveManager {
         List<Player> nearbyViewers = NEARBY_VIEWER_SCRATCH.get();
         nearbyViewers.clear();
         double viewDsq = effectViewerDistance * effectViewerDistance;
-        // Compute squared distance by hand to avoid allocating a Location per candidate. Same world is
-        // already guaranteed below, so this is equivalent to distanceSquared.
-        double cx = location.getX();
-        double cy = location.getY();
-        double cz = location.getZ();
-        for (Player p : seeingPlayers) {
-            if (p.getWorld() != world) {
-                continue;
-            }
-            double dx = p.getX() - cx;
-            double dy = p.getY() - cy;
-            double dz = p.getZ() - cz;
-            if (dx * dx + dy * dy + dz * dz <= viewDsq) {
-                nearbyViewers.add(p);
-            }
+        // Recipient positions are immutable snapshots published by their owning entity threads.
+        for (Player player : seeingPlayers) {
+            if (plugin.particles().isNearby(player, location, viewDsq)) nearbyViewers.add(player);
         }
         AtomicInteger chunkBudget = nearbyViewers.isEmpty() ? null : fx.budget;
         boolean canSpawnEffects = chunkBudget != null && chunkBudget.get() < chunkEffectBudgetLimit;
-        if (isLit && canSpawnEffects && fireParticlesEnabled && random.nextDouble() < fireParticleChance) {
+        if (isLit && canSpawnEffects && fireParticlesEnabled && random.nextDouble() < fireParticleChance
+                && EffectPacketBudget.tryReserve(chunkBudget, chunkEffectBudgetLimit, 2)) {
             spawnAmbientFireParticles(nearbyViewers, location, front, random);
-            chunkBudget.addAndGet(2); // SMOKE + FLAME = 2 packets
         }
         for (int i = 0; i < SLOT_COUNT; i++) {
             // Read the slot under the per-stove monitor: a concurrent interaction inserts into it under the
@@ -898,17 +886,17 @@ public class StoveManager {
                 }
 
                 boolean canSpawnSlotEffects = canSpawnEffects && chunkBudget.get() < chunkEffectBudgetLimit;
-                if (canSpawnSlotEffects && smokeEnabled && random.nextDouble() < smokeChance) {
+                if (canSpawnSlotEffects && smokeEnabled && random.nextDouble() < smokeChance
+                        && EffectPacketBudget.tryReserve(chunkBudget, chunkEffectBudgetLimit, 1)) {
                     spawnCookingParticles(nearbyViewers, location, i, facing);
-                    chunkBudget.incrementAndGet();
                 }
-                if (canSpawnSlotEffects && crackleEnabled && random.nextDouble() < crackleChance) {
+                if (canSpawnSlotEffects && crackleEnabled && random.nextDouble() < crackleChance
+                        && EffectPacketBudget.tryReserve(chunkBudget, chunkEffectBudgetLimit, 1)) {
                     if (!crackleResolved) {
                         crackleSound = getCrackleSound(state);
                         crackleResolved = true;
                     }
                     SoundUtils.play(nearbyViewers, location, crackleSound, Sound.BLOCK_CAMPFIRE_CRACKLE, crackleVolume, cracklePitch);
-                    chunkBudget.incrementAndGet();
                 }
                 if (finished) {
                     int finishedSlot = i;
@@ -1051,7 +1039,7 @@ public class StoveManager {
         double px = location.getX() + 0.5 + offset[0];
         double py = location.getY() + offset[1] + smokeYOffset;
         double pz = location.getZ() + 0.5 + offset[2];
-        ManagerSupport.spawnParticleFor(viewers, smokeParticle, px, py, pz,
+        plugin.particles().spawn(viewers, location, effectViewerDistance * effectViewerDistance, smokeParticle, px, py, pz,
                 smokeCount, smokeOffsetX, smokeOffsetY, smokeOffsetZ, smokeSpeed);
     }
 
@@ -1065,8 +1053,8 @@ public class StoveManager {
         double px = location.getX() + 0.5D + xOffset;
         double py = location.getY() + yOffset;
         double pz = location.getZ() + 0.5D + zOffset;
-        ManagerSupport.spawnParticleFor(viewers, Particle.SMOKE, px, py, pz, 1, 0.0D, 0.0D, 0.0D, 0.0D);
-        ManagerSupport.spawnParticleFor(viewers, Particle.FLAME, px, py, pz, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+        plugin.particles().spawn(viewers, location, effectViewerDistance * effectViewerDistance, Particle.SMOKE, px, py, pz, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+        plugin.particles().spawn(viewers, location, effectViewerDistance * effectViewerDistance, Particle.FLAME, px, py, pz, 1, 0.0D, 0.0D, 0.0D, 0.0D);
     }
 
     private boolean retrieveItem(Player player, Location location, StoveData stove) {

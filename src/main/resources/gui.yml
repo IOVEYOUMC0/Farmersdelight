@@ -1,4 +1,4 @@
-# FarmersDelight GUI configuration
+# Farmersdelight-Plugin-Pro GUI configuration
 # Interface layout, buttons, titles and textures are configured in this file.
 # Each GUI's layout uses characters for slots, and legend maps characters to slot types.
 # Each button under items can use material (vanilla material) or item (CraftEngine item).
@@ -506,6 +506,9 @@ recipe-view-gui:
 # Layout slot types: category (menu, one per addon type), recipe (list), ingredient + result (detail),
 # prev_page, next_page, fill, back, background. List/detail titles come from the recipe type itself.
 recipe-book-gui:
+  # Read-only books use Sparrow virtual windows; bukkit selects the legacy inventory backend.
+  # Books connected to a station's ingredient filler continue to use that station's inventory flow.
+  backend: sparrow
   menu:
     title: "<white><shift:-2><image:farmersdelight:recipelist><shift:-163><black><lang:gui.recipe.book_title>"
     rows: 6

@@ -38,7 +38,7 @@ public final class CuttingBoardDispenseListener implements Listener {
         if (tool == null || tool.getType().isAir()) {
             return;
         }
-        // A FarmersDelight knife has no vanilla dispense behavior, so a dispenser would eject it as an
+        // A Farmersdelight-Plugin-Pro knife has no vanilla dispense behavior, so a dispenser would eject it as an
         // ordinary item the moment it fires. The knife is only ever meant to be used as a tool on a facing
         // cutting board, so gate on the item instead of the block: this also keeps a knife inside the
         // dispenser while CE reloads, when the facing board can briefly fail to resolve as a cutting board.
@@ -54,7 +54,7 @@ public final class CuttingBoardDispenseListener implements Listener {
         World world = target.getWorld();
         // Use int coordinates directly to skip the Location allocation per event.
         BlockPosKey boardPos = new BlockPosKey(target.getX(), target.getY(), target.getZ());
-        // isCuttingBoardBlock returns true when the facing block is NOT a FarmersDelight cutting
+        // isCuttingBoardBlock returns true when the facing block is NOT a Farmersdelight-Plugin-Pro cutting
         // board (its body inverts the has-behavior/has-id checks for the save/load guard paths), so a
         // truthy result means skip the cut; otherwise a non-board would reach the cutter with no tool.
         if (CuttingBoardBlockBehavior.isCuttingBoardBlock(world, boardPos)) {

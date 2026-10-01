@@ -95,7 +95,7 @@ public class SkilletBlockBehavior extends FarmersDelightBlockBehavior implements
         Property<Boolean> supportProperty = BlockBehaviorFactory.getOptionalProperty(block, SUPPORT_PROPERTY, Boolean.class);
         if (supportProperty == null) {
             plugin.getLogger()
-                    .warning("[FarmersDelight] Block " + block.id() + " is missing the 'support' property"
+                    .warning("[Farmersdelight-Plugin-Pro] Block " + block.id() + " is missing the 'support' property"
                             + " — tray entity_renderer switching is disabled for this block.");
         }
         return new SkilletBlockBehavior(plugin, block, permission, addFoodSound, sizzleSound, supportDisplayEnabled,

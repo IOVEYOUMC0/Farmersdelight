@@ -54,7 +54,7 @@ public final class DisplayGroup {
 
     /**
      * Shows an item at a location under the given key, replacing whatever that key showed before.
-     * Returns the handle, or -1 when FarmersDelight is unavailable or the display could not be created.
+     * Returns the handle, or -1 when Farmersdelight-Plugin-Pro is unavailable or the display could not be created.
      *
      * <p>The key is the caller's own anchor -- a block position, a slot index, a record. Anything with
      * sane equals and hashCode works.

@@ -25,7 +25,7 @@ public final class CraftEngineWatchdogListener implements Listener {
         if (plugin.getServer().isStopping() || !plugin.isEnabled()) {
             return; // normal shutdown, or FD is already going down; nothing to do
         }
-        I18n.logSevere("plugin.missing_dependency", "name", "FarmersDelight",
+        I18n.logSevere("plugin.missing_dependency", "name", "Farmersdelight-Plugin-Pro",
                 "dependency", event.getPlugin().getName());
         plugin.getServer().getPluginManager().disablePlugin(plugin);
     }

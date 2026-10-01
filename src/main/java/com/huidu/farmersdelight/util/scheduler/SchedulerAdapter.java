@@ -13,8 +13,10 @@ import java.lang.reflect.Modifier;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -22,15 +24,21 @@ import java.util.function.Consumer;
 
 public final class SchedulerAdapter {
 
+    private static final int ASYNC_QUEUE_CAPACITY = 256;
     private final FarmersDelightPlugin plugin;
     private final boolean folia;
-    private final ExecutorService asyncExecutor;
+    private final ThreadPoolExecutor asyncExecutor;
+    private final LongAdder asyncRejected = new LongAdder();
+    private final LongAdder asyncStarted = new LongAdder();
+    private final LongAdder asyncWaitNanos = new LongAdder();
+    private final AtomicLong asyncMaxWaitNanos = new AtomicLong();
 
     public SchedulerAdapter(FarmersDelightPlugin plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.folia = isClassPresent();
-        this.asyncExecutor = Executors.newFixedThreadPool(
+        this.asyncExecutor = BoundedExecutor.create(
                 Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors())),
+                ASYNC_QUEUE_CAPACITY,
                 new NamedThreadFactory()
         );
     }
@@ -157,7 +165,41 @@ public final class SchedulerAdapter {
     }
 
     public void runAsync(Runnable task) {
-        asyncExecutor.execute(task);
+        Objects.requireNonNull(task, "task");
+        long queued = System.nanoTime();
+        try {
+            asyncExecutor.execute(() -> {
+                long wait = Math.max(0L, System.nanoTime() - queued);
+                asyncWaitNanos.add(wait);
+                asyncMaxWaitNanos.accumulateAndGet(wait, Math::max);
+                asyncStarted.increment();
+                task.run();
+            });
+        } catch (RejectedExecutionException rejected) {
+            asyncRejected.increment();
+            throw rejected;
+        }
+    }
+
+    /** Returns false during shutdown or overload; the caller retains responsibility for pending work. */
+    public boolean tryRunAsync(Runnable task) {
+        try {
+            runAsync(task);
+            return true;
+        } catch (RejectedExecutionException rejected) {
+            return false;
+        }
+    }
+
+    public record AsyncSnapshot(int workers, int active, int queued, int capacity, long completed,
+                                long rejected, long averageWaitNanos, long maxWaitNanos) { }
+
+    public AsyncSnapshot asyncSnapshot() {
+        long started = asyncStarted.sum();
+        int queued = asyncExecutor.getQueue().size();
+        return new AsyncSnapshot(asyncExecutor.getCorePoolSize(), asyncExecutor.getActiveCount(), queued,
+                ASYNC_QUEUE_CAPACITY, asyncExecutor.getCompletedTaskCount(),
+                asyncRejected.sum(), started == 0 ? 0 : asyncWaitNanos.sum() / started, asyncMaxWaitNanos.get());
     }
 
     public void shutdown() {

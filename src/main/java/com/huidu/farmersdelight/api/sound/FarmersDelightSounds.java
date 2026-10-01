@@ -13,7 +13,7 @@ import java.util.List;
 /**
  * Public sound-resolution entry point for addons. A sound key is either a registered {@link Sound}
  * (resolved through the vanilla registry) or a raw sound name; resolution results are cached internally,
- * matching how FarmersDelight's own stations resolve their configured sounds. Methods that take
+ * matching how Farmersdelight-Plugin-Pro's own stations resolve their configured sounds. Methods that take
  * {@code null}/{@code blank} keys fall back to the supplied {@link Sound} fallback.
  */
 @ApiStatus.NonExtendable

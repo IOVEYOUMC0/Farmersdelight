@@ -7,7 +7,7 @@ import org.bukkit.inventory.ItemStack;
 import java.util.Map;
 
 /**
- * Builds a GUI decoration item from the {@code items:} section shape FarmersDelight's own GUIs use.
+ * Builds a GUI decoration item from the {@code items:} section shape Farmersdelight-Plugin-Pro's own GUIs use.
  *
  * <p>Recognised keys: {@code item} (a CraftEngine item id), {@code material}, {@code custom-model-data},
  * {@code item-model}, {@code hide-tooltip}, {@code name} / {@code lore} (MiniMessage, glyph tags

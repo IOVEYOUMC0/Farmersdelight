@@ -3,7 +3,7 @@ package com.huidu.farmersdelight.api.advancement;
 import java.util.Locale;
 
 /**
- * Why the advancement system is or is not running, as evaluated by FarmersDelight.
+ * Why the advancement system is or is not running, as evaluated by Farmersdelight-Plugin-Pro.
  *
  * <p>Addons report this instead of repeating the individual checks, so a tab that was never registered
  * names its actual cause. The conditions are ordered: the first one that fails decides the result.
@@ -13,10 +13,10 @@ public enum AdvancementAvailability {
     /** The advancement system is running. */
     AVAILABLE,
 
-    /** FarmersDelight is not loaded yet, or is shutting down. */
+    /** Farmersdelight-Plugin-Pro is not loaded yet, or is shutting down. */
     PLUGIN_UNAVAILABLE,
 
-    /** FarmersDelight's configuration disables advancements. */
+    /** Farmersdelight-Plugin-Pro's configuration disables advancements. */
     DISABLED_BY_CONFIG,
 
     /** UltimateAdvancementAPI is missing or disabled. */

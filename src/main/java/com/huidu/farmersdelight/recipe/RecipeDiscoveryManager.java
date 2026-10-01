@@ -1,6 +1,5 @@
 package com.huidu.farmersdelight.recipe;
 
-import com.huidu.farmersdelight.api.config.ConfigFileUpdater;
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.api.FarmersDelightApi;
 import com.huidu.farmersdelight.api.config.ConfigSectionReader;
@@ -15,12 +14,10 @@ import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -32,6 +29,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class RecipeDiscoveryManager {
 
@@ -44,7 +42,7 @@ public final class RecipeDiscoveryManager {
     // playerId -> set of "<typeId> <recipeId>" keys (space-separated; neither id contains a space).
     private final Map<UUID, Set<String>> unlocked = new ConcurrentHashMap<>();
     // Join/quit work is asynchronous; a generation lets stale tasks become no-ops after a fast reconnect.
-    private final Map<UUID, Long> lifecycleVersions = new ConcurrentHashMap<>();
+    private final DiscoveryLifecycle lifecycle = new DiscoveryLifecycle();
     // itemId -> keys of recipes whose result or an exact-item ingredient is that item (obtain trigger). Lazy.
     private volatile Map<String, Set<String>> obtainIndex;
     // Every known recipe id by type. Lazy, and dropped by the same invalidation as obtainIndex.
@@ -57,10 +55,16 @@ public final class RecipeDiscoveryManager {
     private volatile boolean unlockOnObtain; // unlock when a recipe's result / exact ingredient is obtained
     private volatile boolean notifyOnUnlock; // chat message when a recipe unlocks
     private volatile Material lockedIcon = Material.BARRIER;
-    private volatile boolean dirty;
+    private final Set<UUID> dirtyPlayers = new HashSet<>();
+    private final AtomicBoolean saveQueued = new AtomicBoolean();
+    private final java.util.concurrent.atomic.AtomicLong saveRequests = new java.util.concurrent.atomic.AtomicLong();
+    private final RecipeDiscoveryPersistence persistence;
+    private long cacheEpoch;
+    private volatile boolean stopping;
 
     public RecipeDiscoveryManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
+        this.persistence = new RecipeDiscoveryPersistence(plugin.getDataFolder().toPath().resolve(DATA_FILE));
     }
 
     public void load() {
@@ -74,7 +78,7 @@ public final class RecipeDiscoveryManager {
 
     public void reloadConfig() {
         boolean wasEnabled = enabled;
-        save();
+        requestSave();
         readConfig();
         obtainIndex = null;
         known = null;
@@ -126,13 +130,11 @@ public final class RecipeDiscoveryManager {
     }
 
     private synchronized long markLifecycle(UUID playerId) {
-        long version = lifecycleVersions.getOrDefault(playerId, 0L) + 1L;
-        lifecycleVersions.put(playerId, version);
-        return version;
+        return lifecycle.mark(playerId);
     }
 
     private synchronized boolean isCurrent(UUID playerId, long version) {
-        return lifecycleVersions.getOrDefault(playerId, 0L) == version;
+        return lifecycle.current(playerId, version);
     }
 
     public boolean isUnlocked(UUID playerId, String typeId, String recipeId) {
@@ -155,14 +157,20 @@ public final class RecipeDiscoveryManager {
         if (playerId == null || typeId == null || recipeId == null) {
             return false;
         }
-        // Before computeIfAbsent, or an unlock for an evicted player would start from an empty set and the
-        // next flush would write that back over everything they had already discovered.
+        // Restore an evicted player's stored unlocks before applying an incremental mutation.
         ensureLoaded(playerId);
-        Set<String> set = unlocked.computeIfAbsent(playerId, k -> ConcurrentHashMap.newKeySet());
-        // add() runs after computeIfAbsent has returned, so no map bin lock is held while the event fires.
-        boolean added = set.add(key(typeId, recipeId));
+        boolean added;
+        synchronized (this) {
+            Set<String> set = unlocked.get(playerId);
+            if (set == null) {
+                return false;
+            }
+            added = set.add(key(typeId, recipeId));
+            if (added) {
+                dirtyPlayers.add(playerId);
+            }
+        }
         if (added) {
-            dirty = true;
             fireChanged(playerId, typeId, recipeId, Action.UNLOCK, source);
         }
         return added;
@@ -177,10 +185,15 @@ public final class RecipeDiscoveryManager {
             return false;
         }
         ensureLoaded(playerId);
-        Set<String> set = unlocked.get(playerId);
-        boolean removed = set != null && set.remove(key(typeId, recipeId));
+        boolean removed;
+        synchronized (this) {
+            Set<String> set = unlocked.get(playerId);
+            removed = set != null && set.remove(key(typeId, recipeId));
+            if (removed) {
+                dirtyPlayers.add(playerId);
+            }
+        }
         if (removed) {
-            dirty = true;
             fireChanged(playerId, typeId, recipeId, Action.LOCK, source);
         }
         return removed;
@@ -386,7 +399,7 @@ public final class RecipeDiscoveryManager {
 
     private Map<String, Set<String>> buildObtainIndex() {
         Map<String, Set<String>> index = new ConcurrentHashMap<>();
-        // FarmersDelight cooking pot: result + exact-item ingredients. Walks the custom groups' recipes as
+        // Farmersdelight-Plugin-Pro cooking pot: result + exact-item ingredients. Walks the custom groups' recipes as
         // well as the default ones, because the books display the group-merged list — indexing only the
         // defaults would leave every group-only recipe permanently locked with no way to trigger it.
         for (CookingPotRecipe recipe : plugin.getCookingPotRecipes().getAllRecipes()) {
@@ -398,7 +411,7 @@ public final class RecipeDiscoveryManager {
                 }
             }
         }
-        // FarmersDelight cutting board: results + exact-item input.
+        // Farmersdelight-Plugin-Pro cutting board: results + exact-item input.
         for (CuttingBoardRecipe recipe : plugin.getCuttingBoardRecipes().getRecipes().values()) {
             String key = key(TYPE_CUTTING_BOARD, recipe.getId());
             for (CuttingBoardRecipe.ResultEntry entry : recipe.getResults()) {
@@ -464,7 +477,7 @@ public final class RecipeDiscoveryManager {
     // Building this walks every default cooking pot recipe, every custom group, every cutting board recipe
     // and every addon type. Tab completion asks for it once per keystroke, so it is held until the recipe
     // set changes. Invalidation rides the hook that already drops the obtain index, which covers a
-    // FarmersDelight recipe reload and every api register or unregister -- the same contract the obtain
+    // Farmersdelight-Plugin-Pro recipe reload and every api register or unregister -- the same contract the obtain
     // index runs on, so an addon that mutates its own recipe list without telling the api is stale in both.
     private KnownRecipes known() {
         KnownRecipes cached = known;
@@ -514,124 +527,157 @@ public final class RecipeDiscoveryManager {
         return typeId + " " + recipeId;
     }
 
-    private File dataFile() {
-        return new File(plugin.getDataFolder(), DATA_FILE);
-    }
-
-    // Only players who are online right now are held in memory. At boot that is nobody, so the file is not
-    // read at all; on a reload it is the players whose books can be open. Everyone else is read back on
-    // demand by ensureLoaded, which is what keeps this table sized by concurrent players rather than by
-    // every player who has ever joined.
     private void loadData() {
-        unlocked.clear();
-        Set<UUID> online = new HashSet<>();
+        // Keep unsaved snapshots authoritative when enabling the feature after a reload.
         for (Player player : Bukkit.getOnlinePlayers()) {
-            online.add(player.getUniqueId());
+            ensureLoaded(player.getUniqueId());
         }
-        if (online.isEmpty()) {
-            dirty = false;
-            return;
-        }
-        YamlConfiguration yaml = readData();
-        if (yaml != null) {
-            for (UUID id : online) {
-                List<String> keys = yaml.getStringList(id.toString());
-                if (!keys.isEmpty()) {
-                    Set<String> set = ConcurrentHashMap.newKeySet();
-                    set.addAll(keys);
-                    unlocked.put(id, set);
-                }
-            }
-        }
-        dirty = false;
     }
 
-    private YamlConfiguration readData() {
-        File file = dataFile();
-        return file.exists() ? YamlConfiguration.loadConfiguration(file) : null;
-    }
-
-    /**
-     * Reads one player's unlocks off disk if they are not in memory. An entry is left behind even when the
-     * player has nothing stored, so the file is parsed once per player rather than once per lookup.
-     */
+    /** Legacy synchronous API; join warm-up avoids this disk read for normal online use. */
     public void ensureLoaded(UUID playerId) {
         if (playerId == null || unlocked.containsKey(playerId)) {
             return;
         }
-        Set<String> set = ConcurrentHashMap.newKeySet();
-        YamlConfiguration yaml = readData();
-        if (yaml != null) {
-            set.addAll(yaml.getStringList(playerId.toString()));
+        try {
+            while (true) {
+                long epoch;
+                synchronized (this) {
+                    if (unlocked.containsKey(playerId)) {
+                        return;
+                    }
+                    epoch = cacheEpoch;
+                }
+                Set<String> keys = persistence.read(playerId);
+                synchronized (this) {
+                    if (epoch != cacheEpoch) {
+                        continue;
+                    }
+                    Set<String> set = ConcurrentHashMap.newKeySet();
+                    set.addAll(keys);
+                    unlocked.putIfAbsent(playerId, set);
+                    return;
+                }
+            }
+        } catch (IOException error) {
+            warnPersistence(error);
         }
-        unlocked.putIfAbsent(playerId, set);
     }
 
     public void ensureLoaded(UUID playerId, long version) {
         if (playerId == null || !isCurrent(playerId, version) || unlocked.containsKey(playerId)) {
             return;
         }
-        Set<String> set = ConcurrentHashMap.newKeySet();
-        YamlConfiguration yaml = readData();
-        if (yaml != null) {
-            set.addAll(yaml.getStringList(playerId.toString()));
-        }
-        synchronized (this) {
-            if (isCurrent(playerId, version)) {
-                unlocked.putIfAbsent(playerId, set);
+        try {
+            Set<String> keys = persistence.read(playerId);
+            synchronized (this) {
+                if (isCurrent(playerId, version)) {
+                    Set<String> set = ConcurrentHashMap.newKeySet();
+                    set.addAll(keys);
+                    unlocked.putIfAbsent(playerId, set);
+                }
             }
+        } catch (IOException error) {
+            warnPersistence(error);
         }
     }
 
-    /**
-     * Writes pending unlocks out and drops this player from memory, for when they leave. save merges into
-     * the file rather than replacing it, so a dropped player is still there for an offline lookup to read
-     * back.
-     */
     public void evict(UUID playerId) {
-        if (playerId == null) {
-            return;
-        }
-        save();
-        unlocked.remove(playerId);
+        evictInternal(playerId, null);
     }
 
     public void evict(UUID playerId, long version) {
+        evictInternal(playerId, version);
+    }
+
+    private void evictInternal(UUID playerId, Long version) {
         if (playerId == null) {
             return;
         }
-        // Always flush first: a stale quit task must not discard pending unlocks when a rejoin
-        // has already advanced the lifecycle version.
-        save();
         synchronized (this) {
-            if (isCurrent(playerId, version)) {
-                unlocked.remove(playerId);
-                lifecycleVersions.remove(playerId, version);
+            if (version != null && !isCurrent(playerId, version)) {
+                return;
+            }
+            stageDirty(playerId);
+            unlocked.remove(playerId);
+            cacheEpoch++;
+            if (version != null) {
+                lifecycle.retire(playerId, version);
+            }
+        }
+        requestSave();
+    }
+
+    private void stageDirty(UUID playerId) {
+        if (dirtyPlayers.remove(playerId)) {
+            Set<String> keys = unlocked.get(playerId);
+            if (keys != null) {
+                persistence.stage(playerId, keys);
             }
         }
     }
 
-    public synchronized void save() {
-        if (!dirty) {
+    /** Coalesces requests; rejection leaves snapshots available for the next timer or shutdown flush. */
+    public void requestSave() {
+        if (stopping) {
             return;
         }
-        // Clear dirty before snapshotting so a concurrent unlock re-marks it and is caught by the next flush.
-        dirty = false;
-        File file = dataFile();
-        YamlConfiguration yaml = file.exists()
-                ? YamlConfiguration.loadConfiguration(file)
-                : new YamlConfiguration();
-        for (Map.Entry<UUID, Set<String>> entry : unlocked.entrySet()) {
-            Set<String> keys = entry.getValue();
-            // An in-memory player with nothing unlocked is an explicit "everything locked" state, so clear
-            // the stored key rather than leaving a stale list behind.
-            yaml.set(entry.getKey().toString(), keys.isEmpty() ? null : new ArrayList<>(keys));
+        saveRequests.incrementAndGet();
+        if (!saveQueued.compareAndSet(false, true)) {
+            return;
+        }
+        if (!plugin.scheduler().tryRunAsync(() -> {
+            long observed = saveRequests.get();
+            try {
+                save();
+            } finally {
+                saveQueued.set(false);
+                if (!stopping && saveRequests.get() != observed) {
+                    requestSave();
+                }
+            }
+        })) {
+            saveQueued.set(false);
+        }
+    }
+
+    public void save() {
+        synchronized (this) {
+            for (UUID playerId : new ArrayList<>(dirtyPlayers)) {
+                stageDirty(playerId);
+            }
         }
         try {
-            ConfigFileUpdater.writeStringAtomically(file.toPath(), yaml.saveToString(), false);
-        } catch (IOException e) {
-            dirty = true; // failed write: keep state dirty so the next flush retries
-            I18n.logWarning("recipe-discovery.save_failed", "error", String.valueOf(e.getMessage()));
+            persistence.flush();
+        } catch (IOException error) {
+            warnPersistence(error);
         }
+    }
+
+    /** The final writer shares the existing shutdown deadline, including time waiting for an earlier writer. */
+    public void flushOnShutdown(com.huidu.farmersdelight.api.util.ShutdownBudget budget) {
+        stopping = true;
+        var completed = new java.util.concurrent.CompletableFuture<Void>();
+        Thread writer = Thread.ofVirtual().name("farmersdelight-discovery-final-flush").start(() -> {
+            try {
+                save();
+                completed.complete(null);
+            } catch (Throwable error) {
+                completed.completeExceptionally(error);
+            }
+        });
+        try {
+            completed.get(budget.remainingMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (Exception error) {
+            writer.interrupt();
+            if (error instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            I18n.logWarning("recipe-discovery.save_failed", "error", "Final flush did not finish within shutdown budget: " + error);
+        }
+    }
+
+    private void warnPersistence(IOException error) {
+        I18n.logWarning("recipe-discovery.save_failed", "error", String.valueOf(error.getMessage()));
     }
 }

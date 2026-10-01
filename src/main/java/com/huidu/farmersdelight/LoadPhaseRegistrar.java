@@ -11,7 +11,7 @@ import com.huidu.farmersdelight.util.compat.ProtectionCompat;
 /**
  * Everything the plugin registers during the load phase, before CraftEngine starts parsing its packs.
  *
- * <p>These calls have to happen in {@code onLoad} and in this order: CraftEngine dispatches the FarmersDelight
+ * <p>These calls have to happen in {@code onLoad} and in this order: CraftEngine dispatches the Farmersdelight-Plugin-Pro
  * pack sections to the parsers registered here while it loads packs in its own {@code onEnable}, and WorldGuard
  * locks its flag registry once it enables, so both must be claimed before the enable phase of any other plugin.
  * Keeping them in one place makes that constraint visible instead of leaving it implicit among the plugin's

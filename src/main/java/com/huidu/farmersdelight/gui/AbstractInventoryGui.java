@@ -20,12 +20,12 @@ public abstract class AbstractInventoryGui implements InventoryHolder {
         if (player == null) {
             return;
         }
+        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         try {
-            player.getScheduler().run(FarmersDelightPlugin.getInstance(), t -> player.closeInventory(), null);
-        } catch (Throwable t) {
-            try {
-                player.closeInventory();
-            } catch (Throwable ignored) {
+            player.getScheduler().run(plugin, t -> player.closeInventory(), null);
+        } catch (RuntimeException stopped) {
+            if (plugin.isEnabled()) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "Could not schedule inventory closure", stopped);
             }
         }
     }
@@ -53,6 +53,10 @@ public abstract class AbstractInventoryGui implements InventoryHolder {
     protected void onTick() {
     }
 
+    protected boolean requiresTicking() {
+        return false;
+    }
+
     protected final void doOpen(Runnable afterRefresh) {
         closed = false;
 
@@ -69,7 +73,9 @@ public abstract class AbstractInventoryGui implements InventoryHolder {
         }
         player.openInventory(inventory);
 
-        GuiTickManager.getInstance(plugin).registerCallback(player, tickCallback);
+        if (requiresTicking()) {
+            GuiTickManager.getInstance(plugin).registerCallback(player, tickCallback);
+        }
     }
 
     // ---- Required subclass hooks ----
@@ -87,7 +93,9 @@ public abstract class AbstractInventoryGui implements InventoryHolder {
     public void close() {
         if (closed) return;
         closed = true;
-        GuiTickManager.getInstance(plugin).unregisterCallback(tickCallback);
+        if (requiresTicking()) {
+            GuiTickManager.getInstance(plugin).unregisterCallback(tickCallback);
+        }
     }
 
     public void onClose(InventoryCloseEvent event) {

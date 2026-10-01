@@ -166,6 +166,11 @@ public class RecipeViewGui extends AbstractInventoryGui {
     }
 
     @Override
+    protected boolean requiresTicking() {
+        return true;
+    }
+
+    @Override
     protected void onTick() {
         if (closed) {
             return;

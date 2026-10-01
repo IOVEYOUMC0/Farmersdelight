@@ -70,7 +70,7 @@ public final class HeatSources {
 
     /**
      * Declares a CraftEngine block, optionally narrowed to one state, to be a heat source. Returns false
-     * when the id could not be parsed or FarmersDelight is unavailable.
+     * when the id could not be parsed or Farmersdelight-Plugin-Pro is unavailable.
      */
     public boolean addCustomBlock(String blockIdWithOptionalState) {
         if (blank(blockIdWithOptionalState)) {
@@ -133,7 +133,7 @@ public final class HeatSources {
     }
 
     /**
-     * Replays every plugin's declarations into a freshly built table. FarmersDelight calls this right
+     * Replays every plugin's declarations into a freshly built table. Farmersdelight-Plugin-Pro calls this right
      * after it reloads its own heat-source config; addons never call it.
      */
     @ApiStatus.Internal

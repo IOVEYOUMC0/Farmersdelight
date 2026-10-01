@@ -80,7 +80,9 @@ public final class ConfigBootstrap {
                     // Display visibility/throttling now lives in CraftEngine, which diffs the display text itself,
                     // so this interval stopped being read and the key was removed from the bundled file.
                     "cooking-pot.display",
-                    "cooking-pot.display.visibility-check-interval-ticks")
+                    "cooking-pot.display.visibility-check-interval-ticks",
+                    // Placement protection now applies to the placing player's current tick only.
+                    "cooking-pot.place-interaction-cooldown-ms")
             .registrySection("heat-sources",
                     // Guarded at the parent, not at the foods child: an admin who disables every food by
                     // deleting the whole foods block leaves no foods path for a narrower guard to match, and
@@ -560,20 +562,37 @@ public final class ConfigBootstrap {
         cachingReloadReads = true;
     }
 
+    public void beginReload(PreparedYamlFiles prepared) {
+        beginReload();
+        if (prepared != null) {
+            reloadReads.putAll(prepared.documents());
+        }
+    }
+
     private YamlConfiguration readUserYaml(Path path, boolean shareable)
             throws IOException, InvalidConfigurationException {
         if (!cachingReloadReads || !shareable) {
-            return ConfigFileUpdater.readYamlFile(path);
+            return parseUserYaml(path);
         }
         YamlConfiguration cached = reloadReads.get(path);
         if (cached != null) {
             return cached;
         }
-        YamlConfiguration parsed = ConfigFileUpdater.readYamlFile(path);
+        YamlConfiguration parsed = parseUserYaml(path);
         if (parsed != null) {
             reloadReads.put(path, parsed);
         }
         return parsed;
+    }
+
+    private YamlConfiguration parseUserYaml(Path path) throws IOException, InvalidConfigurationException {
+        return "gui.yml".equals(path.getFileName().toString())
+                ? PlainYamlDocuments.read(path) : ConfigFileUpdater.readYamlFile(path);
+    }
+
+    public void endReload() {
+        cachingReloadReads = false;
+        reloadReads.clear();
     }
 
     /** Parses the files a reload needs up front, so validation and the load pass share one read each. */

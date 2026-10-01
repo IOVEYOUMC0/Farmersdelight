@@ -10,16 +10,16 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Register custom villager and wandering-trader trades from an addon. FarmersDelight already gates and applies
+ * Register custom villager and wandering-trader trades from an addon. Farmersdelight-Plugin-Pro already gates and applies
  * trades through its VillagerAcquireTradeEvent listener (profession + level, one weighted substitution roll,
  * de-duplication, Folia-correct application, and persistence in the villager's entity data); this facade lets
- * an addon feed offers into that same machinery without touching FarmersDelight internals or the event itself.
+ * an addon feed offers into that same machinery without touching Farmersdelight-Plugin-Pro internals or the event itself.
  *
  * Trades are keyed by an addon-owned id (namespaced, e.g. "barbequesdelight:butcher_chilli_powder") used for
  * de-dupe and unregister. Ingredient and result are item ids — a plain vanilla id ("minecraft:emerald") or a
  * CraftEngine custom item id ("barbequesdelight:chilli_powder"); both work as inputs and outputs. Registrations
  * survive a /fd reload. A trade substitutes one offer slot in the target pool rather than adding a slot on top,
- * matching FarmersDelight's own config-driven trades.
+ * matching Farmersdelight-Plugin-Pro's own config-driven trades.
  */
 @ApiStatus.NonExtendable
 public final class FarmersDelightVillagerTrades {
@@ -31,7 +31,7 @@ public final class FarmersDelightVillagerTrades {
      * Register a profession villager trade. profession is a profession id path ("butcher", "farmer", ...);
      * level is the villager level pool 1 (Novice) .. 5 (Master); chance is this trade's substitution share of
      * that pool (the pool is rolled once, so shares add up rather than compounding). Returns false if
-     * FarmersDelight is unavailable or the arguments are invalid.
+     * Farmersdelight-Plugin-Pro is unavailable or the arguments are invalid.
      */
     public static boolean registerVillagerTrade(String id, String profession, int level,
                                                 String ingredient, int ingredientAmount,

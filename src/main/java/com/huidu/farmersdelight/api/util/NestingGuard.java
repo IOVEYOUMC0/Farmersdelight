@@ -27,7 +27,7 @@ public final class NestingGuard {
     private NestingGuard() {
     }
 
-    /** Registers a FarmersDelight-family container item whose mined form packs its inventory into NBT. */
+    /** Registers a Farmersdelight-Plugin-Pro-family container item whose mined form packs its inventory into NBT. */
     public static void register(String containerId) {
         if (containerId == null || containerId.isEmpty()) {
             return;

@@ -48,7 +48,7 @@ public final class FarmersDelightAdvancements {
         return availability() == AdvancementAvailability.AVAILABLE;
     }
 
-    // ------------------------------------------------------------------ FarmersDelight's own tab
+    // ------------------------------------------------------------------ Farmersdelight-Plugin-Pro's own tab
 
     public static void award(Player player, String advancementId) {
         AdvancementManager manager = fdManager();

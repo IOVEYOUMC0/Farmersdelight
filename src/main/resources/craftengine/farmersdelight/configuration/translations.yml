@@ -168,7 +168,7 @@ translations:
     farmersdelight.category.gui: "GUI"
     farmersdelight.category.item: "Items"
     farmersdelight.category.item_display: "Item Displays"
-    farmersdelight.category.root: "Farmer's Delight"
+    farmersdelight.category.root: "Farmersdelight-Plugin-Pro"
     farmersdelight.category.weapon: "Weapons"
 
     farmersdelight.gui.cancooked.enabled: "Showing cookable only"
@@ -388,7 +388,7 @@ translations:
     farmersdelight.category.gui: "界面"
     farmersdelight.category.item: "物品"
     farmersdelight.category.item_display: "物品展示实体"
-    farmersdelight.category.root: "农夫乐事"
+    farmersdelight.category.root: "Farmersdelight-Plugin-Pro"
     farmersdelight.category.weapon: "武器"
 
     farmersdelight.gui.cooking_time: "烹饪时长"
@@ -608,7 +608,7 @@ translations:
     farmersdelight.category.gui: "GUI"
     farmersdelight.category.item: "아이템"
     farmersdelight.category.item_display: "장식품"
-    farmersdelight.category.root: "전체"
+    farmersdelight.category.root: "Farmersdelight-Plugin-Pro"
     farmersdelight.category.weapon: "무기"
 
     farmersdelight.gui.cancooked.enabled: "조리 가능한 항목만 표시"

@@ -34,70 +34,58 @@ import com.huidu.farmersdelight.util.CommonTagResolver;
 public class CookingPotRecipeManager {
 
     private final FarmersDelightPlugin plugin;
-    // These lookup structures are rebuilt on /fd reload. They are published as whole, freshly built,
-    // post-publish-immutable maps via a single volatile write, so concurrent readers (cooking-pot
-    // tick / GUI, which run on Folia region threads while reload runs on the global thread) never
-    // observe a half-cleared map. Never mutate them in place after publishing.
-    private volatile Map<String, CookingPotRecipe> recipes = Map.of();
-    private volatile Map<String, Map<String, CookingPotRecipe>> customRecipes = Map.of();
-    private volatile Map<String, Set<String>> ingredientToRecipes = Map.of();
-    private volatile Map<String, Map<String, Set<String>>> customIngredientToRecipes = Map.of();
-    private volatile List<CookingPotRecipe> sortedRecipes = List.of();
-    private volatile Map<String, List<CookingPotRecipe>> sortedCustomRecipes = Map.of();
-    private volatile Map<String, List<CookingPotRecipe>> sortedCustomOnlyRecipes = Map.of();
-    // Reverse index result item id -> producing recipes, built at load time and published as a whole
-    // (single volatile write). Lets API cross-reference / GUI "which recipes produce X" answer in O(1)
-    // instead of scanning every recipe. Keyed the same way as getItemKey (custom id, else vanilla id).
-    private volatile Map<String, List<CookingPotRecipe>> resultToRecipes = Map.of();
-    // Recipes whose winning definition came from a CraftEngine pack section; published with the maps above
-    // so the startup summary can tell the plugin's own file, pack content and runtime registrations apart.
-    private volatile int packRecipeCount;
-    private final VanillaTagItemIdCache vanillaItemIdsByTagCache;
-    // LRU access-order LinkedHashMap mutates internal state on get(), so concurrent reads from
-    // multiple region threads (Folia) would corrupt the doubly-linked list. Wrap in synchronizedMap;
-    // callers MUST synchronize externally when iterating (currently no iteration happens).
-    private final Map<String, CookingPotRecipe> recipeCache = Collections.synchronizedMap(
-            new LinkedHashMap<>(MAX_CACHE_SIZE + 1, 0.75f, true) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<String, CookingPotRecipe> eldest) {
-                    return size() > MAX_CACHE_SIZE;
-                }
-            });
-    // Both caches are server-wide, so 100 entries thrash as soon as a few dozen pots hold distinct
-    // input combinations: every eviction turns the next tick of that pot back into a full recipe
-    // scan, which is exactly what the negative cache exists to avoid. Entries are a string key and
-    // a reference, so a four-figure bound is a few hundred kB at worst.
     private static final int MAX_CACHE_SIZE = 2048;
-    // Negative-result cache: input+container multisets known to match nothing, so an unchanged incomplete
-    // pot (mid-fill, hopper-fed, or junk) does not re-scan every recipe each tick. Bounded LRU like
-    // recipeCache, only touched under the recipeCache monitor, cleared + generation-bumped alongside it.
-    private final Set<String> recipeMisses = Collections.newSetFromMap(
-            new LinkedHashMap<String, Boolean>(MAX_CACHE_SIZE + 1, 0.75f, false) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
-                    return size() > MAX_CACHE_SIZE;
-                }
-            });
-    // Bumped inside the same synchronized(recipeCache) block that clears the cache on every (re)publish.
-    // matchRecipe snapshots it before reading the volatile maps and only stores a computed match if it is
-    // still current, so a match computed against pre-reload maps can't repopulate the just-cleared cache.
-    // volatile so the unsynchronized snapshot read is ordered before the volatile map reads and is visible.
-    private volatile long recipeGeneration = 0;
+    private final VanillaTagItemIdCache vanillaItemIdsByTagCache;
+    private volatile Snapshot snapshot = Snapshot.empty();
+    private volatile YamlConfiguration lastFileDocument;
+    private volatile RecipeParseCache<CookingPotRecipe> parsedRecipes;
 
-    /**
-     * The publish generation of the currently loaded recipe set, bumped on every republish. A caller that
-     * caches a match result stores this alongside it so the cache is discarded when recipes change.
-     */
-    public long recipeGeneration() {
-        return recipeGeneration;
+    record Snapshot(Map<String, CookingPotRecipe> recipes,
+                    Map<String, Map<String, CookingPotRecipe>> customRecipes,
+                    Map<String, Set<String>> ingredientToRecipes,
+                    Map<String, Map<String, Set<String>>> customIngredientToRecipes,
+                    List<CookingPotRecipe> sortedRecipes,
+                    Map<String, List<CookingPotRecipe>> sortedCustomRecipes,
+                    Map<String, List<CookingPotRecipe>> sortedCustomOnlyRecipes,
+                    Map<String, List<CookingPotRecipe>> resultToRecipes,
+                    Set<String> validContainerKeys, int packRecipeCount, long generation,
+                    Map<String, CookingPotRecipe> recipeCache, Set<String> recipeMisses) {
+        static Snapshot empty() {
+            return new Snapshot(Map.of(), Map.of(), Map.of(), Map.of(), List.of(), Map.of(), Map.of(),
+                    Map.of(), Set.of(), 0, 0, newMatchCache(), newMissCache());
+        }
     }
-    private volatile Set<String> validContainerKeys = Set.of();
+
+    private static Map<String, CookingPotRecipe> newMatchCache() {
+        return Collections.synchronizedMap(new LinkedHashMap<>(MAX_CACHE_SIZE + 1, 0.75f, true) {
+            @Override protected boolean removeEldestEntry(Map.Entry<String, CookingPotRecipe> eldest) {
+                return size() > MAX_CACHE_SIZE;
+            }
+        });
+    }
+
+    private static Set<String> newMissCache() {
+        return Collections.newSetFromMap(new LinkedHashMap<String, Boolean>(MAX_CACHE_SIZE + 1, 0.75f, false) {
+            @Override protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+                return size() > MAX_CACHE_SIZE;
+            }
+        });
+    }
+
+    public long recipeGeneration() { return snapshot.generation(); }
+
+    public record ParseMetrics(int parsed, int reused) { }
+    public ParseMetrics parseMetrics() {
+        RecipeParseCache<CookingPotRecipe> current = parsedRecipes;
+        return current == null ? new ParseMetrics(0, 0) : new ParseMetrics(current.parsed(), current.reused());
+    }
+
     // Recipes registered at runtime by addons via the public API. Kept separate so they survive a
     // /fd reload (which rebuilds the file-backed maps); merged into the published maps in loadRecipes().
     private final Map<String, CookingPotRecipe> externalRecipes = new ConcurrentHashMap<>();
     // Republishing after an external (un)register is coalesced to the next tick, so registering a batch
     // of addon recipes triggers a single loadRecipes() instead of one full file reload per recipe.
-    private volatile boolean externalRepublishScheduled = false;
+    private final java.util.concurrent.atomic.AtomicBoolean externalRepublishScheduled = new java.util.concurrent.atomic.AtomicBoolean();
 
     public CookingPotRecipeManager(FarmersDelightPlugin plugin) {
         this.plugin = plugin;
@@ -105,6 +93,16 @@ public class CookingPotRecipeManager {
     }
 
     public void loadRecipes() {
+        loadRecipes(RecipeFileLoader.loadRecipeFile(plugin, "recipes/cooking_pot_recipes.yml"), false);
+    }
+
+    public void loadRecipesIncrementally() {
+        loadRecipes(RecipeFileLoader.loadRecipeFile(plugin, "recipes/cooking_pot_recipes.yml"), true);
+    }
+
+    private synchronized void loadRecipes(YamlConfiguration config, boolean incremental) {
+        if (config == null) return;
+        RecipeParseCache<CookingPotRecipe> parsing = new RecipeParseCache<>(incremental ? parsedRecipes : null);
         // Build everything into fresh local collections first, then publish atomically (below), so readers
         // never see a half-cleared map. Do not clear()/refill the live fields in place.
         Map<String, CookingPotRecipe> newRecipes = new LinkedHashMap<>();
@@ -119,16 +117,10 @@ public class CookingPotRecipeManager {
         // startup summary read this, so it may only count entries that survived the merges below.
         Set<String> packIds = new HashSet<>();
 
-        YamlConfiguration config = RecipeFileLoader.loadRecipeFile(plugin, "recipes/cooking_pot_recipes.yml");
-        if (config == null) {
-            // Unreadable file (the loader already warned with the parse error): keep the recipes published
-            // last instead of rebuilding from an empty file. Pack and API recipes stay as they are too.
-            return;
-        }
         Set<String> overriddenExternalIds = externalOverrideIds(config, "cooking_pot");
         RecipeFileLoader.loadRecipeSections(plugin, config, "cooking_pot_recipes", "cooking pot",
                 "recipes/cooking_pot_recipes.yml", (recipeId, section) -> {
-                    CookingPotRecipe recipe = parseRecipe(recipeId, section, 6);
+                    CookingPotRecipe recipe = parsing.parse("file", recipeId, section, () -> parseRecipe(recipeId, section, 6));
                     newRecipes.put(recipeId, recipe);
 
                     indexDefaultRecipe(newIngredientToRecipes, recipeId, recipe);
@@ -137,7 +129,7 @@ public class CookingPotRecipeManager {
                         inferredContainers[0]++;
                     }
                 });
-        loadCustomRecipes(config, newCustomRecipes, newCustomIngredientToRecipes, newValidContainerKeys, inferredContainers);
+        loadCustomRecipes(config, newCustomRecipes, newCustomIngredientToRecipes, newValidContainerKeys, inferredContainers, parsing, "file");
 
         // Recipes a CraftEngine pack declares under cooking_recipes. Loaded after the plugin's own file so a
         // pack can never silently replace a built-in recipe, and before the API merge below so an explicit
@@ -151,7 +143,7 @@ public class CookingPotRecipeManager {
                             I18n.logWarning("recipe.pack_duplicate_skipped", "id", recipeId, "source", packSection.source());
                             return;
                         }
-                        CookingPotRecipe recipe = parseRecipe(recipeId, section, 6);
+                        CookingPotRecipe recipe = parsing.parse(packSection.source(), recipeId, section, () -> parseRecipe(recipeId, section, 6));
                         newRecipes.put(recipeId, recipe);
                         packIds.add(recipeId);
                         indexDefaultRecipe(newIngredientToRecipes, recipeId, recipe);
@@ -160,7 +152,7 @@ public class CookingPotRecipeManager {
                             inferredContainers[0]++;
                         }
                     });
-            loadCustomRecipes(packSection.yaml(), newCustomRecipes, newCustomIngredientToRecipes, newValidContainerKeys, inferredContainers);
+            loadCustomRecipes(packSection.yaml(), newCustomRecipes, newCustomIngredientToRecipes, newValidContainerKeys, inferredContainers, parsing, packSection.source());
         }
 
         // Merge addon-registered recipes last so they survive reloads; an editor override is explicit and wins.
@@ -196,24 +188,16 @@ public class CookingPotRecipeManager {
             }
         }
 
-        // Publish the freshly built structures (each a single volatile write).
-        this.recipes = newRecipes;
-        this.customRecipes = newCustomRecipes;
-        this.ingredientToRecipes = newIngredientToRecipes;
-        this.customIngredientToRecipes = newCustomIngredientToRecipes;
-        this.sortedRecipes = newSortedRecipes;
-        this.sortedCustomRecipes = newSortedCustomRecipes;
-        this.sortedCustomOnlyRecipes = newSortedCustomOnlyRecipes;
-        this.resultToRecipes = freezeResultIndex(newResultToRecipes);
-        this.validContainerKeys = Collections.unmodifiableSet(newValidContainerKeys);
-        this.packRecipeCount = newPackRecipeCount;
-
+        Snapshot next = new Snapshot(RecipeCollections.freezeMap(newRecipes),
+                RecipeCollections.freezeNested(newCustomRecipes), RecipeCollections.freezeSets(newIngredientToRecipes),
+                RecipeCollections.freezeNestedSets(newCustomIngredientToRecipes), List.copyOf(newSortedRecipes),
+                RecipeCollections.freezeLists(newSortedCustomRecipes), RecipeCollections.freezeLists(newSortedCustomOnlyRecipes),
+                RecipeCollections.freezeLists(newResultToRecipes), Set.copyOf(newValidContainerKeys), newPackRecipeCount,
+                snapshot.generation() + 1, newMatchCache(), newMissCache());
+        lastFileDocument = config;
+        parsedRecipes = parsing;
         vanillaItemIdsByTagCache.clear();
-        synchronized (recipeCache) {
-            recipeCache.clear();
-            recipeMisses.clear();
-            recipeGeneration++;
-        }
+        snapshot = next;
         // Invalidate the recipe-list GUI display cache: this republish path (incl. addon register/
         // unregister) bypasses RecipeViewGui.clearConfigCache.
         RecipeViewGui.clearRecipeDisplayCache();
@@ -226,7 +210,7 @@ public class CookingPotRecipeManager {
                                    Map<String, Map<String, CookingPotRecipe>> targetCustomRecipes,
                                    Map<String, Map<String, Set<String>>> targetCustomIndex,
                                    Set<String> targetContainerKeys,
-                                   int[] inferredContainers) {
+                                   int[] inferredContainers, RecipeParseCache<CookingPotRecipe> parsing, String source) {
         ConfigurationSection root = config.getConfigurationSection("custom_cooking_pot_recipes");
         if (root == null) {
             return;
@@ -251,7 +235,8 @@ public class CookingPotRecipeManager {
                     continue;
                 }
                 try {
-                    CookingPotRecipe recipe = parseRecipe(recipeId, section, 54);
+                    CookingPotRecipe recipe = parsing.parse(source, List.of("custom", groupId, recipeId), section,
+                            () -> parseRecipe(recipeId, section, 54));
                     groupRecipes.put(recipeId, recipe);
                     indexCustomRecipe(targetCustomIndex, groupId, recipeId, recipe);
                     indexContainer(targetContainerKeys, recipe);
@@ -319,21 +304,13 @@ public class CookingPotRecipeManager {
         return index;
     }
 
-    // Deep-freeze a mutable result index into an immutable publish snapshot (unmodifiable map + lists).
-    private static Map<String, List<CookingPotRecipe>> freezeResultIndex(Map<String, List<CookingPotRecipe>> source) {
-        Map<String, List<CookingPotRecipe>> frozen = new HashMap<>(source.size());
-        for (Map.Entry<String, List<CookingPotRecipe>> entry : source.entrySet()) {
-            frozen.put(entry.getKey(), Collections.unmodifiableList(entry.getValue()));
-        }
-        return Collections.unmodifiableMap(frozen);
-    }
-
     /** Recipes (default + external, excluding custom-group duplicates) that produce this item. */
     public List<CookingPotRecipe> getRecipesProducing(ItemStack item) {
+        Snapshot view = snapshot;
         if (item == null || item.getType().isAir()) {
             return List.of();
         }
-        List<CookingPotRecipe> matches = resultToRecipes.get(getItemKey(item));
+        List<CookingPotRecipe> matches = view.resultToRecipes().get(getItemKey(item));
         return matches == null ? List.of() : matches;
     }
 
@@ -566,14 +543,13 @@ public class CookingPotRecipeManager {
 
         String normalizedGroupId = normalizeRecipeGroupId(customRecipeGroupId);
         String cacheKey = buildCacheKey(nonEmptyInputs, container, normalizedGroupId);
-        // Snapshot the publish generation BEFORE reading the volatile maps below. Two volatile reads keep
-        // program order, so this pairs the match we are about to compute with the map version it saw.
-        long generationAtStart = recipeGeneration;
+        // One capture binds matching, indices and cache entries to the same recipe version.
+        Snapshot view = snapshot;
         CookingPotRecipe cached;
         boolean cachedMiss;
-        synchronized (recipeCache) {
-            cached = recipeCache.get(cacheKey);
-            cachedMiss = cached == null && recipeMisses.contains(cacheKey);
+        synchronized (view.recipeCache()) {
+            cached = view.recipeCache().get(cacheKey);
+            cachedMiss = cached == null && view.recipeMisses().contains(cacheKey);
         }
         if (cachedMiss) {
             return null;
@@ -584,22 +560,21 @@ public class CookingPotRecipeManager {
 
         CookingPotRecipe result = null;
         if (normalizedGroupId != null) {
-            result = matchCustomRecipe(nonEmptyInputs, container, normalizedGroupId);
+            result = matchCustomRecipe(nonEmptyInputs, container, normalizedGroupId, view);
         }
 
         if (result == null) {
-            result = matchDefaultRecipe(nonEmptyInputs, container);
+            result = matchDefaultRecipe(nonEmptyInputs, container, view);
         }
 
-        synchronized (recipeCache) {
-            // Skip caching if a (re)publish cleared the cache and bumped the generation while we were
-            // matching: this result may be against now-stale maps and would poison the fresh cache.
-            if (recipeGeneration == generationAtStart) {
+        synchronized (view.recipeCache()) {
+            // A retired snapshot may finish matching, but its cache cannot populate the current snapshot.
+            if (snapshot == view) {
                 if (result != null) {
-                    recipeCache.put(cacheKey, result);
+                    view.recipeCache().put(cacheKey, result);
                 } else {
                     // Negative cache so an unchanged incomplete pot won't re-scan every recipe next tick.
-                    recipeMisses.add(cacheKey);
+                    view.recipeMisses().add(cacheKey);
                 }
             }
         }
@@ -607,13 +582,13 @@ public class CookingPotRecipeManager {
         return result;
     }
 
-    private CookingPotRecipe matchCustomRecipe(List<ItemStack> nonEmptyInputs, ItemStack container, String customRecipeGroupId) {
-        Map<String, CookingPotRecipe> groupRecipes = customRecipes.get(customRecipeGroupId);
+    private CookingPotRecipe matchCustomRecipe(List<ItemStack> nonEmptyInputs, ItemStack container, String customRecipeGroupId, Snapshot view) {
+        Map<String, CookingPotRecipe> groupRecipes = view.customRecipes().get(customRecipeGroupId);
         if (groupRecipes == null || groupRecipes.isEmpty()) {
             return null;
         }
-        Set<String> candidateRecipes = findCandidateRecipes(nonEmptyInputs, customIngredientToRecipes.get(customRecipeGroupId));
-        List<CookingPotRecipe> orderedRecipes = sortedCustomOnlyRecipes.getOrDefault(customRecipeGroupId, List.of());
+        Set<String> candidateRecipes = findCandidateRecipes(nonEmptyInputs, view.customIngredientToRecipes().get(customRecipeGroupId));
+        List<CookingPotRecipe> orderedRecipes = view.sortedCustomOnlyRecipes().getOrDefault(customRecipeGroupId, List.of());
         CookingPotRecipe matched = matchFirstRecipe(orderedRecipes, candidateRecipes, container, nonEmptyInputs);
         if (matched != null) {
             return matched;
@@ -624,15 +599,15 @@ public class CookingPotRecipeManager {
         return null;
     }
 
-    private CookingPotRecipe matchDefaultRecipe(List<ItemStack> nonEmptyInputs, ItemStack container) {
-        Set<String> candidateRecipes = findCandidateRecipes(nonEmptyInputs, ingredientToRecipes);
+    private CookingPotRecipe matchDefaultRecipe(List<ItemStack> nonEmptyInputs, ItemStack container, Snapshot view) {
+        Set<String> candidateRecipes = findCandidateRecipes(nonEmptyInputs, view.ingredientToRecipes());
 
-        CookingPotRecipe matched = matchFirstRecipe(sortedRecipes, candidateRecipes, container, nonEmptyInputs);
+        CookingPotRecipe matched = matchFirstRecipe(view.sortedRecipes(), candidateRecipes, container, nonEmptyInputs);
         if (matched != null) {
             return matched;
         }
         if (candidateRecipes != null) {
-            return matchFirstRecipe(sortedRecipes, null, container, nonEmptyInputs);
+            return matchFirstRecipe(view.sortedRecipes(), null, container, nonEmptyInputs);
         }
         return null;
     }
@@ -866,12 +841,14 @@ public class CookingPotRecipeManager {
     }
 
     public Map<String, CookingPotRecipe> getRecipes() {
-        return Collections.unmodifiableMap(recipes);
+        Snapshot view = snapshot;
+        return Collections.unmodifiableMap(view.recipes());
     }
 
     public List<CookingPotRecipe> getAllRecipes() {
-        Map<String, CookingPotRecipe> defaultRecipes = this.recipes;
-        Map<String, Map<String, CookingPotRecipe>> groupedRecipes = this.customRecipes;
+        Snapshot view = snapshot;
+        Map<String, CookingPotRecipe> defaultRecipes = view.recipes();
+        Map<String, Map<String, CookingPotRecipe>> groupedRecipes = view.customRecipes();
         List<CookingPotRecipe> all = new ArrayList<>(defaultRecipes.values());
         for (Map<String, CookingPotRecipe> groupRecipes : groupedRecipes.values()) {
             all.addAll(groupRecipes.values());
@@ -880,33 +857,37 @@ public class CookingPotRecipeManager {
     }
 
     public Map<String, CookingPotRecipe> getRecipes(String customRecipeGroupId) {
+        Snapshot view = snapshot;
         String normalizedGroupId = normalizeRecipeGroupId(customRecipeGroupId);
         if (normalizedGroupId == null) {
-            return getRecipes();
+            return view.recipes();
         }
-        Map<String, CookingPotRecipe> groupRecipes = customRecipes.get(normalizedGroupId);
+        Map<String, CookingPotRecipe> groupRecipes = view.customRecipes().get(normalizedGroupId);
         if (groupRecipes == null || groupRecipes.isEmpty()) {
-            return getRecipes();
+            return view.recipes();
         }
-        Map<String, CookingPotRecipe> merged = new LinkedHashMap<>(recipes);
+        Map<String, CookingPotRecipe> merged = new LinkedHashMap<>(view.recipes());
         merged.putAll(groupRecipes);
         return Collections.unmodifiableMap(merged);
     }
 
     public List<CookingPotRecipe> getSortedRecipes(String customRecipeGroupId) {
+        Snapshot view = snapshot;
         String normalizedGroupId = normalizeRecipeGroupId(customRecipeGroupId);
         if (normalizedGroupId == null) {
-            return sortedRecipes;
+            return view.sortedRecipes();
         }
-        return sortedCustomRecipes.getOrDefault(normalizedGroupId, sortedRecipes);
+        return view.sortedCustomRecipes().getOrDefault(normalizedGroupId, view.sortedRecipes());
     }
 
     public Set<String> getValidContainerKeys() {
-        return validContainerKeys;
+        Snapshot view = snapshot;
+        return view.validContainerKeys();
     }
 
     public int getRecipeCount() {
-        return recipes.size();
+        Snapshot view = snapshot;
+        return view.recipes().size();
     }
 
     public int getExternalRecipeCount() {
@@ -915,7 +896,8 @@ public class CookingPotRecipeManager {
 
     /** Recipes that reached this manager through a CraftEngine pack section, not the plugin's own file. */
     public int getPackRecipeCount() {
-        return packRecipeCount;
+        Snapshot view = snapshot;
+        return view.packRecipeCount();
     }
 
     public boolean isExternalRecipe(String id) {
@@ -927,25 +909,28 @@ public class CookingPotRecipeManager {
     }
 
     public int getCustomRecipeCount() {
+        Snapshot view = snapshot;
         int count = 0;
-        for (Map<String, CookingPotRecipe> groupRecipes : customRecipes.values()) {
+        for (Map<String, CookingPotRecipe> groupRecipes : view.customRecipes().values()) {
             count += groupRecipes.size();
         }
         return count;
     }
 
     public CookingPotRecipe getRecipe(String id) {
-        return recipes.get(id);
+        Snapshot view = snapshot;
+        return view.recipes().get(id);
     }
 
     public CookingPotRecipe getRecipe(String customRecipeGroupId, String id) {
+        Snapshot view = snapshot;
         String normalizedGroupId = normalizeRecipeGroupId(customRecipeGroupId);
         if (normalizedGroupId == null) {
-            return getRecipe(id);
+            return view.recipes().get(id);
         }
-        Map<String, CookingPotRecipe> groupRecipes = customRecipes.get(normalizedGroupId);
+        Map<String, CookingPotRecipe> groupRecipes = view.customRecipes().get(normalizedGroupId);
         CookingPotRecipe customRecipe = groupRecipes == null ? null : groupRecipes.get(id);
-        return customRecipe != null ? customRecipe : getRecipe(id);
+        return customRecipe != null ? customRecipe : view.recipes().get(id);
     }
 
     public void reload() {
@@ -986,25 +971,28 @@ public class CookingPotRecipeManager {
     }
 
     private void scheduleExternalRepublish() {
-        if (externalRepublishScheduled) {
-            return;
+        if (!externalRepublishScheduled.compareAndSet(false, true)) return;
+        try {
+            plugin.scheduler().runLater(() -> {
+                externalRepublishScheduled.set(false);
+                loadRecipes(lastFileDocument, true);
+                // This republish runs after the CraftEngine readiness pass already printed the summary, so
+                // without re-reporting the cooking pot count on the console stays one batch behind whatever
+                // addons registered. The summary dedupes on its counts digest, making this a no-op when the
+                // batch did not move a count.
+                plugin.requestContentSummary();
+            }, 1L);
+        } catch (RuntimeException stoppedScheduler) {
+            externalRepublishScheduled.set(false);
+            throw stoppedScheduler;
         }
-        externalRepublishScheduled = true;
-        plugin.scheduler().runLater(() -> {
-            externalRepublishScheduled = false;
-            loadRecipes();
-            // This republish runs after the CraftEngine readiness pass already printed the summary, so
-            // without re-reporting the cooking pot count on the console stays one batch behind whatever
-            // addons registered. The summary dedupes on its counts digest, making this a no-op when the
-            // batch did not move a count.
-            plugin.requestContentSummary();
-        }, 1L);
     }
     
     public void clearCache() {
-        synchronized (recipeCache) {
-            recipeCache.clear();
-            recipeMisses.clear();
+        Snapshot view = snapshot;
+        synchronized (view.recipeCache()) {
+            view.recipeCache().clear();
+            view.recipeMisses().clear();
         }
     }
 

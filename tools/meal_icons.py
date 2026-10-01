@@ -14,7 +14,7 @@ texture) prunes the now-invalid icon instead of leaving a dead entry behind:
 * a result whose texture is missing or is not 16x16 is reported and skipped;
 * entries whose item is no longer produced by that pack are removed, existing entries keep their order and new
   ones are appended;
-* vanilla results (``minecraft:*``) are registered by the FarmersDelight pack and reference the client's own
+* vanilla results (``minecraft:*``) are registered by the Farmersdelight-Plugin-Pro pack and reference the client's own
   vanilla texture, so no local file is required for them.
 
 Repo-scoped: this repository ships only the farmersdelight pack. The standalone packs under ``packs/`` and the
@@ -90,7 +90,7 @@ def result_ids(recipe_file: Path) -> list[str]:
 def collect_results() -> tuple[dict[str, list[tuple[str, str]]], list[str]]:
     """icon namespace -> [(item value, texture namespace)], plus warnings collected while reading the recipes.
 
-    A vanilla result is registered by the pack that owns the pot tooltip (FarmersDelight) and keeps
+    A vanilla result is registered by the pack that owns the pot tooltip (Farmersdelight-Plugin-Pro) and keeps
     ``minecraft`` as its texture namespace; every custom result registers under its own namespace.
     """
     by_namespace: dict[str, list[tuple[str, str]]] = {}

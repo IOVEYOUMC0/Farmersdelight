@@ -112,7 +112,7 @@ tags:
   # is the only member on 1.21.4, so exporting this keeps egg-recipes working across the whole range.
   "c:eggs":
     - "minecraft:egg"
-  # Vanilla members of FarmersDelight's registry tags. CraftEngine supplies the custom-item members
+  # Vanilla members of Farmersdelight-Plugin-Pro's registry tags. CraftEngine supplies the custom-item members
   # from items.yml; these entries keep the same tags usable for vanilla ingredients as well.
   "farmersdelight:serving_containers":
     - "minecraft:bowl"
@@ -131,7 +131,7 @@ tags:
     - "minecraft:trident"
     - "minecraft:spyglass"
 
-  # FarmersDelight common tags. CraftEngine settings.tags cover the custom members too;
+  # Farmersdelight-Plugin-Pro common tags. CraftEngine settings.tags cover the custom members too;
   # these entries keep the same tags usable for vanilla ingredients and addon recipes.
   "c:crops/rice":
     - "farmersdelight:rice"

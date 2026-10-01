@@ -112,8 +112,14 @@ public class SkilletEffectManager {
         boolean smoke = smokeEnabled && random.nextDouble() < smokeChance;
         boolean sizzle = sizzleEnabled && random.nextDouble() < sizzleChance;
         if (!smoke && !sizzle) return;
-        List<Player> nearbyViewers = ManagerSupport.collectNearbyPlayers(
-                world, location, effectViewerDistanceSquared, NEARBY_VIEWER_SCRATCH.get());
+        List<Player> nearbyViewers = NEARBY_VIEWER_SCRATCH.get();
+        nearbyViewers.clear();
+        int chunkX = location.getBlockX() >> 4;
+        int chunkZ = location.getBlockZ() >> 4;
+        if (!world.isChunkLoaded(chunkX, chunkZ)) return;
+        for (Player player : world.getChunkAt(chunkX, chunkZ).getPlayersSeeingChunk()) {
+            if (plugin.particles().isNearby(player, location, effectViewerDistanceSquared)) nearbyViewers.add(player);
+        }
         if (nearbyViewers.isEmpty()) return;
         try {
             long chunkKey = ManagerSupport.chunkKey(location);
@@ -158,7 +164,7 @@ public class SkilletEffectManager {
         double px = location.getX() + 0.5;
         double py = location.getY() + smokeYOffset;
         double pz = location.getZ() + 0.5;
-        ManagerSupport.spawnParticleFor(viewers, smokeParticle, px, py, pz,
+        plugin.particles().spawn(viewers, location, effectViewerDistanceSquared, smokeParticle, px, py, pz,
                 smokeCount, smokeOffsetX, smokeOffsetY, smokeOffsetZ, smokeSpeed);
     }
 

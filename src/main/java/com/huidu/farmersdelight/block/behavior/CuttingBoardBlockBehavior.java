@@ -494,7 +494,7 @@ public class CuttingBoardBlockBehavior extends FarmersDelightBlockBehavior imple
         Property<?> facingProperty = block.getProperty("facing");
         if (facingProperty == null) {
             plugin.getLogger()
-                    .warning("[FarmersDelight] Block " + block.id() + " is missing the 'facing' property"
+                    .warning("[Farmersdelight-Plugin-Pro] Block " + block.id() + " is missing the 'facing' property"
                             + " — the cutting board will not face any direction and may misbehave when placed.");
         }
 
@@ -601,7 +601,7 @@ public class CuttingBoardBlockBehavior extends FarmersDelightBlockBehavior imple
                 + ", pos=" + posKey);
 
         // Addon-registered handlers get the interaction first (after permission / protection checks, before
-        // FarmersDelight's own placement, cutting and stacking logic). The first handler that consumes wins.
+        // Farmersdelight-Plugin-Pro's own placement, cutting and stacking logic). The first handler that consumes wins.
         if (runExternalInteractionHandlers(plugin, bukkitPlayer, block, blockEntity, facing, world, posKey,
                 mainHand, offHand)) {
             return InteractionResult.SUCCESS_AND_CANCEL;

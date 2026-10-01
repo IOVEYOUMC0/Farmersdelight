@@ -1,9 +1,9 @@
 # Config generation. Bumped by the developer whenever a key is renamed, retired or changes
 # meaning; the plugin stamps it onto your file after updating and refuses to touch a file that
 # declares a NEWER generation than the running build. Do not edit by hand.
-config-version: 1
+config-version: 2
 
-# FarmersDelight configuration
+# Farmersdelight-Plugin-Pro configuration
 # Common options come first. Edit gui.yml for GUI layout, buttons and textures.
 # Item IDs support CraftEngine items and vanilla items, e.g. farmersdelight:flint_knife, minecraft:bowl.
 # Optional item outputs can be set to "", none, null, empty, air, minecraft:air to clear them.
@@ -24,9 +24,9 @@ datapacks:
   # Folia/Luminol requires a server restart because it does not support registry data reloads.
   tags-enabled: true
 
-# Enchantments added by FarmersDelight. Knife and skillet enchantments are configured separately.
+# Enchantments added by Farmersdelight-Plugin-Pro. Knife and skillet enchantments are configured separately.
 # Registry properties (weight, valid cost range, conflicts and anvil cost) are read from Paper at runtime;
-# these lists only decide what each FarmersDelight item group may receive.
+# these lists only decide what each Farmersdelight-Plugin-Pro item group may receive.
 enchantments:
   enabled: true
   # Whether to install the built-in enchantment datapack (farmersdelight_enchant, contains the
@@ -36,7 +36,7 @@ enchantments:
   # (e.g. when authoring the enchantment yourself). Reinstall via /fd reload enchant.
   install-datapack: true
   compatibility:
-    # When another enchantment plugin is detected, stand down only FarmersDelight's custom backstab enchant so
+    # When another enchantment plugin is detected, stand down only Farmersdelight-Plugin-Pro's custom backstab enchant so
     # we don't stack a second special enchant onto its system; the knife/skillet enchant filter itself stays on
     # (the CraftEngine knives are otherwise un-enchantable). Detection is automatic and needs no plugin list:
     # any plugin (other than CraftEngine, the required host) that hooks the enchanting table, or any enchantment
@@ -152,7 +152,7 @@ debug:
 damage-type:
   install-datapack: true
 
-# /fd reload guards. A full reload runs synchronously on the server thread: FarmersDelight itself takes
+# /fd reload guards. A full reload runs synchronously on the server thread: Farmersdelight-Plugin-Pro itself takes
 # roughly 200ms, then every installed addon rebuilds on the following tick for another 100-200ms. Running it
 # twice in quick succession therefore stacks two stalls back to back, so a request that arrives while a reload
 # is still running, or within the cooldown below, is refused with a message instead of being queued.
@@ -201,7 +201,7 @@ recipes:
   # from that file stays deleted.
   merge-missing-bundled: false
 
-  # Recipe discovery: when enabled, recipes start LOCKED in the recipe books (FarmersDelight's own cooking-pot /
+  # Recipe discovery: when enabled, recipes start LOCKED in the recipe books (Farmersdelight-Plugin-Pro's own cooking-pot /
   # cutting-board viewer AND the addon recipe book) and are revealed per-player as they unlock them. Locking only
   # affects the books' display -- it never blocks actual crafting at a station. Off by default (books behave as before).
   discovery:
@@ -359,7 +359,8 @@ cooking-pot:
       - minecraft:stick
       - minecraft:bone
 
-  # Max active cooking pots processed every 4 ticks. Increase for faster response, decrease for stability under stress tests.
+  # Legacy scheduler: max active cooking pots processed every 4 ticks.
+  # CraftEngine 26.10 sleeping tickers schedule each awake pot directly on its block owner instead.
   tick-budget: 512
 
   # true = when hopper-interactions.enabled is on, the pot allows hopper input/output.
@@ -367,10 +368,6 @@ cooking-pot:
 
   # true = pack pot contents into the dropped pot item; false = drop an empty pot and scatter the contents.
   pack-contents-on-break: true
-
-  # Milliseconds a player must wait after placing a pot before the placing click can also open it. Stops the
-  # placement click from carrying straight through into the GUI. Set to 0 to allow opening immediately.
-  place-interaction-cooldown-ms: 1000
 
   # Floating TextDisplay during pot cooking.
   progress-display:
@@ -443,7 +440,7 @@ cooking-pot:
 # How recipe experience is settled when a station hands a finished result to the player.
 # vanilla = drop vanilla experience orbs; auraskills = only grant AuraSkills experience; both = both; none = no experience reward.
 # Base experience is still decided by each recipe's experience field in recipes/cooking_pot_recipes.yml.
-# Applies to the cooking pot and to every addon station that credits experience through the FarmersDelight API,
+# Applies to the cooking pot and to every addon station that credits experience through the Farmersdelight-Plugin-Pro API,
 # such as the Brewin' and Chewin' keg, so setting none here silences those addons too.
 experience-reward:
   mode: vanilla

@@ -90,7 +90,7 @@ final class RecipeSubCommand extends SubCommand {
             if (type != null) {
                 // Hand-off to the addon recipe book so a named type (e.g.
                 // barbequesdelight:grilling) opens straight into its own list, rendered with
-                // FarmersDelight's recipe-list style rather than FD's cooking-pot list.
+                // Farmersdelight-Plugin-Pro's recipe-list style rather than FD's cooking-pot list.
                 RecipeBookGui.openType(player, type, null);
             } else {
                 gui.open(player);

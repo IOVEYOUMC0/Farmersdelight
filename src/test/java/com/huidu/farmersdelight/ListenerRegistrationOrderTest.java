@@ -7,6 +7,7 @@ import com.huidu.farmersdelight.listener.BlockPlaceListener;
 import com.huidu.farmersdelight.listener.ChunkLoadListener;
 import com.huidu.farmersdelight.listener.CraftEngineWatchdogListener;
 import com.huidu.farmersdelight.listener.CropInteractProtectionListener;
+import com.huidu.farmersdelight.listener.CookingPotWakeListener;
 import com.huidu.farmersdelight.listener.CuttingBoardDispenseListener;
 import com.huidu.farmersdelight.listener.CuttingBoardInteractListener;
 import com.huidu.farmersdelight.listener.EnchantmentDatapackInstaller;
@@ -143,7 +144,8 @@ class ListenerRegistrationOrderTest {
             EnchantmentDatapackInstaller.class,
             TagDatapackInstaller.class,
             VillagerTradeListener.class,
-            ChunkLoadListener.class);
+            ChunkLoadListener.class,
+            CookingPotWakeListener.class);
 
     @Test
     void visualAndWorldHandlersAreBuiltInRegistrationOrder() {

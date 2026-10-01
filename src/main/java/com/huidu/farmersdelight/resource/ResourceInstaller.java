@@ -77,6 +77,7 @@ public final class ResourceInstaller {
         int changed = migrateItemsEggTag(targetRoot.resolve("configuration").resolve("items.yml"));
         changed += migrateAnimatedGuiItem(targetRoot.resolve("configuration").resolve("gui.yml"));
         changed += migrateLegacyPositionArguments(targetRoot);
+        changed += com.huidu.farmersdelight.config.ProjectBranding.migrateCraftEnginePack(targetRoot);
         return changed;
     }
 

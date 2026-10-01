@@ -10,7 +10,7 @@ import org.bukkit.World;
 import org.bukkit.block.BlockFace;
 
 /**
- * The CraftEngine block plumbing FarmersDelight uses internally, published so addons do not each
+ * The CraftEngine block plumbing Farmersdelight-Plugin-Pro uses internally, published so addons do not each
  * rewrite it.
  *
  * <p>None of this is exotic — resolving a CE world, turning a block entity back into a Bukkit world,

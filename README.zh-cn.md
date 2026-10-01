@@ -1,8 +1,10 @@
-# FarmersDelight 插件
+# Farmersdelight-Plugin-Pro
 
 [English](README.md) | **中文**
 
-FarmersDelight 是基于 CraftEngine 的 Farmer's Delight Paper/Folia 移植插件，提供作物、沃土、烹饪工作站、小刀、食物、配方发现、进度以及供附属使用的公共 API。
+Farmersdelight-Plugin-Pro 是基于 CraftEngine 的 Farmer's Delight Paper/Folia 移植插件，提供作物、沃土、烹饪工作站、小刀、食物、配方发现、进度以及供附属使用的公共 API。
+
+作者：HuiDu_OwO、ydxc2009。
 
 ## 项目内容
 
@@ -16,10 +18,10 @@ FarmersDelight 是基于 CraftEngine 的 Farmer's Delight Paper/Folia 移植插�
 ## 运行要求
 
 - Paper 或 Folia 1.21.4 及以上
-- Java 21
-- CraftEngine 26.8.2 及以上（用 26.9.1 编译；26.8.2 / 26.9 / 26.9.1 已实机核对）
+- 插件编译使用 Java 21；Minecraft 26.3 测试服使用 Java 25
+- CraftEngine 26.8.2 及以上（编译基线 26.9.1；26.9.2 和 26.10-SNAPSHOT 也已在 Paper 26.3 实机验证）
 
-先安装 CraftEngine，再将 FarmersDelight 放入 `plugins/`。修改插件配置后使用 `/fd reload`，修改 CraftEngine 资源后使用 `/ce reload`。
+先安装 CraftEngine，再将 Farmersdelight-Plugin-Pro 放入 `plugins/`。修改插件配置后使用 `/fd reload`，修改 CraftEngine 资源后使用 `/ce reload`。
 
 ## 文档
 
@@ -31,7 +33,7 @@ FarmersDelight 是基于 CraftEngine 的 Farmer's Delight Paper/Folia 移植插�
 ./gradlew build
 ```
 
-构建使用官方 Maven 的 CraftEngine 26.9.1 API，加 `-PceVersion=<版本>` 可改为对着别的版本编译。附属通过生成的 FarmersDelight API-only JAR 编译，并要求与本仓库处于同级目录。
+构建使用官方 Maven 的 CraftEngine 26.9.1 API，加 `-PceVersion=<版本>` 可改为对着别的版本编译。附属通过生成的 Farmersdelight-Plugin-Pro API-only JAR 编译，并要求与本仓库处于同级目录。
 
 ## 授权
 
@@ -45,3 +47,9 @@ AGPL-3.0 授权；**如果把修改版作为网络服务提供给他人使用，
 [NOTICE.md](NOTICE.md)。
 
 本仓库是本插件唯一的源码来源。其他人发布的构建产物（无论有没有加过代码）都与作者无关。
+
+## CraftEngine 26.10 快照
+
+26.10 快照会自动启用厨锅原生睡眠/唤醒 ticker；旧版继续使用插件调度器。配方不成立、热源消失或输出受阻时，厨锅在进度归零后睡眠，物品和热源变化或配方重载时唤醒。`/fd stats` 可查看活跃、睡眠以及转换次数。
+
+未发布到 Maven 的快照可通过 `-PceJar=<快照插件JAR>` 和 `-PceLibraries=<CraftEngine/libs目录>` 构建。插件名称更新时会复制旧数据目录，并提供旧插件名的依赖别名。

@@ -9,7 +9,7 @@ import org.bukkit.block.Block;
 import org.jetbrains.annotations.ApiStatus;
 
 // Read-only crop gating queries for addons that hook custom crop logic: whether a block (or a block id)
-// is one of FarmersDelight's managed crops, whether it is mature enough to harvest right now, and the
+// is one of Farmersdelight-Plugin-Pro's managed crops, whether it is mature enough to harvest right now, and the
 // harvest tool rules. All queries are pure registry lookups -- they never mutate the world or the crop --
 // so they are safe to call from a region thread. Unknown / non-crop blocks resolve to sensible defaults
 // (false / empty) rather than throwing.
@@ -19,7 +19,7 @@ public final class FarmersDelightCrops {
     private FarmersDelightCrops() {
     }
 
-    // A block is a FarmersDelight tall crop (e.g. rice / the two-half clones configured with the
+    // A block is a Farmersdelight-Plugin-Pro tall crop (e.g. rice / the two-half clones configured with the
     // tall-crop behavior) or the tomato-vine behavior family.
     public static boolean isCrop(Block block) {
         return isCropBlockId(blockKey(block));

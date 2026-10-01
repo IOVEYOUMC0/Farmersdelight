@@ -125,7 +125,7 @@ final class CraftEngineReadinessCoordinator {
     /**
      * Runs the readiness-gated start-up work, or defers it until CraftEngine has content.
      *
-     * <p>FarmersDelight normally enables before CraftEngine has finished loading its packs, so every
+     * <p>Farmersdelight-Plugin-Pro normally enables before CraftEngine has finished loading its packs, so every
      * readiness-gated call made from {@code onEnable} is a no-op there. The CraftEngine reload event is the
      * intended follow-up pass, but it is not something the start-up path can require: CraftEngine fires it
      * from a delayed task rather than after its packs finish, and a listener that never reaches this

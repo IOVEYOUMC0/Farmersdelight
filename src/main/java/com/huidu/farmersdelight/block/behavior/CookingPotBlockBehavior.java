@@ -15,6 +15,7 @@ import com.huidu.farmersdelight.util.CustomBlockUtils;
 import com.huidu.farmersdelight.util.ItemUtils;
 import com.huidu.farmersdelight.util.ManagerSupport;
 import com.huidu.farmersdelight.util.PermissionChecker;
+import com.huidu.farmersdelight.util.PlacementInteractionGuard;
 import com.huidu.farmersdelight.util.compat.ProtectionCompat;
 import com.huidu.farmersdelight.visual.ItemDisplayManager;
 import net.momirealms.craftengine.bukkit.api.CraftEngineBlocks;
@@ -84,18 +85,7 @@ public class CookingPotBlockBehavior extends FarmersDelightBlockBehavior impleme
     // name every interval. Per-world-keyed (via DisplayStateKey) so two pots at the same x,y,z in different
     // worlds don't share state; the text is viewer-independent, so one cached string serves all viewers.
     private static final Map<DisplayStateKey, String> cookingRecipeNames = new ConcurrentHashMap<>();
-    // World-scoped (via DisplayStateKey) so a pot placed at some x,y,z does not suppress the first interaction
-    // with a different pot at the identical x,y,z in another world. BlockPosKey omits the world by design.
-    private static final Map<DisplayStateKey, Long> recentPlacements = new ConcurrentHashMap<>();
-
-    private static long placeInteractionCooldownMs() {
-        FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
-        return plugin == null
-                ? Constants.DEFAULT_COOKING_POT_PLACE_INTERACTION_COOLDOWN_MS
-                : Math.max(0, plugin.getConfigInt(
-                        Constants.DEFAULT_COOKING_POT_PLACE_INTERACTION_COOLDOWN_MS,
-                        "cooking-pot.place-interaction-cooldown-ms"));
-    }
+    private static final PlacementInteractionGuard recentPlacements = new PlacementInteractionGuard();
 
     private record DisplayStateKey(UUID worldId, BlockPosKey pos) {
     }
@@ -478,33 +468,16 @@ public class CookingPotBlockBehavior extends FarmersDelightBlockBehavior impleme
         }
     }
 
-    public static void markRecentlyPlaced(Location location) {
-        if (location == null || location.getWorld() == null) {
+    public static void markRecentlyPlaced(Player player, Location location) {
+        if (player == null || location == null || location.getWorld() == null) {
             return;
         }
-        long now = System.currentTimeMillis();
-        // Also evict expired entries here: isRecentlyPlaced() only cleans up on query, so a pot that is placed
-        // but never interacted with would otherwise leak its entry until cleanup.
-        recentPlacements.entrySet().removeIf(entry -> now - entry.getValue() > placeInteractionCooldownMs());
-        recentPlacements.put(new DisplayStateKey(location.getWorld().getUID(), new BlockPosKey(location)), now);
+        recentPlacements.markPlaced(player.getUniqueId(), location.getWorld().getUID(),
+                new BlockPosKey(location), Bukkit.getCurrentTick());
     }
 
-    private static boolean isRecentlyPlaced(World world, BlockPosKey posKey) {
-        if (world == null) {
-            return false;
-        }
-        DisplayStateKey key = stateKey(world, posKey);
-        Long placedAt = recentPlacements.get(key);
-        if (placedAt == null) {
-            return false;
-        }
-
-        long now = System.currentTimeMillis();
-        if (now - placedAt > placeInteractionCooldownMs()) {
-            recentPlacements.remove(key, placedAt);
-            return false;
-        }
-        return true;
+    public static void clearPlacementGuard(UUID playerId) {
+        recentPlacements.removePlayer(playerId);
     }
 
     public static void updateProgressDisplay(World world, BlockPosKey posKey, int progressPercent) {
@@ -814,7 +787,7 @@ public class CookingPotBlockBehavior extends FarmersDelightBlockBehavior impleme
         FarmersDelightPlugin plugin = FarmersDelightPlugin.getInstance();
         if (supportProperty == null) {
             plugin.getLogger()
-                    .warning("[FarmersDelight] Block " + block.id() + " is missing the 'support' property"
+                    .warning("[Farmersdelight-Plugin-Pro] Block " + block.id() + " is missing the 'support' property"
                             + " — tray and handle entity_renderer switching is disabled for this block.");
         }
         return new CookingPotBlockBehavior(plugin, block, new Config(
@@ -883,7 +856,8 @@ public class CookingPotBlockBehavior extends FarmersDelightBlockBehavior impleme
             return InteractionResult.PASS;
         }
 
-        if (isRecentlyPlaced(bukkitPlayer.getWorld(), posKey)) {
+        if (recentPlacements.shouldSuppress(bukkitPlayer.getUniqueId(), world.getUID(),
+                posKey, Bukkit.getCurrentTick())) {
             return InteractionResult.PASS;
         }
         Map<BlockPosKey, CookingPotBlockEntity> worldEntities = worldBlockEntities.computeIfAbsent(
@@ -1071,6 +1045,26 @@ public class CookingPotBlockBehavior extends FarmersDelightBlockBehavior impleme
             }
             return controller.container();
         });
+    }
+
+    @Override
+    public void neighborChanged(Object thisBlock, Object[] args) {
+        if (args != null && args.length >= 3) wakeOnNeighborUpdate(args[1], args[2]);
+    }
+
+    @Override
+    public Object updateShape(Object thisBlock, Object[] args) {
+        if (args.length >= 7) wakeOnNeighborUpdate(args[1], args[3]);
+        else if (args.length >= 6) wakeOnNeighborUpdate(args[3], args[4]);
+        return args[0];
+    }
+
+    private void wakeOnNeighborUpdate(Object level, Object position) {
+        World world = CraftEngineAdapter.toWorld(level);
+        BlockPos pos = CraftEngineAdapter.toBlockPos(position);
+        if (world != null && pos != null && plugin != null && plugin.getTickManager() != null) {
+            plugin.getTickManager().wakeNativePot(world, new BlockPosKey(pos));
+        }
     }
 
     private static String getNullableString(Map<String, Object> arguments, String key) {

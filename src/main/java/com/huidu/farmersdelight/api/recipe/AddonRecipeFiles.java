@@ -19,11 +19,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
- * Loads an addon's own {@code recipes/*.yml} into FarmersDelight and keeps the bookkeeping.
+ * Loads an addon's own {@code recipes/*.yml} into Farmersdelight-Plugin-Pro and keeps the bookkeeping.
  *
  * <p>Prefer the pack route for static recipes: declare them under {@code <pack>/configuration/} with the
  * {@code cooking_recipes} / {@code cutting_recipes} / {@code special_recipes} root keys and CraftEngine hands
- * them to FarmersDelight with no addon code at all. This helper remains for recipes that must be decided at
+ * them to Farmersdelight-Plugin-Pro with no addon code at all. This helper remains for recipes that must be decided at
  * runtime (data another plugin feeds in, per-player or time-based content) and for addons that already ship
  * an editable file.
  *

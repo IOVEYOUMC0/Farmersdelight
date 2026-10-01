@@ -100,6 +100,7 @@ final class StatsSubCommand extends SubCommand {
             player.sendMessage(I18n.getComponent("command.stats_feature_sampling_off", player));
         }
         sendPerformanceSnapshot(player, snapshot);
+        appendAsyncStats(player);
         appendProxyDisplayStats(player);
         sendEnabledAddons(player);
         // List each registered addon as a clickable name that drills into /fd stats addon <name>;
@@ -161,6 +162,37 @@ final class StatsSubCommand extends SubCommand {
         for (String line : lines) {
             player.sendMessage(I18n.getComponent("command.stats_addon_line", player,
                     Map.of("name", extension.name(), "line", line)));
+        }
+    }
+
+    private void appendAsyncStats(Player player) {
+        var async = plugin.scheduler().asyncSnapshot();
+        player.sendMessage(I18n.getComponent("command.stats_async_queue", player, Map.of(
+                "active", String.valueOf(async.active()), "workers", String.valueOf(async.workers()),
+                "queued", String.valueOf(async.queued()), "capacity", String.valueOf(async.capacity()),
+                "completed", String.valueOf(async.completed()), "rejected", String.valueOf(async.rejected()),
+                "wait", formatMillis(async.averageWaitNanos()), "max_wait", formatMillis(async.maxWaitNanos()))));
+        var dispatch = plugin.getTickManager().dispatchSnapshot();
+        var nativeTickers = plugin.getTickManager().nativeTickerSnapshot();
+        player.sendMessage(I18n.getComponent("command.stats_sleeping_pots", player, Map.of(
+                "registered", String.valueOf(nativeTickers.registered()), "awake", String.valueOf(nativeTickers.awake()),
+                "sleeping", String.valueOf(nativeTickers.sleeping()), "sleeps", String.valueOf(nativeTickers.sleeps()),
+                "wakes", String.valueOf(nativeTickers.wakes()))));
+        player.sendMessage(I18n.getComponent("command.stats_chunk_dispatch", player, Map.of(
+                "submitted", String.valueOf(dispatch.submittedChunkTasks()),
+                "coalesced", String.valueOf(dispatch.coalescedChunkTasks()),
+                "pending", String.valueOf(dispatch.pendingChunkTasks()))));
+        var pot = plugin.getCookingPotRecipes().parseMetrics();
+        var board = plugin.getCuttingBoardRecipes().parseMetrics();
+        player.sendMessage(I18n.getComponent("command.stats_recipe_parse", player, Map.of(
+                "pot_parsed", String.valueOf(pot.parsed()), "pot_reused", String.valueOf(pot.reused()),
+                "board_parsed", String.valueOf(board.parsed()), "board_reused", String.valueOf(board.reused()))));
+        if (plugin.particles() != null) {
+            var particles = plugin.particles().snapshot();
+            player.sendMessage(I18n.getComponent("command.stats_particles", player, Map.of(
+                    "accepted", String.valueOf(particles.accepted()), "rejected", String.valueOf(particles.rejected()),
+                    "packets", String.valueOf(particles.packets()), "bundles", String.valueOf(particles.bundles()),
+                    "fallback", String.valueOf(particles.fallbackEmissions()), "discarded", String.valueOf(particles.discarded()))));
         }
     }
 

@@ -6,7 +6,8 @@
 # (Class.forName, direct imports, or a bundled bridge that does so on its behalf).
 # load: POSTWORLD is deliberate (the Paper default): onEnable touches worlds.
 
-name: FarmersDelight
+name: Farmersdelight-Plugin-Pro
+provides: [FarmersDelight]
 version: '${version}'
 main: com.huidu.farmersdelight.FarmersDelightPlugin
 api-version: '1.21.4'
@@ -14,7 +15,8 @@ folia-supported: true
 description: CraftEngine port of Farmer's Delight by vectorwing (MIT).
 authors:
   - HuiDu_OwO
-website: https://github.com/IOVEYOUMC0/Farmersdelight
+  - ydxc2009
+website: https://github.com/Ydxc20091/Farmersdelight-Plugin-Pro
 
 # The /farmersdelight command is registered through Paper's lifecycle API in onEnable:
 # paper-plugin.yml has no commands: section.
@@ -181,7 +183,7 @@ permissions:
     description: Admin permissions
     default: op
   farmersdelight.*:
-    description: All the FarmersDelight Plugin's permissions
+    description: All the Farmersdelight-Plugin-Pro Plugin's permissions
     default: op
     children:
       farmersdelight.command: true

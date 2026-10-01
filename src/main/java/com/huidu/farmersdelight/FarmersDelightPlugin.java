@@ -47,6 +47,7 @@ import com.huidu.farmersdelight.gui.GuiConfig;
 import com.huidu.farmersdelight.gui.RecipeIngredientIcons;
 import com.huidu.farmersdelight.gui.RecipeViewGui;
 import com.huidu.farmersdelight.gui.recipebook.RecipeBookListener;
+import com.huidu.farmersdelight.gui.recipebook.ReadOnlyRecipeWindows;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.loot.KnifeDropHandler;
 import com.huidu.farmersdelight.manager.BuffBossbarManager;
@@ -82,6 +83,11 @@ import com.huidu.farmersdelight.tool.ToolRegistry;
 import com.huidu.farmersdelight.compat.PlaceholderApiHook;
 import com.huidu.farmersdelight.effect.EffectManager;
 import com.huidu.farmersdelight.config.ConfigBootstrap;
+import com.huidu.farmersdelight.config.PreparedYamlFiles;
+import com.huidu.farmersdelight.api.event.ReloadTarget;
+import org.bukkit.configuration.file.FileConfiguration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 import com.huidu.farmersdelight.config.CuttingBoardSounds;
 import net.momirealms.craftengine.bukkit.api.event.CraftEngineReloadEvent;
 import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
@@ -141,6 +147,10 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private volatile PackSections packSections;
 
     private SchedulerAdapter scheduler;
+    private ReadOnlyRecipeWindows recipeWindows;
+    private volatile FileConfiguration preparedMainConfig;
+    private PreparedYamlFiles activePreparedReload;
+    private final AtomicLong configurationGeneration = new AtomicLong();
     private TickManager tickManager;
     private TrayManager trayManager;
     private HandleManager handleManager;
@@ -148,9 +158,12 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private StoveManager stoveManager;
     private SkilletManager skilletManager;
     private ItemDisplayManager itemDisplayManager;
+    private com.huidu.farmersdelight.visual.ParticleDispatcher particleDispatcher;
     private KnifeDropHandler knifeDropHandler;
     private CookingPotRecipeManager cookingPotRecipeManager;
     private CuttingBoardRecipeManager cuttingBoardRecipeManager;
+    private final com.huidu.farmersdelight.recipe.RecipeReloadCoordinator recipeReloadCoordinator =
+            new com.huidu.farmersdelight.recipe.RecipeReloadCoordinator(this);
     private SpecialRecipeRegistry specialRecipeRegistry;
     // Owns every event listener and the reload/stop hooks their state needs; see ListenerRegistry.
     private final ListenerRegistry listeners = new ListenerRegistry(this);
@@ -209,16 +222,18 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         return getFile();
     }
 
-    void loadRecipeManagers(String logKey) {
+    void loadRecipeManagers(String logKey) { loadRecipeManagers(logKey, false); }
+
+    private void loadRecipeManagers(String logKey, boolean incremental) {
         I18n.logDetail("recipe", logKey);
-        // Both loads read YAML from disk (the plugin's own files plus a scan of every CraftEngine pack's
-        // farmersdelight/ directory) on the calling thread, which is a tick thread. Timed so the cost is
-        // attributable: the warmup that follows reports its own number separately.
+        // Prepared command/edit batches provide plain documents; item conversion and publication stay here.
         long start = System.nanoTime();
-        cookingPotRecipeManager.loadRecipes();
+        if (incremental) cookingPotRecipeManager.loadRecipesIncrementally();
+        else cookingPotRecipeManager.loadRecipes();
         long potNanos = System.nanoTime() - start;
         long boardStart = System.nanoTime();
-        cuttingBoardRecipeManager.loadRecipes();
+        if (incremental) cuttingBoardRecipeManager.loadRecipesIncrementally();
+        else cuttingBoardRecipeManager.loadRecipes();
         long boardNanos = System.nanoTime() - boardStart;
         // Recipe set changed: drop the discovery obtain-trigger index so it rebuilds against the new recipes.
         if (recipeDiscoveryManager != null) {
@@ -329,6 +344,16 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     @Override
     public void onLoad() {
+        try {
+            java.nio.file.Path dataFolder = getDataFolder().toPath();
+            if (com.huidu.farmersdelight.config.LegacyPluginDataMigration.migrate(
+                    dataFolder.resolveSibling("FarmersDelight"), dataFolder)) {
+                getLogger().info("Migrated existing plugin data to " + getName());
+            }
+            com.huidu.farmersdelight.config.ProjectBranding.migratePluginData(dataFolder);
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("Could not migrate existing plugin data", failure);
+        }
         instance = this;
         I18n.init(this);
         configBootstrap.ensureConfigDefaults();
@@ -341,7 +366,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     private static final String RELOAD_GUARD_PROPERTY = "farmersdelight.enabled.in.this.jvm";
     private boolean enabledSuccessfully = false;
 
-    // FarmersDelight's bStats plugin id.
+    // Farmersdelight-Plugin-Pro's bStats plugin id.
     private static final int BSTATS_PLUGIN_ID = 32571;
 
     // Required host platform; excluded from enchantment-conflict detection (it hooks the enchant event to manage
@@ -351,7 +376,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         if (System.getProperty(RELOAD_GUARD_PROPERTY) != null) {
-            I18n.logSevere("plugin.no_hot_reload", "name", "FarmersDelight");
+            I18n.logSevere("plugin.no_hot_reload", "name", "Farmersdelight-Plugin-Pro");
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
@@ -372,6 +397,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         configBootstrap.validateConfigTypes();
 
         scheduler = new SchedulerAdapter(this);
+        recipeWindows = new ReadOnlyRecipeWindows(this);
+        recipeWindows.initialize();
         craftEngineReadinessCoordinator = new CraftEngineReadinessCoordinator(this);
         datapackCoordinator = new DatapackCoordinator(this);
         if (scheduler.isFolia()) {
@@ -413,16 +440,13 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             // Skip the async hop entirely while the feature is off: there is nothing to flush, and the
             // flag can be turned on by a reload, so the task stays registered rather than being cancelled.
             if (manager != null && manager.isEnabled()) {
-                scheduler().runAsync(() -> {
-                    RecipeDiscoveryManager current = recipeDiscoveryManager;
-                    if (current != null && current.isEnabled()) {
-                        current.save();
-                    }
-                });
+                manager.requestSave();
             }
         }, 6000L, 6000L);
 
         listeners.registerInteractionHandlers();
+
+        particleDispatcher = new com.huidu.farmersdelight.visual.ParticleDispatcher(this);
 
         tickManager = new TickManager(this);
         tickManager.start();
@@ -447,7 +471,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
         listeners.registerDamageTypeDatapack();
 
-        // Every call below reads CraftEngine content, which is normally still loading while FarmersDelight
+        // Every call below reads CraftEngine content, which is normally still loading while Farmersdelight-Plugin-Pro
         // enables (FD is declared to load before CraftEngine finishes its packs). The coordinator runs them
         // now when CraftEngine is already up, and otherwise retries until its content exists — so the
         // warm-up does not depend on CraftEngine's reload event arriving.
@@ -479,7 +503,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             }
         }
 
-        // The server already prints "Enabling FarmersDelight vX" for us; the startup config and content
+        // The server already prints "Enabling Farmersdelight-Plugin-Pro vX" for us; the startup config and content
         // summary lines carry everything a second "enabled" line would not.
         I18n.logDetail("startup", "plugin.enabled");
         enabledSuccessfully = true;
@@ -497,7 +521,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         // Re-enabling FD in the same JVM is refused by onEnable's reload-guard system property, so
         // the worst case is "FD blocks misbehave until /stop", not double-registration chaos.
         if (enabledSuccessfully && !getServer().isStopping()) {
-            I18n.logSevere("plugin.stale_classloader", "name", "FarmersDelight");
+            I18n.logSevere("plugin.stale_classloader", "name", "Farmersdelight-Plugin-Pro");
         }
 
         // MUST be first: stop event delivery before tearing down listeners' state. Vanilla code
@@ -515,6 +539,11 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         // Order inside ListenerRegistry#stop: event delivery is detached before any listener state is torn
         // down, then the listeners' own tasks stop, then the world/chunk handlers detach.
         runDisableStep("plugin.disable_step_unregister_listeners", listeners::stop);
+
+        recipeReloadCoordinator.close();
+        if (particleDispatcher != null) {
+            particleDispatcher.close();
+        }
 
         runDisableStep("plugin.disable_step_stop_tick_manager", () -> {
             if (tickManager != null) {
@@ -537,7 +566,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
         runBudgetedDisableStep("plugin.disable_step_save_recipe_discovery", () -> {
             if (recipeDiscoveryManager != null) {
-                recipeDiscoveryManager.save();
+                recipeDiscoveryManager.flushOnShutdown(disableBudget);
             }
         });
 
@@ -556,6 +585,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             // Same for RecipeBookListener: reset its flag, otherwise after a soft restart click/drag events
             // are no longer cancelled and items can be duped.
             RecipeBookListener.reset();
+            com.huidu.farmersdelight.gui.recipebook.RecipeBookGui.closeAllOpenWindows();
         });
         runBudgetedDisableStep("plugin.disable_step_save_block_data", this::saveAllBlockData);
 
@@ -843,7 +873,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         }
 
         // Pet food is declared as a CraftEngine item setting, so the scan in loadConfigs() only sees anything
-        // once CraftEngine has registered its items. FarmersDelight usually enables first, which left the scan
+        // once CraftEngine has registered its items. Farmersdelight-Plugin-Pro usually enables first, which left the scan
         // empty and the tempt list at zero until an explicit /fd reload; repeat it here, where CraftEngine is
         // known to be ready. PetFoodListener reads the config per interaction, so only the tempt list needs
         // refreshing.
@@ -864,98 +894,194 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         reloadAll();
     }
 
+    @Override
+    public FileConfiguration getConfig() {
+        FileConfiguration prepared = preparedMainConfig;
+        return prepared == null ? super.getConfig() : prepared;
+    }
+
+    @Override
+    public void reloadConfig() {
+        super.reloadConfig();
+        preparedMainConfig = null;
+        configurationGeneration.incrementAndGet();
+    }
+
+    /** Command reloads prepare plain files on workers, then publish Bukkit/CE state on the server scheduler. */
+    public CompletableFuture<Void> reloadTargetAsync(ReloadTarget target) {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        long generation = configurationGeneration.get();
+        boolean mergeRecipeDefaults = getConfigBoolean(false, "recipes.merge-missing-bundled");
+        boolean prepareRecipes = target == ReloadTarget.ALL || target == ReloadTarget.RECIPES;
+        Path directory = getDataFolder().toPath();
+        List<String> files = switch (target) {
+            case ALL, CONFIG -> List.of("config.yml", "gui.yml", "drops.yml", "world-data.yml", "display-overrides.yml");
+            case GUI -> List.of("gui.yml");
+            default -> List.of();
+        };
+        Runnable preparation = () -> {
+            try {
+                PreparedYamlFiles prepared = files.isEmpty() ? null : PreparedYamlFiles.read(directory, files);
+                boolean merge = prepared != null && prepared.document(directory.resolve("config.yml")) != null
+                        ? prepared.document(directory.resolve("config.yml")).getBoolean("recipes.merge-missing-bundled", false)
+                        : mergeRecipeDefaults;
+                com.huidu.farmersdelight.recipe.PreparedRecipeFiles recipes = prepareRecipes
+                        ? com.huidu.farmersdelight.recipe.PreparedRecipeFiles.read(this, merge) : null;
+                if (!isEnabled()) {
+                    throw new IllegalStateException("Plugin stopped during reload preparation");
+                }
+                scheduler().run(() -> {
+                    FileConfiguration previousMain = preparedMainConfig;
+                    try {
+                        if (!isEnabled() || generation != configurationGeneration.get()) {
+                            throw new IllegalStateException("Reload preparation superseded by a newer configuration");
+                        }
+                        if (prepared != null) {
+                            prepared.validateCurrent();
+                        }
+                        if (recipes != null) recipes.validateCurrent();
+                        activePreparedReload = prepared;
+                        Runnable publication = () -> { switch (target) {
+                            case ALL -> reloadAll();
+                            case CONFIG -> reloadMainConfigOnly();
+                            case GUI -> publishGuiConfig(prepared.document(directory.resolve("gui.yml")));
+                            case LANGUAGE -> reloadLanguageFiles();
+                            case RECIPES -> reloadRecipeFiles();
+                            case ADVANCEMENTS -> reloadAdvancements();
+                            case LOOT -> reloadLootDatapack();
+                            case ENCHANT -> refreshEnchantSystem();
+                            case DAMAGE -> reloadDamageTypeDatapack();
+                            case TAGS -> reloadTags();
+                        } };
+                        if (recipes == null) publication.run(); else recipes.publishWithin(publication);
+                        if (!target.isAll() && target != ReloadTarget.RECIPES) {
+                            notifyAddonsOfReload(target.eventReason());
+                        }
+                        result.complete(null);
+                    } catch (Exception | LinkageError error) {
+                        preparedMainConfig = previousMain;
+                        result.completeExceptionally(error);
+                    } finally {
+                        activePreparedReload = null;
+                        configBootstrap.endReload();
+                    }
+                });
+            } catch (Exception | LinkageError error) {
+                result.completeExceptionally(error);
+            }
+        };
+        // Targets without plain-file preparation go directly to the server scheduler.
+        if (files.isEmpty() && !prepareRecipes) {
+            preparation.run();
+        } else if (!scheduler().tryRunAsync(preparation)) {
+            result.completeExceptionally(new java.util.concurrent.RejectedExecutionException("Reload worker queue is full or stopped"));
+        }
+        return result;
+    }
+
     private void reloadCommon(boolean reloadLanguages) {
         long reloadStart = System.nanoTime();
         // One parse per user file for this whole pass: validation and the load pass read the same four files,
         // and a reload could not see two different contents anyway. Cleared at the start of every reload.
-        configBootstrap.beginReload();
-        resetReloadTimings();
-        long phase = System.nanoTime();
-        configBootstrap.ensureConfigDefaults();
-        reloadConfig();
-        long readConfigNanos = System.nanoTime() - phase;
-        phase = System.nanoTime();
-        configBootstrap.migrateConfigKeys();
-        long migrateNanos = System.nanoTime() - phase;
-        phase = System.nanoTime();
-        configBootstrap.prefetchReloadFiles();
-        configBootstrap.validateConfigTypes();
-        long validateNanos = System.nanoTime() - phase;
-        boolean previousAdvancementsEnabled = advancementsEnabled;
-        phase = System.nanoTime();
-        loadConfigs();
-        long loadNanos = System.nanoTime() - phase;
-        long configNanos = readConfigNanos + migrateNanos + validateNanos + loadNanos;
-        phase = System.nanoTime();
-        ToolRegistry.refresh();
-        listeners.refreshEnchantmentFallback();
-        if (reloadLanguages) {
-            I18n.reload();
-        }
-        long toolsNanos = System.nanoTime() - phase;
-        phase = System.nanoTime();
-        ReloadCacheInvalidator.clear();
-        MushroomColonyBehavior.reloadMushroomSupportCache(this);
-        long cachesNanos = System.nanoTime() - phase;
-        phase = System.nanoTime();
+        configBootstrap.beginReload(activePreparedReload);
+        try {
+            resetReloadTimings();
+            long phase = System.nanoTime();
+            if (activePreparedReload == null) {
+                configBootstrap.ensureConfigDefaults();
+                reloadConfig();
+            } else {
+                YamlConfiguration candidate = activePreparedReload.document(getDataFolder().toPath().resolve("config.yml"));
+                candidate.setDefaults(getConfig().getDefaults());
+                preparedMainConfig = candidate;
+            }
+            long readConfigNanos = System.nanoTime() - phase;
+            phase = System.nanoTime();
+            configBootstrap.migrateConfigKeys();
+            long migrateNanos = System.nanoTime() - phase;
+            phase = System.nanoTime();
+            configBootstrap.prefetchReloadFiles();
+            configBootstrap.validateConfigTypes();
+            long validateNanos = System.nanoTime() - phase;
+            boolean previousAdvancementsEnabled = advancementsEnabled;
+            phase = System.nanoTime();
+            loadConfigs();
+            long loadNanos = System.nanoTime() - phase;
+            long configNanos = readConfigNanos + migrateNanos + validateNanos + loadNanos;
+            phase = System.nanoTime();
+            ToolRegistry.refresh();
+            listeners.refreshEnchantmentFallback();
+            if (reloadLanguages) {
+                I18n.reload();
+            }
+            long toolsNanos = System.nanoTime() - phase;
+            phase = System.nanoTime();
+            ReloadCacheInvalidator.clear();
+            MushroomColonyBehavior.reloadMushroomSupportCache(this);
+            long cachesNanos = System.nanoTime() - phase;
+            phase = System.nanoTime();
 
-        // drops.yml carries only the straw registry now. The retired mob-extra sections were dropped from the
-        // bundled file and are no longer read, so a leftover copy on disk is ignored silently. This phase is
-        // the one that reruns every CraftEngine-backed cache (campfire recipe scans, display entities), so it
-        // is timed separately: it is the part that scales with how much CE content the server has.
-        if (stoveManager != null) {
-            stoveManager.reloadConfig();
-            stoveManager.reloadRecipeCache();
-        }
-        if (tickManager != null) {
-            tickManager.reloadConfig();
-        }
-        if (itemDisplayManager instanceof ProxyItemDisplayManager proxyItemDisplayManager) {
-            proxyItemDisplayManager.reload();
-        }
-        CuttingBoardBlockBehavior.refreshDisplayEntities();
-        if (skilletManager != null) {
-            skilletManager.reloadConfig();
-            skilletManager.reloadRecipeCache();
-        }
-        long managersNanos = System.nanoTime() - phase;
-        phase = System.nanoTime();
-        listeners.reload(buffSystemEnabled);
-        if (recipeDiscoveryManager != null) {
-            recipeDiscoveryManager.reloadConfig();
-        }
-        if (previousAdvancementsEnabled != advancementsEnabled) {
-            refreshAdvancementSystem(true);
-        }
-        long listenersNanos = System.nanoTime() - phase;
+            // drops.yml carries only the straw registry now. The retired mob-extra sections were dropped from the
+            // bundled file and are no longer read, so a leftover copy on disk is ignored silently. This phase is
+            // the one that reruns every CraftEngine-backed cache (campfire recipe scans, display entities), so it
+            // is timed separately: it is the part that scales with how much CE content the server has.
+            if (stoveManager != null) {
+                stoveManager.reloadConfig();
+                stoveManager.reloadRecipeCache();
+            }
+            if (tickManager != null) {
+                tickManager.reloadConfig();
+            }
+            if (itemDisplayManager instanceof ProxyItemDisplayManager proxyItemDisplayManager) {
+                proxyItemDisplayManager.reload();
+            }
+            CuttingBoardBlockBehavior.refreshDisplayEntities();
+            if (skilletManager != null) {
+                skilletManager.reloadConfig();
+                skilletManager.reloadRecipeCache();
+            }
+            long managersNanos = System.nanoTime() - phase;
+            phase = System.nanoTime();
+            listeners.reload(buffSystemEnabled);
+            if (recipeDiscoveryManager != null) {
+                recipeDiscoveryManager.reloadConfig();
+            }
+            if (previousAdvancementsEnabled != advancementsEnabled) {
+                refreshAdvancementSystem(true);
+            }
+            long listenersNanos = System.nanoTime() - phase;
 
-        reloadConfigNanos.set(configNanos);
-        reloadToolsNanos.set(toolsNanos);
-        reloadManagersNanos.set(managersNanos);
-        reloadListenersNanos.set(listenersNanos);
-        // The addon pass is a separate tick and has not run yet; it overwrites this when it lands.
-        reloadAddonsNanos.set(0L);
+            reloadConfigNanos.set(configNanos);
+            reloadToolsNanos.set(toolsNanos);
+            reloadManagersNanos.set(managersNanos);
+            reloadListenersNanos.set(listenersNanos);
+            // The addon pass is a separate tick and has not run yet; it overwrites this when it lands.
+            reloadAddonsNanos.set(0L);
 
-        // A full reload runs synchronously inside one tick, so on a large server it is the single biggest
-        // server-thread stall the plugin causes. The split says which phase to attack; it is off unless the
-        // `reload` debug category is on, so a normal server never pays for the timing itself.
-        I18n.logDetail("reload", "plugin.reload_breakdown",
-                "total", (System.nanoTime() - reloadStart) / 1_000_000L,
-                "config", configNanos / 1_000_000L,
-                "tools", toolsNanos / 1_000_000L,
-                "caches", cachesNanos / 1_000_000L,
-                "managers", managersNanos / 1_000_000L,
-                "listeners", listenersNanos / 1_000_000L);
-        // The config bucket on its own does not say whether the cost is disk, merging or validation, and each
-        // of those points at a different fix (read off-thread / merge fewer keys / validate fewer files).
-        I18n.logDetail("reload", "plugin.reload_breakdown_config",
-                "read", readConfigNanos / 1_000_000L,
-                "migrate", migrateNanos / 1_000_000L,
-                "validate", validateNanos / 1_000_000L,
-                "load", loadNanos / 1_000_000L);
+            // A full reload runs synchronously inside one tick, so on a large server it is the single biggest
+            // server-thread stall the plugin causes. The split says which phase to attack; it is off unless the
+            // `reload` debug category is on, so a normal server never pays for the timing itself.
+            I18n.logDetail("reload", "plugin.reload_breakdown",
+                    "total", (System.nanoTime() - reloadStart) / 1_000_000L,
+                    "config", configNanos / 1_000_000L,
+                    "tools", toolsNanos / 1_000_000L,
+                    "caches", cachesNanos / 1_000_000L,
+                    "managers", managersNanos / 1_000_000L,
+                    "listeners", listenersNanos / 1_000_000L);
+            // The config bucket on its own does not say whether the cost is disk, merging or validation, and each
+            // of those points at a different fix (read off-thread / merge fewer keys / validate fewer files).
+            I18n.logDetail("reload", "plugin.reload_breakdown_config",
+                    "read", readConfigNanos / 1_000_000L,
+                    "migrate", migrateNanos / 1_000_000L,
+                    "validate", validateNanos / 1_000_000L,
+                    "load", loadNanos / 1_000_000L);
+        } finally {
+            configBootstrap.endReload();
+        }
     }
 
     public void reloadAll() {
+        configurationGeneration.incrementAndGet();
         reloadCommon(true);
         RecipeFileLoader.resetReportedIssues();
         reloadRecipesWhenReady("plugin.reloading_recipes");
@@ -971,19 +1097,29 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     }
 
     public void reloadMainConfigOnly() {
+        configurationGeneration.incrementAndGet();
         reloadCommon(false);
         I18n.logInfo("plugin.main_configuration_reloaded");
     }
 
     public void reloadGuiConfig() {
-        configBootstrap.ensureConfigDefaults();
-        guiConfig = configFiles.loadGui();
-        ConfigurationSection cookingPotSection = guiConfig.getConfigurationSection("cooking-pot-gui");
-        cookingPotGuiConfig = cookingPotSection != null
-                ? GuiConfig.fromConfig(cookingPotSection)
-                : GuiConfig.createDefault();
-        customCookingPotGuiConfigs = loadCustomCookingPotGuiConfigs(guiConfig);
-        RecipeEditorView.reloadGui(guiConfig);
+        try {
+            publishGuiConfig(com.huidu.farmersdelight.config.PlainYamlDocuments.read(
+                    getDataFolder().toPath().resolve("gui.yml")));
+        } catch (Exception error) {
+            throw new IllegalStateException("GUI configuration was not reloaded", error);
+        }
+    }
+
+    private void publishGuiConfig(YamlConfiguration candidate) {
+        ConfigurationSection section = candidate.getConfigurationSection("cooking-pot-gui");
+        GuiConfig cooking = section != null ? GuiConfig.fromConfig(section) : GuiConfig.createDefault();
+        Map<String, GuiConfig> custom = loadCustomCookingPotGuiConfigs(candidate);
+        RecipeEditorView.reloadGui(candidate);
+        guiConfig = candidate;
+        cookingPotGuiConfig = cooking;
+        customCookingPotGuiConfigs = custom;
+        configurationGeneration.incrementAndGet();
         GuiCacheInvalidator.clearConfigCachesAndCloseOpenGuis();
         I18n.logInfo("plugin.gui_configuration_reloaded", "file", "gui.yml");
     }
@@ -1004,8 +1140,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
      * Notifies addons that content changed, on the <em>next</em> tick rather than inside the command tick.
      *
      * <p>Four addons listen to this and rebuild their own content synchronously, so calling it inline made
-     * {@code /fd reload all} block the server for FarmersDelight's own work <em>plus</em> every addon's. The
-     * event is a notification hook — nothing in FarmersDelight reads a result back from it — so moving it one
+     * {@code /fd reload all} block the server for Farmersdelight-Plugin-Pro's own work <em>plus</em> every addon's. The
+     * event is a notification hook — nothing in Farmersdelight-Plugin-Pro reads a result back from it — so moving it one
      * tick later keeps the observable behaviour ("the reload happened") while halving the worst-case stall of
      * a single tick. This is the same treatment {@code reloadRecipeFiles} already gave it.
      *
@@ -1023,7 +1159,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
             long addonNanos = System.nanoTime() - addonStart;
             reloadAddonsNanos.set(addonNanos);
             // Timed separately because this work is invisible in the reloadCommon breakdown: on a server with
-            // several addons it can exceed everything FarmersDelight does itself.
+            // several addons it can exceed everything Farmersdelight-Plugin-Pro does itself.
             I18n.logDetail("reload", "plugin.reload_addons", "ms", addonNanos / 1_000_000L);
             // Now that the addon pass has landed, repeat the summary in the console with the complete split.
             I18n.logDetail("reload", "plugin.reload_report",
@@ -1099,6 +1235,20 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     /** Problems the last reload found: config type mismatches plus recipe parse/reconcile issues. */
     public int reloadIssueCount() {
         return configBootstrap.validationIssueCount() + RecipeFileLoader.reportedIssueCount();
+    }
+
+    public long configurationGeneration() { return configurationGeneration.get(); }
+
+    public CompletableFuture<Void> reloadEditedRecipeFilesAsync() { return recipeReloadCoordinator.request(); }
+
+    public void publishEditedRecipes() {
+        RecipeFileLoader.resetReportedIssues();
+        if (craftEngineReadinessCoordinator != null && craftEngineReadinessCoordinator.isReady()) {
+            loadRecipeManagers("plugin.reloading_recipes", true);
+            reportContentSummaryWhenReady();
+        }
+        fireReloadEvent("reloadRecipes");
+        I18n.logInfo("plugin.recipe_files_reloaded");
     }
 
     public void reloadRecipeFiles() {
@@ -1497,6 +1647,10 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         return parser == null ? List.of() : parser.sectionsOf(section);
     }
 
+    public ReadOnlyRecipeWindows recipeWindows() {
+        return recipeWindows;
+    }
+
     public SchedulerAdapter scheduler() {
         if (scheduler == null) {
             throw new IllegalStateException("Scheduler is not available");
@@ -1744,6 +1898,10 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
 
     public SpecialRecipeRegistry getSpecialRecipeRegistry() {
         return specialRecipeRegistry;
+    }
+
+    public com.huidu.farmersdelight.visual.ParticleDispatcher particles() {
+        return particleDispatcher;
     }
 
     public ItemDisplayManager getItemDisplayManager() {

@@ -74,7 +74,7 @@ public class BlockBreakListener implements Listener {
     public void onBlockBreak(BlockBreakEvent event) {
         Block block = event.getBlock();
         ImmutableBlockState state = CustomBlockUtils.getState(block);
-        // Deliberate: an operator breaking a FarmersDelight workstation is allowed through even when another
+        // Deliberate: an operator breaking a Farmersdelight-Plugin-Pro workstation is allowed through even when another
         // plugin cancelled the event, so a mis-configured region flag or claim cannot lock operators out of
         // their own blocks. ProtectionCompat.canBreak answers true for operators by design.
         if (event.isCancelled() && event.getPlayer().isOp()

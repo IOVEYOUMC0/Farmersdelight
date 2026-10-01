@@ -41,6 +41,7 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
             "ingredient", "container", "result", "result-count",
             "cook-time", "experience", "priority", "category");
 
+    private boolean saving;
     private final String recipeId;
     private final String customGroupId;
     private final boolean editingExisting;
@@ -186,7 +187,7 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
     @Override
     public void handleClick(InventoryClickEvent event) {
         event.setCancelled(true);
-        if (closed) {
+        if (closed || saving) {
             return;
         }
         int raw = event.getRawSlot();
@@ -437,15 +438,8 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
                 recipeId, ingredientList, savedContainer, savedContainer != null, savedResult,
                 experience, cookTime, category, priority);
 
-        if (RecipeEditorView.store().saveCookingPotRecipe(recipe, customGroupId)) {
-            player.sendMessage(Component.translatable("gui.editor.feedback.saved",
-                    Component.text(recipeId).color(NamedTextColor.WHITE))
-                    .color(NamedTextColor.GREEN));
-            closeEditor();
-        } else {
-            player.sendMessage(Component.translatable("gui.editor.feedback.save_failed")
-                    .color(NamedTextColor.RED));
-        }
+        saving = true;
+        finishEdit(RecipeEditorView.store().saveCookingPotRecipeAsync(recipe, customGroupId), false);
     }
 
     private void delete() {
@@ -460,15 +454,51 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
     }
 
     private void performDelete() {
-        if (RecipeEditorView.store().deleteCookingPotRecipe(recipeId, customGroupId)) {
-            player.sendMessage(Component.translatable("gui.editor.feedback.deleted",
-                    Component.text(recipeId).color(NamedTextColor.WHITE))
-                    .color(NamedTextColor.GREEN));
-        } else {
-            player.sendMessage(Component.translatable("gui.editor.feedback.delete_failed")
-                    .color(NamedTextColor.RED));
+        if (saving) {
+            return;
         }
-        player.closeInventory();
+        saving = true;
+        finishEdit(RecipeEditorView.store().deleteCookingPotRecipeAsync(recipeId, customGroupId), true);
+    }
+
+    private void finishEdit(java.util.concurrent.CompletableFuture<Boolean> future, boolean deleting) {
+        org.bukkit.inventory.Inventory expected = player.getOpenInventory().getTopInventory();
+        future.whenComplete((success, error) -> {
+            if (!plugin.isEnabled()) {
+                return;
+            }
+            try {
+                plugin.scheduler().runForEntity(player, () -> {
+                    saving = false;
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    boolean saved = error == null && Boolean.TRUE.equals(success);
+                    String key = saved ? (deleting ? "deleted" : "saved")
+                            : (deleting ? "delete_failed" : "save_failed");
+                    player.sendMessage(Component.translatable("gui.editor.feedback." + key,
+                            Component.text(recipeId).color(NamedTextColor.WHITE))
+                            .color(saved ? NamedTextColor.GREEN : NamedTextColor.RED));
+                    // Completion from an old editor must not close a newly opened screen.
+                    if (player.getOpenInventory().getTopInventory() == expected) {
+                        if (saved) {
+                            if (deleting) {
+                                player.closeInventory();
+                            } else {
+                                closeEditor();
+                            }
+                        } else if (deleting && closed) {
+                            reopen();
+                        }
+                    }
+                });
+            } catch (RuntimeException stopped) {
+                // The disk result remains committed if the plugin or entity scheduler has stopped.
+            }
+            if (error != null) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "Recipe editor publication failed", error);
+            }
+        });
     }
 
     private RecipeIngredient appendOption(RecipeIngredient current, RecipeIngredient.Item added) {

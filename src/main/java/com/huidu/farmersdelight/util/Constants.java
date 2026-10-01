@@ -80,6 +80,8 @@ public final class Constants {
     public static final int DEFAULT_COOKING_TIME_SKILLET = 600;
     public static final int MINIMUM_COOKING_TIME_SKILLET = 60;
     public static final int DEFAULT_COOKING_TIME_COOKING_POT = 200;
+    /** @deprecated Placement interactions are guarded by server tick instead of elapsed milliseconds. */
+    @Deprecated
     public static final int DEFAULT_COOKING_POT_PLACE_INTERACTION_COOLDOWN_MS = 1000;
     public static final int DEFAULT_COMFORT_DURATION = 300;
     public static final int DEFAULT_NOURISHMENT_DURATION = 300;

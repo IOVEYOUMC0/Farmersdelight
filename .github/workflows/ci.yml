@@ -18,7 +18,7 @@ jobs:
       - name: Checkout the wiki (api documentation)
         uses: actions/checkout@v4
         with:
-          repository: IOVEUMC0/FarmersdelightPluginWiKi
+          repository: IOVEYOUMC0/FarmersdelightPluginWiKi
           path: wiki
 
       - name: Set up JDK 21
@@ -76,7 +76,7 @@ jobs:
         run: python tools/check_lang_keys.py --quiet
 
       # The whole addon split rests on this rule: an addon may only compile against api.**, never against
-      # FarmersDelight's internals. It was convention (and a jar-layout audit) until now; this makes a
+      # Farmersdelight-Plugin-Pro's internals. It was convention (and a jar-layout audit) until now; this makes a
       # violating import fail the build. It also fails if an api class exposes an internal type in a public
       # signature without the @ApiStatus.Internal marker that says "not for addons".
       - name: Addons only depend on the api facade

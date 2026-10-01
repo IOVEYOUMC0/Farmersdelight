@@ -2,7 +2,7 @@ package com.huidu.farmersdelight.api.recipe;
 
 import java.util.List;
 
-// A special recipe shown in the FarmersDelight recipe menu's "special recipes" section. These are
+// A special recipe shown in the Farmersdelight-Plugin-Pro recipe menu's "special recipes" section. These are
 // non-crafting recipes (composting, sunlight/water conditions, catalysts...) with a fixed input to
 // output to condition layout. Addons register them through FarmersDelightApi.registerSpecialRecipe.
 // The optional displayType picks how the recipe is presented in-game: DISPLAY_RECIPE (default) opens a

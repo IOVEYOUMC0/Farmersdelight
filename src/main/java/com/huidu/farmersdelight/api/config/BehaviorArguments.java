@@ -10,7 +10,7 @@ import java.util.Map;
  * working. Callers decide their own default and validation; this class only answers "which raw value applies".
  *
  * <p>It exists in the api package because addons write their own behavior factories and compile against the api
- * jar only. FarmersDelight's own behaviors read through
+ * jar only. Farmersdelight-Plugin-Pro's own behaviors read through
  * {@link com.huidu.farmersdelight.util.BehaviorArgParser}, which adds typed parsing and loud validation on top of
  * the same lookup.
  */

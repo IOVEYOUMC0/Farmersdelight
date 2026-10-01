@@ -17,5 +17,6 @@ public final class GuiCacheInvalidator {
         clearConfigCaches();
         CookingPotGui.closeAllOpenGuis();
         RecipeViewGui.closeAllOpenGuis();
+        RecipeBookGui.closeAllOpenWindows();
     }
 }

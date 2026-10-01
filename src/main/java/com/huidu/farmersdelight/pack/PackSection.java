@@ -5,7 +5,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * A FarmersDelight content section a CraftEngine pack can declare.
+ * A Farmersdelight-Plugin-Pro content section a CraftEngine pack can declare.
  *
  * <p>Each entry pairs the root key a pack file uses (the CraftEngine section id our parser claims) with the
  * root key the same content carries once it reaches this plugin. The two differ only where the plugin already

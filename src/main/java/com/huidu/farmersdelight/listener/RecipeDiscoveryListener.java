@@ -39,7 +39,7 @@ public class RecipeDiscoveryListener implements Listener {
         // instead; the warm-up is what keeps that from being the normal case.
         UUID playerId = event.getPlayer().getUniqueId();
         long version = manager.markJoin(playerId);
-        plugin.scheduler().runAsync(() -> manager.ensureLoaded(playerId, version));
+        plugin.scheduler().tryRunAsync(() -> manager.ensureLoaded(playerId, version));
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -48,12 +48,11 @@ public class RecipeDiscoveryListener implements Listener {
         if (manager == null) {
             return;
         }
-        // Async because the flush that has to happen before the drop writes the whole file, and a quit is
-        // not the place for that. Order is kept inside evict, and a rejoin that beats the task just reads
-        // the player back off the file the task has already written.
+        // Capture and evict on quit; the independent pending snapshot is flushed by a bounded worker.
+        // A reconnect can read that snapshot even if the disk write has not succeeded yet.
         UUID playerId = event.getPlayer().getUniqueId();
         long version = manager.markQuit(playerId);
-        plugin.scheduler().runAsync(() -> manager.evict(playerId, version));
+        manager.evict(playerId, version);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

@@ -2,6 +2,7 @@ package com.huidu.farmersdelight.manager;
 
 import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.advancement.AdvancementDatapackInstaller;
+import com.huidu.farmersdelight.api.util.DatapackSupport;
 import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.util.ItemUtils;
 import com.huidu.farmersdelight.util.scheduler.PluginTask;
@@ -61,8 +62,8 @@ public final class DatapackCoordinator {
             return;
         }
         removalQueued = true;
-        Path datapackRoot = primaryWorld.getWorldFolder().toPath().resolve("datapacks").resolve("advancements");
-        plugin.scheduler().runAsync(() -> {
+        Path datapackRoot = DatapackSupport.worldRoot(primaryWorld).resolve("datapacks").resolve("advancements");
+        if (!plugin.scheduler().tryRunAsync(() -> {
             boolean removed = false;
             try {
                 removed = new AdvancementDatapackInstaller().remove(datapackRoot);
@@ -72,7 +73,10 @@ public final class DatapackCoordinator {
             if (removed) {
                 queueReload(reason);
             }
-        });
+        })) {
+            removalQueued = false;
+            plugin.getLogger().warning("Data-pack removal deferred: asynchronous queue is full or stopped.");
+        }
     }
 
     public synchronized void cancelPendingTasks() {

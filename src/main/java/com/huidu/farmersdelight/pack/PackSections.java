@@ -12,12 +12,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * FarmersDelight's own view of the CraftEngine pack sections it claims: the cooking-pot, cutting-board,
+ * Farmersdelight-Plugin-Pro's own view of the CraftEngine pack sections it claims: the cooking-pot, cutting-board,
  * special-recipe and addon-advancement sections named by {@link PackSection}.
  *
  * <p>Claiming and bridging live in {@link AddonPackSections} (the api class addons use for their own
  * sections); this class only maps this plugin's fixed section set onto it and reports the outcome with this
- * plugin's own console keys. Registration has to happen during FarmersDelight's {@code onLoad}: CraftEngine
+ * plugin's own console keys. Registration has to happen during Farmersdelight-Plugin-Pro's {@code onLoad}: CraftEngine
  * dispatches sections while it loads packs in its own {@code onEnable}, and this plugin loads after it.
  */
 public final class PackSections {

@@ -40,6 +40,7 @@ public class CookingPotBlockEntity {
     // Inventory version: incremented on every write to the inventory array, lets the GUI cheaply detect
     // "did the pot change" and skip a full input-slot rescan when unchanged. volatile so GUI threads see the latest value.
     private volatile long inventoryVersion;
+    private volatile long notifiedInventoryVersion = Long.MIN_VALUE;
     // Written by the cook tick on the pot's region, drained by awardUsedRecipes on the taking player's
     // region (a GUI viewer can stand in a different region). Concurrent map + atomic per-key removal so
     // neither side can lose a craft or trip over a resize.
@@ -116,11 +117,11 @@ public class CookingPotBlockEntity {
             return Arrays.copyOf(inventory, inventory.length);
         }
     }
-    
+
     ItemStack[] getInventoryInternal() {
         return inventory;
     }
-    
+
     Object getLock() {
         return inventoryLock;
     }
@@ -333,6 +334,13 @@ public class CookingPotBlockEntity {
         World currentWorld = world;
         if (currentWorld != null) {
             CookingPotBlockBehavior.markBlockEntityDirty(currentWorld, posKey);
+            long version = inventoryVersion;
+            if (version != notifiedInventoryVersion) {
+                notifiedInventoryVersion = version;
+                if (plugin != null && plugin.getTickManager() != null) {
+                    plugin.getTickManager().wakeNativePot(currentWorld, posKey);
+                }
+            }
         }
     }
 
@@ -605,6 +613,7 @@ public class CookingPotBlockEntity {
             ItemStack containerItem = getContainerItemInternal();
             CookingPotRecipe previousRecipe = currentRecipe.get();
             if (previousRecipe != null
+                    && canCookRecipeGeneration == plugin.getCookingPotRecipes().recipeGeneration()
                     && plugin.getCookingPotRecipes().canCraft(previousRecipe, inputItems)) {
                 if (!hasRoomForResult(previousRecipe)) {
                     return false;
@@ -684,7 +693,7 @@ public class CookingPotBlockEntity {
         ItemStack container = mealContainerStack.get();
         return container != null && !container.getType().isAir();
     }
-    
+
     public ItemStack getMealContainer() {
         ItemStack container = mealContainerStack.get();
         return copyOrNull(container);
@@ -697,12 +706,12 @@ public class CookingPotBlockEntity {
         }
         syncWorldlyContainer();
     }
-    
+
     public boolean isContainerValid(ItemStack containerItem) {
         if (containerItem == null || containerItem.getType().isAir()) return false;
         return isSameContainer(mealContainerStack.get(), containerItem);
     }
-    
+
     public ItemStack useContainerToTakeMeal() {
         return takeMealPortion(1);
     }

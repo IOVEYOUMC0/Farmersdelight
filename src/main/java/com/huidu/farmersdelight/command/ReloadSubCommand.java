@@ -4,6 +4,7 @@ import com.huidu.farmersdelight.FarmersDelightPlugin;
 import com.huidu.farmersdelight.api.event.ReloadTarget;
 import com.huidu.farmersdelight.i18n.I18n;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -26,9 +27,6 @@ final class ReloadSubCommand extends SubCommand {
     // every addon on the following tick, so a second request is refused instead of stacking another stall.
     // The cooldown is read per call, so editing config.yml takes effect without a reload of its own.
     private final ReloadBusyGuard busyGuard;
-    // Swapped per command so the refusal goes to whoever asked; the guard's own state lives in busyGuard.
-    private ReloadBusyGuard.RejectionSink rejectionSink = remainingSeconds -> {
-    };
 
     ReloadSubCommand(FarmersDelightPlugin plugin) {
         super("reload", List.of(), "farmersdelight.admin", "command.help_reload");
@@ -39,7 +37,7 @@ final class ReloadSubCommand extends SubCommand {
         this.busyGuard = new ReloadBusyGuard(
                 () -> plugin == null ? 0L : plugin.reloadCooldownMillis(),
                 System::currentTimeMillis,
-                remainingSeconds -> rejectionSink.reject(remainingSeconds));
+                remainingSeconds -> {});
     }
 
     @Override
@@ -51,48 +49,48 @@ final class ReloadSubCommand extends SubCommand {
             return;
         }
 
-        // Refuse before doing any work: the caller is told to wait rather than being queued behind a pass that
-        // is already occupying the tick thread.
-        rejectionSink = ReloadBusyGuard.messageTo(sender);
-        if (!busyGuard.begin()) {
+        // The guard remains held throughout worker preparation and server-thread publication.
+        if (!busyGuard.begin(ReloadBusyGuard.messageTo(sender))) {
             return;
         }
-        try {
-            switch (target) {
-                case ALL -> plugin.reloadAll();
-                case CONFIG -> plugin.reloadMainConfigOnly();
-                case GUI -> plugin.reloadGuiConfig();
-                case LANGUAGE -> plugin.reloadLanguageFiles();
-                case RECIPES -> plugin.reloadRecipeFiles();
-                case ADVANCEMENTS -> plugin.reloadAdvancements();
-                case LOOT -> plugin.reloadLootDatapack();
-                case ENCHANT -> plugin.refreshEnchantSystem();
-                case DAMAGE -> plugin.reloadDamageTypeDatapack();
-                case TAGS -> plugin.reloadTags();
-            }
-
-            // Notify addons so they reload in sync. "all" already fires this inside reloadAll().
-            if (!target.isAll() && target != ReloadTarget.RECIPES) {
-                plugin.notifyAddonsOfReload(target.eventReason());
-            }
-
-            sender.sendMessage(I18n.getComponent("general.config_reloaded", placeholders()));
-            // CraftEngine's shape: the success line always reports the elapsed time, and a problem is called
-            // out only when there is one. A "no issues found" line on every reload is noise.
-            Map<String, String> report = placeholders();
-            report.put("total", String.valueOf(plugin.reloadTotalMillis()));
-            report.put("split", plugin.reloadTimingSummary());
-            sender.sendMessage(I18n.getComponent("command.reload_report", report));
-
-            int issues = plugin.reloadIssueCount();
-            if (issues > 0) {
-                sender.sendMessage(I18n.getComponent("command.reload_report_issues",
-                        Map.of("prefix", report.get("prefix"), "issues", String.valueOf(issues))));
-            }
-        } finally {
-            // Released even when a reload throws, so one failure cannot wedge every later reload.
+        long started = System.nanoTime();
+        plugin.reloadTargetAsync(target).whenComplete((ignored, error) -> {
             busyGuard.finish();
-        }
+            if (error != null) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "Reload failed for " + target.eventReason(), error);
+            }
+            if (!plugin.isEnabled()) {
+                return;
+            }
+            Runnable feedback = () -> {
+                if (sender instanceof Player player && !player.isOnline()) {
+                    return;
+                }
+                if (error != null) {
+                    sender.sendMessage(I18n.getComponent("command.reload_failed", placeholders()));
+                    return;
+                }
+                sender.sendMessage(I18n.getComponent("general.config_reloaded", placeholders()));
+                Map<String, String> report = placeholders();
+                report.put("total", String.valueOf((System.nanoTime() - started) / 1_000_000L));
+                report.put("split", plugin.reloadTimingSummary());
+                sender.sendMessage(I18n.getComponent("command.reload_report", report));
+                int issues = plugin.reloadIssueCount();
+                if (issues > 0) {
+                    sender.sendMessage(I18n.getComponent("command.reload_report_issues",
+                            Map.of("prefix", report.get("prefix"), "issues", String.valueOf(issues))));
+                }
+            };
+            try {
+                if (sender instanceof Player player) {
+                    plugin.scheduler().runForEntity(player, feedback);
+                } else {
+                    plugin.scheduler().run(feedback);
+                }
+            } catch (RuntimeException stopped) {
+                // No feedback is scheduled after shutdown.
+            }
+        });
     }
 
     @Override

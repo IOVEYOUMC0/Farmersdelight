@@ -7,7 +7,7 @@ import org.bukkit.entity.Player;
 /**
  * Obfuscation-safe facade over the internal region-protection checks. Addons compile against this class
  * (the api-only jar ships it); the implementation lives inside the real plugin, so addons never touch
- * FarmersDelight internals. Behind the scenes the checks cover WorldGuard's master flag plus an addon's
+ * Farmersdelight-Plugin-Pro internals. Behind the scenes the checks cover WorldGuard's master flag plus an addon's
  * own registered flag (or the FD built-in feature flags), and every AntiGriefLib-backed land plugin.
  *
  * <p>An addon that owns custom blocks should:
@@ -16,7 +16,7 @@ import org.bukkit.entity.Player;
  *       "myaddon-station");</li>
  *   <li>pass that same name to {@link #canBuild}/{@link #canUse} when placing / breaking / interacting
  *       with its blocks (CraftEngine fake blocks bypass the vanilla events land plugins listen to, so the
- *       addon must gate them itself, exactly like FarmersDelight does for its own blocks).</li>
+ *       addon must gate them itself, exactly like Farmersdelight-Plugin-Pro does for its own blocks).</li>
  * </ol>
  * A null flagName queries only the master flag.
  */

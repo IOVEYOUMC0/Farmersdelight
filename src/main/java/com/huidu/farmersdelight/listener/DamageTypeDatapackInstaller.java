@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
-// Installs the standalone FarmersDelight damage-type datapack (farmersdelight:stove_burn plus the
+// Installs the standalone Farmersdelight-Plugin-Pro damage-type datapack (farmersdelight:stove_burn plus the
 // vanilla damage-type tags it is appended to: no_knockback, is_fire so fire-immune entities are immune
 // to it, and burn_from_stepping so Frost Walker reacts to it), independent of the loot datapack so each
 // can be toggled and reinstalled on its own. Also migrates the damage files out of the legacy loot
@@ -29,7 +29,7 @@ public final class DamageTypeDatapackInstaller {
     private static final String RESOURCE_PREFIX = "datapack/damage/";
     private static final String PACK_METADATA_FILE = "pack.mcmeta";
     private static final String PACK_DESCRIPTION =
-            "FarmersDelight damage types (stove_burn, no_knockback/is_fire/burn_from_stepping tags)";
+            "Farmersdelight-Plugin-Pro damage types (stove_burn, no_knockback/is_fire/burn_from_stepping tags)";
     private static final String LEGACY_LOOT_DATAPACK = "farmersdelight";
     private static final String LEGACY_DAMAGE_DIR = "data/farmersdelight/damage_type";
     private static final String LEGACY_NO_KNOCKBACK = "data/minecraft/tags/damage_type/no_knockback.json";
@@ -38,7 +38,7 @@ public final class DamageTypeDatapackInstaller {
     // current server state instead of copied, see installToWorld.
     private static final List<String> DISTRIBUTION_TAGS = List.of("no_knockback", "is_fire", "burn_from_stepping");
 
-    // Deletes the obsolete FarmersDelight loot datapack (datapacks/farmersdelight). Loot injections
+    // Deletes the obsolete Farmersdelight-Plugin-Pro loot datapack (datapacks/farmersdelight). Loot injections
     // use CraftEngine vanilla/container loot sources; damage files are migrated by removeLegacyFiles
     // before the folder is deleted. Runs across every world where the folder exists.
     public void cleanupLegacyLootDatapack() {
@@ -53,7 +53,7 @@ public final class DamageTypeDatapackInstaller {
                     I18n.logInfo("plugin.loot_datapack_legacy_removed", "world", world.getName());
                 }
             } catch (IOException e) {
-                plugin.getLogger().warning("FarmersDelight loot datapack: failed to remove legacy folder under "
+                plugin.getLogger().warning("Farmersdelight-Plugin-Pro loot datapack: failed to remove legacy folder under "
                         + legacy + ": " + e.getMessage());
             }
         }
@@ -116,7 +116,7 @@ public final class DamageTypeDatapackInstaller {
                     I18n.logInfo("plugin.damage_datapack_redundant_removed", "world", world.getName());
                 }
             } catch (IOException e) {
-                plugin.getLogger().warning("FarmersDelight damage datapack: failed to remove redundant folder under "
+                plugin.getLogger().warning("Farmersdelight-Plugin-Pro damage datapack: failed to remove redundant folder under "
                         + redundant + ": " + e.getMessage());
             }
         }
@@ -237,7 +237,7 @@ public final class DamageTypeDatapackInstaller {
                 removed++;
             }
         } catch (IOException e) {
-            plugin.getLogger().warning("FarmersDelight damage datapack: failed to remove legacy files under "
+            plugin.getLogger().warning("Farmersdelight-Plugin-Pro damage datapack: failed to remove legacy files under "
                     + legacyDatapackDir + ": " + e.getMessage());
         }
         return removed;

@@ -68,7 +68,7 @@ public final class FarmersDelightItems {
 
     /**
      * Damage a durable custom item (one carrying vanilla durability components, e.g. via the
-     * farmersdelight:durable item setting) by amount, the same way FarmersDelight's own tools wear: the
+     * farmersdelight:durable item setting) by amount, the same way Farmersdelight-Plugin-Pro's own tools wear: the
      * Unbreaking enchant is rolled per point of damage, and when the item runs out it is consumed
      * (amount set to 0). Returns true if the item broke. No-op (returns false) for a non-damageable or
      * unbreakable item. This is the durability path decoupled from any weapon/attack behaviour.

@@ -38,7 +38,7 @@ import java.util.stream.Stream;
 public final class TagDatapackInstaller implements Listener {
 
     private static final String DATAPACK_DIRECTORY = "farmersdelight_tags";
-    private static final String PACK_DESCRIPTION = "FarmersDelight common-item tags (vanilla members)";
+    private static final String PACK_DESCRIPTION = "Farmersdelight-Plugin-Pro common-item tags (vanilla members)";
     private static final String VANILLA_NAMESPACE = "minecraft";
 
     private final FarmersDelightPlugin plugin;
