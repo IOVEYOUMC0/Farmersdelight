@@ -18,7 +18,7 @@ import java.util.Map;
 
 /** Worker-owned plain documents, converted to Bukkit objects only inside the publication scope. */
 public final class PreparedRecipeFiles implements RecipeReloadCoordinator.Batch {
-    public static final List<String> FILES = List.of("recipes/cooking_pot_recipes.yml", "recipes/cutting_board_recipes.yml");
+    public static final List<String> FILES = List.of("recipes/cooking_pot_recipes.yml", "recipes/cutting_board_recipes.yml", FoodGroupStore.FILE);
     private static final ThreadLocal<PreparedRecipeFiles> CURRENT = new ThreadLocal<>();
     private record Revision(long size, FileTime modified, Object key) {
         static Revision read(Path path) throws IOException {

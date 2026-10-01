@@ -613,6 +613,7 @@ public class CookingPotBlockEntity {
             ItemStack containerItem = getContainerItemInternal();
             CookingPotRecipe previousRecipe = currentRecipe.get();
             if (previousRecipe != null
+                    && !previousRecipe.isFuzzy()
                     && canCookRecipeGeneration == plugin.getCookingPotRecipes().recipeGeneration()
                     && plugin.getCookingPotRecipes().canCraft(previousRecipe, inputItems)) {
                 if (!hasRoomForResult(previousRecipe)) {

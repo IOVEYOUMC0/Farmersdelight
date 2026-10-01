@@ -694,7 +694,16 @@ public class RecipeViewGui extends AbstractInventoryGui {
         if (configured == null) {
             return;
         }
-        inventory.setItem(slot, configured.createItem(fillButtonState.placeholders(player)));
+        ItemStack button = configured.createItem(fillButtonState.placeholders(player));
+        CookingPotRecipe recipe = plugin.getCookingPotRecipes().getRecipe(getActiveCookingPotRecipeGroup(), selectedRecipeId);
+        if (recipe != null && recipe.isFuzzy()) {
+            ItemMeta meta = button.getItemMeta();
+            if (meta != null) {
+                meta.lore(List.of(I18n.getComponent("gui.fuzzy.fill_hint", player)));
+                button.setItemMeta(meta);
+            }
+        }
+        inventory.setItem(slot, button);
     }
 
     private void clearDetailActionSlot(RecipeViewGuiConfig.RecipeDetailConfig detailConfig, int slot) {
@@ -1183,10 +1192,14 @@ public class RecipeViewGui extends AbstractInventoryGui {
             lore.add(Component.text(""));
         }
         lore.add(tr("gui.recipe.ingredients_label", NamedTextColor.GRAY));
+        if (recipe.isFuzzy()) lore.add(I18n.getComponent("gui.fuzzy.viewer_hint", player));
         List<RecipeIngredient> ingredients = recipe.getIngredients();
         int displayedIngredients = Math.min(ingredients.size(), config.getRecipeListMaxPreviewIngredients());
         for (int i = 0; i < displayedIngredients; i++) {
             ingredientDisplay.appendCompactIngredientLore(lore, ingredients.get(i), player);
+            if (recipe.isFuzzy() && ingredients.get(i) instanceof RecipeIngredient.Item ingredient) {
+                lore.add(I18n.getComponent("gui.fuzzy.weight", player, Map.of("weight", String.valueOf(recipe.fuzzy().perfect().get(ingredient.key().toString())))));
+            }
         }
         ingredientDisplay.appendMoreIngredientsLine(lore, ingredients.size() - displayedIngredients, player);
         if (recipe.needsContainer() && recipe.getContainer() != null) {
@@ -1665,7 +1678,8 @@ public class RecipeViewGui extends AbstractInventoryGui {
     }
 
     private void openEditorForRecipe(Player player, String recipeId, boolean isCookingPot) {
-        RecipeEditorView.openFromViewerLater(plugin, player, recipeId, isCookingPot);
+        RecipeEditorView.openFromViewerLater(plugin, player, recipeId, isCookingPot,
+                isCookingPot ? getActiveCookingPotRecipeGroup() : null, () -> open(player));
     }
 
     private String getActiveCookingPotRecipeGroup() {

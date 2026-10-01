@@ -6,6 +6,8 @@ Farmersdelight-Plugin-Pro is a Paper/Folia plugin port of **Farmer's Delight**, 
 
 Authors: HuiDu_OwO, ydxc2009.
 
+Version 1.0.4 opens a menu from `/fd recipe edit`: choose a station and recipe group, search or page through recipes, and return to the same list when editing is finished. It also includes optional Kaleidoscope recipe-book filling, fuzzy cooking-pot recipes and a food-group editor. See the [integration and recipe guide (Chinese)](KALEIDOSCOPE-COMPAT.zh-CN.md).
+
 ## Features
 
 - CraftEngine items, blocks, models, resource packs and loot integration.

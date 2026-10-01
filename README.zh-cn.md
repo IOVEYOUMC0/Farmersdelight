@@ -6,6 +6,8 @@ Farmersdelight-Plugin-Pro 是基于 CraftEngine 的 Farmer's Delight Paper/Folia
 
 作者：HuiDu_OwO、ydxc2009。
 
+1.0.4 可通过 `/fd recipe edit` 进入菜单，选择厨具和配方组、搜索或翻页，编辑完成后返回原列表；同时包含森罗菜谱自动投料兼容、厨锅模糊配方和食材分组编辑，详见[兼容与配方指南](KALEIDOSCOPE-COMPAT.zh-CN.md)。
+
 ## 项目内容
 
 - CraftEngine 物品、方块、模型、资源包和战利品整合。

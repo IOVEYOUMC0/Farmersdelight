@@ -51,6 +51,24 @@ final class CookingPotFiller {
             return FillResult.stay(FillButtonState.MISSING_INGREDIENTS);
         }
 
+        if (recipe.isFuzzy()) {
+            List<String> ingredients = new ArrayList<>();
+            for (var entry : recipe.fuzzy().perfect().entrySet()) {
+                if (ingredients.size() + entry.getValue() > entity.getLayout().inputSlots().length) return FillResult.stay(FillButtonState.INVENTORY_FULL);
+                for (int count = 0; count < entry.getValue(); count++) ingredients.add(entry.getKey());
+            }
+            var groups = plugin.getCookingPotRecipes().getFoodGroups();
+            var outcome = com.huidu.farmersdelight.block.behavior.CookingPotRecipeTransfer.fill(plugin, player, entity, cookingPotLocation, ingredients,
+                    (expected, actual) -> expected.equals(actual) || recipe.fuzzy().useEquivalentFoods() && groups.canonical(expected).equals(groups.canonical(actual)));
+            if (outcome == com.huidu.farmersdelight.recipe.RecipeAutoFillPlan.Result.FILLED
+                    || outcome == com.huidu.farmersdelight.recipe.RecipeAutoFillPlan.Result.ALREADY_FILLED) {
+                activateAfterFill(entity);
+                return FillResult.returnToPot(FillButtonState.FILLED);
+            }
+            return FillResult.stay(outcome == com.huidu.farmersdelight.recipe.RecipeAutoFillPlan.Result.NO_SPACE
+                    ? FillButtonState.INVENTORY_FULL : FillButtonState.MISSING_INGREDIENTS);
+        }
+
         debug("start recipe=" + recipe.getId() + ", fillAll=" + fillAll
                 + ", before=" + summarizePot(entity));
 

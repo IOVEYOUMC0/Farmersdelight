@@ -205,7 +205,7 @@ public final class TagPickerGui extends AbstractInventoryGui implements EditorGu
     @Override
     public void handleClick(InventoryClickEvent event) {
         event.setCancelled(true);
-        if (closed) {
+        if (closed || !EditorNavigation.allowed(plugin, player)) {
             return;
         }
         int raw = event.getRawSlot();
@@ -305,7 +305,7 @@ public final class TagPickerGui extends AbstractInventoryGui implements EditorGu
                 acted = true;
                 super.close();
                 clearCursor();
-                onCancel.run();
+                EditorNavigation.next(plugin, player, inventory, onCancel);
             }
             default -> {
             }
@@ -330,28 +330,33 @@ public final class TagPickerGui extends AbstractInventoryGui implements EditorGu
     private void startManualInput() {
         acted = true;
         super.close();
-        // super.close() only unregisters the tick callback; the chest stays open on the client and would
-        // capture keyboard focus, so the player could not type the tag id the prompt asks for.
-        player.closeInventory();
         clearCursor();
-        RecipeEditorListener.promptChat(player, raw -> {
-            String input = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
-            if (input.equals("cancel")) {
-                player.sendMessage(tr("gui.editor.tag.manual_cancelled"));
-                reopenPicker();
-                return;
-            }
-            if (!TAG_ID_PATTERN.matcher(input).matches()) {
-                player.sendMessage(tr("gui.editor.tag.manual_invalid"));
-                reopenPicker();
-                return;
-            }
-            finish(new RecipeIngredient.Tag(Key.of(input)));
+        EditorNavigation.next(plugin, player, inventory, () -> {
+            player.closeInventory();
+            RecipeEditorListener.promptChat(player, raw -> {
+                if (!EditorNavigation.allowed(plugin, player)) return;
+                String input = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
+                if (input.equals("cancel")) {
+                    player.sendMessage(tr("gui.editor.tag.manual_cancelled"));
+                    reopenPicker();
+                    return;
+                }
+                if (!TAG_ID_PATTERN.matcher(input).matches()) {
+                    player.sendMessage(tr("gui.editor.tag.manual_invalid"));
+                    reopenPicker();
+                    return;
+                }
+                finish(new RecipeIngredient.Tag(Key.of(input)));
+            });
         });
     }
 
     private void reopenPicker() {
-        new TagPickerGui(plugin, player, config, sourceItem, tagIds, onConfirm, onCancel).open();
+        if (!EditorNavigation.allowed(plugin, player)) return;
+        acted = false;
+        closed = false;
+        render();
+        player.openInventory(inventory);
     }
 
     private List<ItemStack> resolveMembers(Key tag) {
@@ -398,7 +403,9 @@ public final class TagPickerGui extends AbstractInventoryGui implements EditorGu
         acted = true;
         super.close();
         clearCursor();
-        onConfirm.accept(ingredient);
+        if (player.getOpenInventory().getTopInventory() == inventory) {
+            EditorNavigation.next(plugin, player, inventory, () -> onConfirm.accept(ingredient));
+        } else if (EditorNavigation.allowed(plugin, player)) onConfirm.accept(ingredient);
     }
 
     @Override
@@ -407,7 +414,7 @@ public final class TagPickerGui extends AbstractInventoryGui implements EditorGu
         clearCursor();
         if (!acted) {
             acted = true;
-            plugin.scheduler().runLaterForEntity(player, onCancel, 1L);
+            EditorNavigation.afterPlayerClose(plugin, player, event, onCancel);
         }
     }
 

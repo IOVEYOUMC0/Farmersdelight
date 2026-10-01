@@ -512,6 +512,8 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
     @Override
     public void onDisable() {
         enabled = false;
+        com.huidu.farmersdelight.util.compat.KaleidoscopeCompat.shutdown();
+        com.huidu.farmersdelight.recipe.FoodGroupStore.clear();
         boolean folia = scheduler != null && scheduler.isFolia();
 
         // Runtime disable warning: CraftEngine + per-chunk block-entity state still hold references
@@ -1600,7 +1602,7 @@ public class FarmersDelightPlugin extends JavaPlugin implements Listener {
         }
         String id = itemId.toLowerCase(Locale.ROOT);
         KnifeSettings settings = knifeSettings;
-        if (settings.itemIds().contains(id)) {
+        if (settings.itemIds().contains(id) || com.huidu.farmersdelight.util.compat.KaleidoscopeCompat.isImportedKnife(id)) {
             return true;
         }
         // Knives registered by addons through the family tag registry (tag to members) are honored

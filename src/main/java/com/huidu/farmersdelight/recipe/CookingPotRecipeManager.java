@@ -49,10 +49,13 @@ public class CookingPotRecipeManager {
                     Map<String, List<CookingPotRecipe>> sortedCustomOnlyRecipes,
                     Map<String, List<CookingPotRecipe>> resultToRecipes,
                     Set<String> validContainerKeys, int packRecipeCount, long generation,
-                    Map<String, CookingPotRecipe> recipeCache, Set<String> recipeMisses) {
+                    Map<String, CookingPotRecipe> recipeCache, Set<String> recipeMisses,
+                    FuzzyRecipeMatcher.Index fuzzyIndex, Map<String, FuzzyRecipeMatcher.Index> customFuzzyIndices,
+                    List<FoodGroupSnapshot.Group> localFoodGroups, FoodGroupSnapshot foodGroups) {
         static Snapshot empty() {
             return new Snapshot(Map.of(), Map.of(), Map.of(), Map.of(), List.of(), Map.of(), Map.of(),
-                    Map.of(), Set.of(), 0, 0, newMatchCache(), newMissCache());
+                    Map.of(), Set.of(), 0, 0, newMatchCache(), newMissCache(),
+                    FuzzyRecipeMatcher.compile(List.of(), FoodGroupSnapshot.empty()), Map.of(), List.of(), FoodGroupSnapshot.empty());
         }
     }
 
@@ -102,6 +105,13 @@ public class CookingPotRecipeManager {
 
     private synchronized void loadRecipes(YamlConfiguration config, boolean incremental) {
         if (config == null) return;
+        FoodGroupStore.Loaded foodGroups;
+        try {
+            foodGroups = FoodGroupStore.load(plugin, snapshot.localFoodGroups());
+        } catch (IllegalArgumentException invalid) {
+            plugin.getLogger().log(java.util.logging.Level.WARNING, "Food groups were not published; previous recipes remain active", invalid);
+            return;
+        }
         RecipeParseCache<CookingPotRecipe> parsing = new RecipeParseCache<>(incremental ? parsedRecipes : null);
         // Build everything into fresh local collections first, then publish atomically (below), so readers
         // never see a half-cleared map. Do not clear()/refill the live fields in place.
@@ -188,16 +198,21 @@ public class CookingPotRecipeManager {
             }
         }
 
+        Map<String, FuzzyRecipeMatcher.Index> customFuzzyIndices = new HashMap<>();
+        newCustomRecipes.forEach((group, recipes) -> customFuzzyIndices.put(group, compileFuzzy(recipes, foodGroups.combined())));
+
         Snapshot next = new Snapshot(RecipeCollections.freezeMap(newRecipes),
                 RecipeCollections.freezeNested(newCustomRecipes), RecipeCollections.freezeSets(newIngredientToRecipes),
                 RecipeCollections.freezeNestedSets(newCustomIngredientToRecipes), List.copyOf(newSortedRecipes),
                 RecipeCollections.freezeLists(newSortedCustomRecipes), RecipeCollections.freezeLists(newSortedCustomOnlyRecipes),
                 RecipeCollections.freezeLists(newResultToRecipes), Set.copyOf(newValidContainerKeys), newPackRecipeCount,
-                snapshot.generation() + 1, newMatchCache(), newMissCache());
+                snapshot.generation() + 1, newMatchCache(), newMissCache(), compileFuzzy(newRecipes, foodGroups.combined()),
+                Map.copyOf(customFuzzyIndices), foodGroups.local(), foodGroups.combined());
         lastFileDocument = config;
         parsedRecipes = parsing;
         vanillaItemIdsByTagCache.clear();
         snapshot = next;
+        if (plugin.getTickManager() != null) plugin.getTickManager().wakeAllNativePots();
         // Invalidate the recipe-list GUI display cache: this republish path (incl. addon register/
         // unregister) bypasses RecipeViewGui.clearConfigCache.
         RecipeViewGui.clearRecipeDisplayCache();
@@ -315,7 +330,9 @@ public class CookingPotRecipeManager {
     }
 
     private CookingPotRecipe parseRecipe(String id, ConfigurationSection section, int maxIngredients) {
+        FuzzyRecipeSpec fuzzy = parseFuzzy(section);
         Object rawIngredients = section.get("ingredients");
+        if (fuzzy != null) rawIngredients = new ArrayList<>(fuzzy.perfect().keySet());
         if (!(rawIngredients instanceof List<?> ingredientValues) || ingredientValues.isEmpty()) {
             throw new IllegalArgumentException("Recipe must have at least one ingredient");
         }
@@ -389,8 +406,44 @@ public class CookingPotRecipeManager {
         String category = ConfigSectionReader.optionalString(section, "category", "misc");
         int priority = ConfigSectionReader.optionalInt(section, "priority", 0);
 
-        return new CookingPotRecipe(id, ingredients, container, needsContainer, result, experience, cookTime, category, priority);
+        return new CookingPotRecipe(id, ingredients, container, needsContainer, result, experience, cookTime, category, priority, fuzzy);
     }
+
+    static FuzzyRecipeSpec parseFuzzy(ConfigurationSection section) {
+        String mode = section.getString("match-mode", section.contains("perfect") ? "fuzzy" : "exact");
+        if ("exact".equals(mode)) return null;
+        if (!"fuzzy".equals(mode)) throw new IllegalArgumentException("Unknown match-mode: " + mode);
+        Map<String, Integer> perfect = new LinkedHashMap<>();
+        ConfigurationSection weights = section.getConfigurationSection("perfect");
+        if (weights != null) {
+            for (var entry : weights.getValues(false).entrySet()) {
+                if (!(entry.getValue() instanceof Number number) || !Double.isFinite(number.doubleValue())
+                        || number.doubleValue() != number.intValue()) throw new IllegalArgumentException("Ideal weights must be integers");
+                perfect.put(entry.getKey(), number.intValue());
+            }
+        } else {
+            for (String value : section.getStringList("perfect")) {
+                String[] parts = value.trim().split("\\s+", 2);
+                if (parts.length != 2 || perfect.putIfAbsent(parts[0], Integer.parseInt(parts[1])) != null)
+                    throw new IllegalArgumentException("Invalid or duplicate perfect ingredient: " + value);
+            }
+        }
+        return new FuzzyRecipeSpec(perfect,
+                ConfigSectionReader.optionalBoolean(section, "use-equivalent-foods", true, "use_equivalent_foods"),
+                ConfigSectionReader.optionalBoolean(section, "use-seasonings", true, "use_seasonings"),
+                ConfigSectionReader.optionalDouble(section, "minimum-score", 0.15));
+    }
+
+    private static FuzzyRecipeMatcher.Index compileFuzzy(Map<String, CookingPotRecipe> recipes, FoodGroupSnapshot groups) {
+        List<FuzzyRecipeMatcher.Definition> definitions = new ArrayList<>();
+        for (CookingPotRecipe recipe : recipes.values()) {
+            if (recipe.isFuzzy()) definitions.add(new FuzzyRecipeMatcher.Definition(recipe.id(), recipe.fuzzy(), recipe.priority()));
+        }
+        return FuzzyRecipeMatcher.compile(definitions, groups);
+    }
+
+    public List<FoodGroupSnapshot.Group> getLocalFoodGroups() { return snapshot.localFoodGroups(); }
+    public FoodGroupSnapshot getFoodGroups() { return snapshot.foodGroups(); }
 
     /**
      * Values of the {@code container} field that explicitly declare "this recipe needs no container", so a
@@ -594,9 +647,10 @@ public class CookingPotRecipeManager {
             return matched;
         }
         if (candidateRecipes != null) {
-            return matchFirstRecipe(orderedRecipes, null, container, nonEmptyInputs);
+            matched = matchFirstRecipe(orderedRecipes, null, container, nonEmptyInputs);
+            if (matched != null) return matched;
         }
-        return null;
+        return matchFuzzy(nonEmptyInputs, view.customFuzzyIndices().get(customRecipeGroupId), groupRecipes);
     }
 
     private CookingPotRecipe matchDefaultRecipe(List<ItemStack> nonEmptyInputs, ItemStack container, Snapshot view) {
@@ -607,9 +661,30 @@ public class CookingPotRecipeManager {
             return matched;
         }
         if (candidateRecipes != null) {
-            return matchFirstRecipe(view.sortedRecipes(), null, container, nonEmptyInputs);
+            matched = matchFirstRecipe(view.sortedRecipes(), null, container, nonEmptyInputs);
+            if (matched != null) return matched;
         }
-        return null;
+        return matchFuzzy(nonEmptyInputs, view.fuzzyIndex(), view.recipes());
+    }
+
+    private CookingPotRecipe matchFuzzy(List<ItemStack> inputs, FuzzyRecipeMatcher.Index index,
+                                        Map<String, CookingPotRecipe> definitions) {
+        if (index == null || index.isEmpty()) return null;
+        Map<String, Integer> counts = fuzzyCounts(inputs);
+        FuzzyRecipeMatcher.Match match = index.match(counts);
+        if (match == null) return null;
+        CookingPotRecipe source = definitions.get(match.id());
+        return new CookingPotRecipe(source.id(), source.ingredients(), source.container(), source.needsContainer(),
+                FuzzyDishFactory.create(source.result(), match), source.experience(), source.cookTime(), source.category(),
+                source.priority(), source.fuzzy(), counts);
+    }
+
+    private Map<String, Integer> fuzzyCounts(List<ItemStack> inputs) {
+        Map<String, Integer> counts = new HashMap<>();
+        for (ItemStack input : inputs) {
+            if (input != null && !input.getType().isAir() && input.getAmount() > 0) counts.merge(getItemKey(input), 1, Integer::sum);
+        }
+        return Map.copyOf(counts);
     }
 
     private CookingPotRecipe matchFirstRecipe(List<CookingPotRecipe> orderedRecipes, Set<String> candidateRecipeIds,
@@ -631,6 +706,7 @@ public class CookingPotRecipeManager {
     private CookingPotRecipe matchPass(List<CookingPotRecipe> orderedRecipes, Set<String> candidateRecipeIds,
                                        List<ItemStack> nonEmptyInputs, boolean exactSlots) {
         for (CookingPotRecipe recipe : orderedRecipes) {
+            if (recipe.isFuzzy()) continue;
             if (candidateRecipeIds != null && !candidateRecipeIds.contains(recipe.getId())) {
                 continue;
             }
@@ -759,6 +835,9 @@ public class CookingPotRecipeManager {
     }
 
     public boolean canCraft(CookingPotRecipe recipe, List<ItemStack> inputs) {
+        if (recipe != null && recipe.isFuzzy()) {
+            return recipe.matchedInputs() != null && recipe.matchedInputs().equals(fuzzyCounts(inputs));
+        }
         return recipe != null && matchRecipe(recipe, inputs);
     }
 
@@ -843,6 +922,17 @@ public class CookingPotRecipeManager {
     public Map<String, CookingPotRecipe> getRecipes() {
         Snapshot view = snapshot;
         return Collections.unmodifiableMap(view.recipes());
+    }
+
+    /** Local group contents for editing, without inheriting the default recipes. */
+    public Map<String, Map<String, CookingPotRecipe>> getCustomRecipeGroups() {
+        return snapshot.customRecipes();
+    }
+
+    public List<CookingPotRecipe> getEditableRecipes(String customRecipeGroupId) {
+        Snapshot view = snapshot;
+        String group = normalizeRecipeGroupId(customRecipeGroupId);
+        return group == null ? view.sortedRecipes() : view.sortedCustomOnlyRecipes().getOrDefault(group, List.of());
     }
 
     public List<CookingPotRecipe> getAllRecipes() {

@@ -448,5 +448,19 @@
   "farmersdelight.tooltip.hot_cocoa.effect": "Removes some negative effects",
   "farmersdelight.tooltip.melon_juice.effect": "Restores a small amount of health instantly",
   "farmersdelight.tooltip.milk_bottle.effect": "Removes a random status effect",
-  "farmersdelight.tooltip.no_collision": "This block does not have collision yet."
+  "farmersdelight.tooltip.no_collision": "This block does not have collision yet.",
+  "gui.fuzzy.mode_exact": "Exact",
+  "gui.fuzzy.mode_fuzzy": "Fuzzy",
+  "gui.fuzzy.enabled": "Enabled",
+  "gui.fuzzy.disabled": "Disabled",
+  "gui.fuzzy.match_mode": "Recipe mode: %s",
+  "gui.fuzzy.mode_hint": "Click to switch exact/fuzzy matching. Fuzzy recipes use ideal ratios.",
+  "gui.fuzzy.equivalent_foods": "Equivalent foods: %s",
+  "gui.fuzzy.seasonings": "Seasonings: %s",
+  "gui.fuzzy.weight": "Ideal ratio: %s",
+  "gui.fuzzy.quality.superb": "Quality: Superb",
+  "gui.fuzzy.quality.excellent": "Quality: Excellent",
+  "gui.fuzzy.quality.standard": "Quality: Standard",
+  "gui.fuzzy.quality.poor": "Quality: Poor",
+  "gui.fuzzy.groups.title": "Food groups"
 }

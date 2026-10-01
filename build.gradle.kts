@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.huidu.farmersdelight"
-version = "1.0.2"
+version = "1.0.4"
 
 repositories {
     mavenCentral()
@@ -153,8 +153,9 @@ tasks.test {
 
 tasks.processResources {
     filteringCharset = "UTF-8"
+    inputs.property("pluginVersion", project.version.toString())
     filesMatching("paper-plugin.yml") {
-        expand("version" to version)
+        expand("version" to project.version.toString())
     }
 }
 

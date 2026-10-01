@@ -12,6 +12,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
@@ -24,7 +25,7 @@ import java.util.function.Consumer;
 public final class RecipeEditorListener implements Listener {
 
     private static volatile FarmersDelightPlugin registeredPlugin;
-    // One-shot chat prompts (e.g. typing a tag id): uuid -> consumer running on the main thread.
+    // One-shot chat prompts (e.g. typing a tag id): uuid -> consumer running on the player's owning thread.
     private static final Map<UUID, Consumer<String>> CHAT_PROMPTS = new ConcurrentHashMap<>();
 
     private RecipeEditorListener() {
@@ -43,10 +44,14 @@ public final class RecipeEditorListener implements Listener {
         CHAT_PROMPTS.clear();
     }
 
-    /** Queue a one-shot chat input for the player; the next chat message cancels itself and runs on main. */
+    /** Queue a one-shot chat input; the next chat message is consumed on the player's owning thread. */
     public static void promptChat(Player player, Consumer<String> onInput) {
+        promptChat(player, onInput, "gui.editor.tag.manual_prompt");
+    }
+
+    public static void promptChat(Player player, Consumer<String> onInput, String messageKey) {
         CHAT_PROMPTS.put(player.getUniqueId(), onInput);
-        player.sendMessage(I18n.get("gui.editor.tag.manual_prompt", player));
+        player.sendMessage(I18n.getComponent(messageKey, player));
     }
 
     public static void cancelPrompt(UUID playerId) {
@@ -77,7 +82,7 @@ public final class RecipeEditorListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onChat(AsyncChatEvent event) {
         UUID id = event.getPlayer().getUniqueId();
-        Consumer<String> prompt = CHAT_PROMPTS.remove(id);
+        Consumer<String> prompt = CHAT_PROMPTS.get(id);
         if (prompt == null) {
             return;
         }
@@ -86,8 +91,15 @@ public final class RecipeEditorListener implements Listener {
         FarmersDelightPlugin plugin = registeredPlugin;
         if (plugin != null) {
             // Folia has no global main thread; run on the player's region (the prompt reopens their GUI).
-            plugin.scheduler().runForEntity(event.getPlayer(), () -> prompt.accept(message));
+            plugin.scheduler().runForEntity(event.getPlayer(), () -> {
+                if (CHAT_PROMPTS.remove(id, prompt) && event.getPlayer().isOnline()) prompt.accept(message);
+            });
         }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onOpen(InventoryOpenEvent event) {
+        cancelPrompt(event.getPlayer().getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -146,7 +158,9 @@ public final class RecipeEditorListener implements Listener {
     public void onEditorViewDrop(PlayerDropItemEvent event) {
         // The view keeps a fabricated template copy on the cursor: pressing Q drops that copy without going
         // through InventoryClickEvent, so without this guard the template becomes a real item.
-        if (event.getPlayer().getOpenInventory().getTopInventory().getHolder() instanceof RecipeEditorView) {
+        var holder = event.getPlayer().getOpenInventory().getTopInventory().getHolder();
+        if (holder instanceof RecipeEditorView || holder instanceof CookingPotEditorGui
+                || holder instanceof CuttingBoardEditorGui || holder instanceof ChoiceBuilderGui || holder instanceof TagPickerGui) {
             event.setCancelled(true);
             event.getPlayer().setItemOnCursor(null);
         }
@@ -154,10 +168,11 @@ public final class RecipeEditorListener implements Listener {
 
     @EventHandler
     public void onEditorViewClose(InventoryCloseEvent event) {
-        if (event.getInventory().getHolder() instanceof RecipeEditorView
+        if (event.getInventory().getHolder() instanceof RecipeEditorView editor
                 && event.getPlayer() instanceof Player player) {
             // Discard any template copy left on the cursor (it was never a real item).
             player.setItemOnCursor(null);
+            editor.handleClose(event);
         }
     }
 }

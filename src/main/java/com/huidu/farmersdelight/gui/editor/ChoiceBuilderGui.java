@@ -125,7 +125,7 @@ public final class ChoiceBuilderGui extends AbstractInventoryGui implements Edit
     @Override
     public void handleClick(InventoryClickEvent event) {
         event.setCancelled(true);
-        if (closed) {
+        if (closed || !EditorNavigation.allowed(plugin, player)) {
             return;
         }
         int raw = event.getRawSlot();
@@ -195,7 +195,7 @@ public final class ChoiceBuilderGui extends AbstractInventoryGui implements Edit
                 acted = true;
                 super.close();
                 clearCursor();
-                onCancel.run();
+                EditorNavigation.next(plugin, player, inventory, onCancel);
                 return;
             default:
         }
@@ -203,11 +203,12 @@ public final class ChoiceBuilderGui extends AbstractInventoryGui implements Edit
 
     @Override
     public void handleClose(InventoryCloseEvent event) {
+        boolean userClosed = !closed;
         super.close();
         clearCursor();
-        if (!acted) {
+        if (!acted && userClosed) {
             acted = true;
-            plugin.scheduler().runLaterForEntity(player, onCancel, 1L);
+            EditorNavigation.afterPlayerClose(plugin, player, event, onCancel);
         }
     }
 
@@ -229,7 +230,7 @@ public final class ChoiceBuilderGui extends AbstractInventoryGui implements Edit
         acted = true;
         super.close();
         clearCursor();
-        onConfirm.accept(result);
+        EditorNavigation.next(plugin, player, inventory, () -> onConfirm.accept(result));
     }
 
     private void clearCursor() {
@@ -243,7 +244,7 @@ public final class ChoiceBuilderGui extends AbstractInventoryGui implements Edit
         List<String> tags = ItemUtils.getAllItemTagIds(source);
         if (tags.isEmpty()) return;
         closed = true;
-        new TagPickerGui(plugin, player, pickerConfig, source, tags,
+        EditorNavigation.next(plugin, player, inventory, () -> new TagPickerGui(plugin, player, pickerConfig, source, tags,
                 ingredient -> {
                     IngredientEntry entry = IngredientEntry.of(ingredient);
                     if (entry != null) {
@@ -251,10 +252,11 @@ public final class ChoiceBuilderGui extends AbstractInventoryGui implements Edit
                     }
                     reopen();
                 },
-                this::reopen).open();
+                this::reopen).open());
     }
 
     private void reopen() {
+        if (!EditorNavigation.allowed(plugin, player)) return;
         closed = false;
         render();
         player.openInventory(inventory);

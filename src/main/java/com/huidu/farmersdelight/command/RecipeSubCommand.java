@@ -134,7 +134,7 @@ final class RecipeSubCommand extends SubCommand {
             return;
         }
         if (args.length < 3) {
-            player.sendMessage(I18n.getComponent("gui.editor.usage", player));
+            RecipeEditorView.openHome(plugin, player);
             return;
         }
         String type = normalize(args[2]);
@@ -420,10 +420,13 @@ final class RecipeSubCommand extends SubCommand {
 
         if (admin && args.length >= 3 && normalize(args[1]).equals("edit")) {
             if (args.length == 3) {
-                return prefixFilter(normalize(args[2]), List.of("pot", "board"));
+                return prefixFilter(normalize(args[2]), List.of("pot", "board", "groups"));
             }
             if (args.length == 4) {
                 String type = normalize(args[2]);
+                if (type.equals("groups")) {
+                    return prefixFilter(normalize(args[3]), plugin.getCookingPotRecipes().getLocalFoodGroups().stream().map(com.huidu.farmersdelight.recipe.FoodGroupSnapshot.Group::id).toList());
+                }
                 if (RecipeStationType.isCookingPot(type)) {
                     return prefixFilter(normalize(args[3]), new ArrayList<>(plugin.getCookingPotRecipes().getRecipes().keySet()));
                 }

@@ -448,5 +448,19 @@
   "farmersdelight.tooltip.hot_cocoa.effect": "清除部分负面效果",
   "farmersdelight.tooltip.melon_juice.effect": "瞬间恢复少量生命值",
   "farmersdelight.tooltip.milk_bottle.effect": "随机清除1个状态效果",
-  "farmersdelight.tooltip.no_collision": "该方块暂未实现物理碰撞效果"
+  "farmersdelight.tooltip.no_collision": "该方块暂未实现物理碰撞效果",
+  "gui.fuzzy.mode_exact": "精准",
+  "gui.fuzzy.mode_fuzzy": "模糊",
+  "gui.fuzzy.enabled": "已开启",
+  "gui.fuzzy.disabled": "已关闭",
+  "gui.fuzzy.match_mode": "配方模式：%s",
+  "gui.fuzzy.mode_hint": "点击切换精准或模糊配方；模糊配方使用理想配比。",
+  "gui.fuzzy.equivalent_foods": "等效食材：%s",
+  "gui.fuzzy.seasonings": "调味品：%s",
+  "gui.fuzzy.weight": "理想配比：%s",
+  "gui.fuzzy.quality.superb": "品质：完美",
+  "gui.fuzzy.quality.excellent": "品质：优秀",
+  "gui.fuzzy.quality.standard": "品质：普通",
+  "gui.fuzzy.quality.poor": "品质：生疏",
+  "gui.fuzzy.groups.title": "食材分组"
 }

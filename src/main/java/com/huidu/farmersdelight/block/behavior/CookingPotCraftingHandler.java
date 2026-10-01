@@ -50,6 +50,19 @@ public class CookingPotCraftingHandler {
         FarmersDelightPlugin plugin = entity.plugin();
         var recipes = plugin == null ? null : plugin.getCookingPotRecipes();
         if (recipes == null) return null;
+        if (recipe.isFuzzy()) {
+            if (!recipes.canCraft(recipe, available)) return null;
+            int[] consume = new int[slots.length];
+            List<ItemStack> remainders = new ArrayList<>();
+            for (int idx = 0; idx < slots.length; idx++) {
+                ItemStack input = available.get(idx);
+                if (input == null || input.getType().isAir() || input.getAmount() <= 0) continue;
+                consume[idx] = 1;
+                ItemStack remainder = getCraftingRemainder(input, recipe);
+                if (remainder != null && !remainder.getType().isAir()) remainders.add(remainder);
+            }
+            return new Consumption(consume, remainders);
+        }
         // Use each filled slot once when possible, then allow stacked units for overlapping ingredients.
         int[] assignment = IngredientMatching.assignIngredients(
                 recipe.getIngredients(), available, recipes::matchesIngredient,

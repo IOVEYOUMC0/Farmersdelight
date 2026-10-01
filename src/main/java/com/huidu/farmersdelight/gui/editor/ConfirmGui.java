@@ -65,7 +65,7 @@ public final class ConfirmGui extends AbstractInventoryGui implements EditorGui 
     @Override
     public void handleClick(InventoryClickEvent event) {
         event.setCancelled(true);
-        if (acted) {
+        if (acted || !EditorNavigation.allowed(plugin, player)) {
             return;
         }
         int raw = event.getRawSlot();
@@ -75,10 +75,10 @@ public final class ConfirmGui extends AbstractInventoryGui implements EditorGui 
         String type = config.getSlotType(raw);
         if ("confirm".equals(type)) {
             acted = true;
-            onConfirm.run();
+            EditorNavigation.next(plugin, player, inventory, onConfirm);
         } else if ("cancel".equals(type)) {
             acted = true;
-            onCancel.run();
+            EditorNavigation.next(plugin, player, inventory, onCancel);
         }
     }
 
@@ -89,7 +89,7 @@ public final class ConfirmGui extends AbstractInventoryGui implements EditorGui 
             return;
         }
         acted = true;
-        plugin.scheduler().runLaterForEntity(player, onCancel, 1L);
+        EditorNavigation.afterPlayerClose(plugin, player, event, onCancel);
     }
 
     private ItemStack configItem(String key, Map<String, String> placeholders) {

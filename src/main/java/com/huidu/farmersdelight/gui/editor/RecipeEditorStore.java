@@ -160,6 +160,19 @@ public final class RecipeEditorStore {
         return CUSTOM_COOKING_POT_ROOT + "." + customGroupId + "." + recipeId;
     }
 
+    public CompletableFuture<Boolean> saveFoodGroupAsync(String originalId, com.huidu.farmersdelight.recipe.FoodGroupSnapshot.Group group) {
+        Map<String, Object> body = Map.of("kind", group.kind().name().toLowerCase(java.util.Locale.ROOT), "items", group.items());
+        return captureAsync(() -> local(com.huidu.farmersdelight.recipe.FoodGroupStore.FILE, yaml -> {
+            if (originalId != null && !originalId.equals(group.id())) putRecipe(yaml, "groups", originalId, null);
+            putRecipe(yaml, "groups", group.id(), body);
+        }));
+    }
+
+    public CompletableFuture<Boolean> deleteFoodGroupAsync(String id) {
+        return captureAsync(() -> local(com.huidu.farmersdelight.recipe.FoodGroupStore.FILE,
+                yaml -> putRecipe(yaml, "groups", id, null)));
+    }
+
     private Map<String, Object> buildCookingPotBody(CookingPotRecipe recipe) {
         Map<String, Object> body = new LinkedHashMap<>();
 
@@ -168,6 +181,14 @@ public final class RecipeEditorStore {
             ingredients.add(RecipeSerializer.serializeIngredientValue(ingredient));
         }
         body.put("ingredients", ingredients);
+        if (recipe.isFuzzy()) {
+            body.remove("ingredients");
+            body.put("match-mode", "fuzzy");
+            body.put("perfect", new LinkedHashMap<>(recipe.fuzzy().perfect()));
+            if (!recipe.fuzzy().useEquivalentFoods()) body.put("use-equivalent-foods", false);
+            if (!recipe.fuzzy().useSeasonings()) body.put("use-seasonings", false);
+            if (recipe.fuzzy().minimumScore() != 0.15) body.put("minimum-score", recipe.fuzzy().minimumScore());
+        }
 
         ItemStack container = recipe.getContainer();
         if (container != null && !container.getType().isAir()) {

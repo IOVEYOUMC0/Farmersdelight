@@ -485,6 +485,7 @@ public final class ConfigBootstrap {
 
             int migrated = migrateLegacyGuiSections(existing.getConfigurationSection("recipe-view-gui"));
             migrated += migrateEmptyGuiMaps(existing);
+            migrated += migrateDefaultPotEditor(existing, bundled);
             int added = ConfigFileUpdater.copyMissingKeys(bundled, existing, List.of());
             if (migrated > 0 || added > 0) {
                 backupQuietly(guiPath);
@@ -496,6 +497,13 @@ public final class ConfigBootstrap {
         } catch (Exception e) {
             I18n.logWarning("plugin.config_merge_failed", "file", "gui.yml", "error", e.getMessage());
         }
+    }
+
+    static int migrateDefaultPotEditor(ConfigurationSection gui, ConfigurationSection bundled) {
+        List<String> previous = List.of("####i####", "#III#C#R#", "#III###N#", "#########", "#T#E#P#G#", "X#O#D#K#S");
+        if (!gui.getStringList("recipe-editor-gui.layout").equals(previous)) return 0;
+        gui.set("recipe-editor-gui.layout", bundled.getStringList("recipe-editor-gui.layout"));
+        return 1;
     }
 
     /** Repair the empty lists shipped in place of per-item GUI maps, without replacing operator entries. */

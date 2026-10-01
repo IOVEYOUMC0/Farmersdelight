@@ -26,7 +26,8 @@ class RecipeSnapshotTest {
         return new CookingPotRecipeManager.Snapshot(Map.of("base", base),
                 Map.of("group", Map.of("custom", custom)), Map.of(), Map.of(), List.of(base),
                 Map.of("group", List.of(base, custom)), Map.of("group", List.of(custom)), Map.of(), Set.of(),
-                0, generation, new HashMap<>(), new HashSet<>());
+                0, generation, new HashMap<>(), new HashSet<>(),
+                FuzzyRecipeMatcher.compile(List.of(), FoodGroupSnapshot.empty()), Map.of(), List.of(), FoodGroupSnapshot.empty());
     }
 
     @Test void mergedPublicViewsDoNotMixDefaultAndCustomRecipesAcrossConcurrentPublication() throws Exception {
@@ -53,6 +54,23 @@ class RecipeSnapshotTest {
             }
             writer.get(10, TimeUnit.SECONDS);
         }
+    }
+
+    @Test void editorGroupsExcludeInheritedRecipesAndRemainImmutableAcrossReload() throws Exception {
+        var manager = new CookingPotRecipeManager(null);
+        var field = CookingPotRecipeManager.class.getDeclaredField("snapshot");
+        field.setAccessible(true);
+        field.set(manager, snapshot("old", 1));
+        var retained = manager.getCustomRecipeGroups();
+        assertEquals(List.of("custom"), manager.getEditableRecipes("group").stream().map(CookingPotRecipe::id).toList());
+        assertEquals(List.of("base"), manager.getEditableRecipes(null).stream().map(CookingPotRecipe::id).toList());
+        assertTrue(manager.getEditableRecipes("missing").isEmpty());
+        assertThrows(UnsupportedOperationException.class, () -> retained.clear());
+        assertThrows(UnsupportedOperationException.class, () -> retained.get("group").clear());
+        assertThrows(UnsupportedOperationException.class, () -> manager.getEditableRecipes("group").clear());
+        field.set(manager, snapshot("new", 2));
+        assertEquals("old", retained.get("group").get("custom").category());
+        assertEquals("new", manager.getEditableRecipes("group").getFirst().category());
     }
 
     @Test void oldMatchCachesRemainPrivateToTheRetiredSnapshot() throws Exception {

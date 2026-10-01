@@ -78,7 +78,42 @@ public final class ResourceInstaller {
         changed += migrateAnimatedGuiItem(targetRoot.resolve("configuration").resolve("gui.yml"));
         changed += migrateLegacyPositionArguments(targetRoot);
         changed += com.huidu.farmersdelight.config.ProjectBranding.migrateCraftEnginePack(targetRoot);
+        changed += migrateFuzzyTranslations(targetRoot);
         return changed;
+    }
+
+    private int migrateFuzzyTranslations(Path targetRoot) throws IOException {
+        int changed = 0;
+        for (String locale : List.of("en_us", "zh_cn")) {
+            String relative = "resourcepack/assets/farmersdelight/lang/" + locale + ".json";
+            Path path = targetRoot.resolve(relative);
+            if (!Files.isRegularFile(path)) continue;
+            try (InputStream bundled = plugin.getResource(CRAFTENGINE_RESOURCE_ROOT + "/" + relative)) {
+                if (bundled == null) continue;
+                String replacement = mergeFuzzyTranslations(Files.readString(path), new String(bundled.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+                if (replacement != null) {
+                    ConfigFileUpdater.backup(path);
+                    ConfigFileUpdater.writeStringAtomically(path, replacement, true);
+                    changed++;
+                }
+            } catch (com.google.gson.JsonParseException invalid) {
+                throw new IOException("Invalid resource-pack language document: " + locale, invalid);
+            }
+        }
+        return changed;
+    }
+
+    static String mergeFuzzyTranslations(String original, String bundled) {
+        var existing = com.google.gson.JsonParser.parseString(original).getAsJsonObject();
+        var defaults = com.google.gson.JsonParser.parseString(bundled).getAsJsonObject();
+        boolean changed = false;
+        for (var entry : defaults.entrySet()) {
+            if (entry.getKey().startsWith("gui.fuzzy.") && !existing.has(entry.getKey())) {
+                existing.add(entry.getKey(), entry.getValue());
+                changed = true;
+            }
+        }
+        return changed ? new com.google.gson.GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create().toJson(existing) + "\n" : null;
     }
 
     private int migrateLegacyPositionArguments(Path targetRoot) throws IOException {

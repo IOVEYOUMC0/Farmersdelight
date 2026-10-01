@@ -887,6 +887,15 @@ public class CookingPotBlockBehavior extends FarmersDelightBlockBehavior impleme
             tickManager.markActive(world, posKey, TickManager.BlockType.COOKING_POT);
         }
 
+        if (com.huidu.farmersdelight.util.compat.KaleidoscopeCompat.isRecipeBook(heldItem)) {
+            var outcome = CookingPotRecipeTransfer.fill(plugin, bukkitPlayer, blockEntity,
+                    targetBlock.getLocation(), com.huidu.farmersdelight.util.compat.KaleidoscopeCompat.ingredients(heldItem));
+            bukkitPlayer.sendMessage(com.huidu.farmersdelight.i18n.I18n.getComponent(
+                    "compat.kaleidoscope.auto_fill." + outcome.name().toLowerCase(java.util.Locale.ROOT), bukkitPlayer));
+            if (outcome == com.huidu.farmersdelight.recipe.RecipeAutoFillPlan.Result.FILLED) ItemUtils.swingHand(bukkitPlayer, context.getHand());
+            return InteractionResult.SUCCESS_AND_CANCEL;
+        }
+
         if (handleHeldContainerServing(bukkitPlayer, context.getHand(), world, posKey, blockEntity)) {
             ItemUtils.swingHand(bukkitPlayer, context.getHand());
             return InteractionResult.SUCCESS_AND_CANCEL;

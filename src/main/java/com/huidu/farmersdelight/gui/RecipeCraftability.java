@@ -63,8 +63,21 @@ final class RecipeCraftability {
         IngredientMatchMemo<ItemStack, RecipeIngredient> matches = IngredientMatchMemo.of(
                 plugin.getCookingPotRecipes()::matchesIngredient, RecipeIngredient::stableKey);
         List<CookingPotRecipe> craftableRecipes = new ArrayList<>();
+        var groups = plugin.getCookingPotRecipes().getFoodGroups();
         for (CookingPotRecipe recipe : recipes) {
             if (entity != null && !canRecipeFitCookingPot(recipe, entity)) {
+                continue;
+            }
+            if (recipe.isFuzzy()) {
+                java.util.Set<String> held = new java.util.HashSet<>();
+                for (ItemStack item : available) {
+                    String id = com.huidu.farmersdelight.util.ItemUtils.resolveItemId(item);
+                    if (id == null || recipe.fuzzy().useSeasonings() && groups.seasonings().contains(id)) continue;
+                    held.add(recipe.fuzzy().useEquivalentFoods() ? groups.canonical(id) : id);
+                }
+                boolean present = recipe.fuzzy().perfect().keySet().stream()
+                        .allMatch(id -> held.contains(recipe.fuzzy().useEquivalentFoods() ? groups.canonical(id) : id));
+                if (present) craftableRecipes.add(recipe);
                 continue;
             }
             if (IngredientMatching.containsIngredients(

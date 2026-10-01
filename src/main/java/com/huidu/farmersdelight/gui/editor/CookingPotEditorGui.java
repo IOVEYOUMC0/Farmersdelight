@@ -5,6 +5,8 @@ import com.huidu.farmersdelight.gui.AbstractInventoryGui;
 import com.huidu.farmersdelight.gui.GuiConfig;
 import com.huidu.farmersdelight.gui.RecipeViewGuiConfig;
 import com.huidu.farmersdelight.recipe.CookingPotRecipe;
+import com.huidu.farmersdelight.recipe.FuzzyRecipeSpec;
+import com.huidu.farmersdelight.i18n.I18n;
 import com.huidu.farmersdelight.recipe.RecipeIngredient;
 import com.huidu.farmersdelight.recipe.RecipeSerializer;
 import com.huidu.farmersdelight.util.ItemUtils;
@@ -39,18 +41,24 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
     // ingredient records are immutable (Item/Tag/Choice) and only the two ItemStacks need cloning.
     private static final Set<String> MUTABLE_TYPES = Set.of(
             "ingredient", "container", "result", "result-count",
-            "cook-time", "experience", "priority", "category");
+            "cook-time", "experience", "priority", "category", "match-mode", "equivalent-foods", "seasonings");
 
     private boolean saving;
     private final String recipeId;
     private final String customGroupId;
     private final boolean editingExisting;
     private final RecipeViewGuiConfig.BaseConfig config;
+    private final Runnable back;
 
     private final List<Integer> ingredientSlots;
     private final Map<Integer, String> slotTypeByIndex = new HashMap<>();
 
     private final RecipeIngredient[] ingredients;
+    private final int[] weights;
+    private boolean fuzzy;
+    private boolean equivalentFoods = true;
+    private boolean seasonings = true;
+    private double minimumScore = 0.15;
     private ItemStack container;
     private ItemStack result;
     private int resultCount = 1;
@@ -65,13 +73,23 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
     public CookingPotEditorGui(FarmersDelightPlugin plugin, Player player, String recipeId,
                                String customGroupId, CookingPotRecipe existing,
                                RecipeViewGuiConfig.BaseConfig config) {
+        this(plugin, player, recipeId, customGroupId, existing, config,
+                () -> RecipeEditorMenuGui.openPotRecipes(plugin, player, customGroupId));
+    }
+
+    public CookingPotEditorGui(FarmersDelightPlugin plugin, Player player, String recipeId,
+                               String customGroupId, CookingPotRecipe existing,
+                               RecipeViewGuiConfig.BaseConfig config, Runnable back) {
         super(plugin, player);
+        this.back = back;
         this.recipeId = recipeId;
         this.customGroupId = customGroupId;
         this.editingExisting = existing != null;
         this.config = config;
         this.ingredientSlots = config.getSlotsByType("ingredient");
         this.ingredients = new RecipeIngredient[Math.max(1, ingredientSlots.size())];
+        this.weights = new int[this.ingredients.length];
+        java.util.Arrays.fill(weights, 1);
 
         for (int i = 0; i < config.getSize(); i++) {
             String type = config.getSlotType(i);
@@ -87,9 +105,16 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
     }
 
     private void loadFrom(CookingPotRecipe recipe) {
+        fuzzy = recipe.isFuzzy();
+        if (fuzzy) {
+            equivalentFoods = recipe.fuzzy().useEquivalentFoods();
+            seasonings = recipe.fuzzy().useSeasonings();
+            minimumScore = recipe.fuzzy().minimumScore();
+        }
         List<RecipeIngredient> recipeIngredients = recipe.getIngredients();
         for (int i = 0; i < ingredients.length && i < recipeIngredients.size(); i++) {
             ingredients[i] = recipeIngredients.get(i);
+            if (fuzzy && ingredients[i] instanceof RecipeIngredient.Item item) weights[i] = recipe.fuzzy().perfect().getOrDefault(item.key().toString(), 1);
         }
         if (recipeIngredients.size() > ingredients.length) {
             player.sendMessage(Component.translatable("gui.editor.feedback.too_many_ingredients",
@@ -107,8 +132,11 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
     }
 
     public void open() {
+        if (!EditorNavigation.allowed(plugin, player)) return;
         doOpen(this::render);
     }
+
+    void setInitialFuzzyMode(boolean fuzzy) { this.fuzzy = fuzzy; }
 
     @Override
     protected AbstractInventoryGui findExistingGui(UUID playerId) {
@@ -144,7 +172,19 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
             case "ingredient": {
                 int idx = ingredientSlots.indexOf(slot);
                 RecipeIngredient ingredient = idx >= 0 && idx < ingredients.length ? ingredients[idx] : null;
-                return ingredient == null ? configItem("ingredient", noPlaceholders()) : displayForIngredient(ingredient);
+                ItemStack displayed = ingredient == null ? configItem("ingredient", noPlaceholders()) : displayForIngredient(ingredient);
+                if (fuzzy && ingredient != null) {
+                    displayed.setAmount(weights[idx]);
+                    var meta = displayed.getItemMeta();
+                    if (meta != null) {
+                        List<Component> lore = meta.lore() == null ? new ArrayList<>() : new ArrayList<>(meta.lore());
+                        lore.add(I18n.getComponent("gui.fuzzy.weight", player, Map.of("weight", String.valueOf(weights[idx]))));
+                        lore.add(I18n.getComponent("gui.fuzzy.ingredient_hint", player));
+                        meta.lore(lore);
+                        displayed.setItemMeta(meta);
+                    }
+                }
+                return displayed;
             }
             case "container":
                 return container == null || container.getType().isAir()
@@ -164,6 +204,13 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
                 return configItem("priority", Map.of("priority", String.valueOf(priority)));
             case "category":
                 return configItem("category", Map.of("category", category));
+            case "match-mode":
+                return configItem(type, Map.of("mode", I18n.get("gui.fuzzy.mode_" + (fuzzy ? "fuzzy" : "exact"), player)));
+            case "equivalent-foods", "seasonings":
+                return configItem(type, Map.of("state", I18n.get("gui.fuzzy."
+                        + ((type.equals("equivalent-foods") ? equivalentFoods : seasonings) ? "enabled" : "disabled"), player)));
+            case "food-groups":
+                return configItem(type, noPlaceholders());
             case "info":
                 return configItem("info", Map.of(
                         "recipe_id", recipeId,
@@ -187,7 +234,7 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
     @Override
     public void handleClick(InventoryClickEvent event) {
         event.setCancelled(true);
-        if (closed || saving) {
+        if (closed || saving || !EditorNavigation.allowed(plugin, player)) {
             return;
         }
         int raw = event.getRawSlot();
@@ -228,6 +275,10 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
             case "ingredient": {
                 int idx = ingredientSlots.indexOf(slot);
                 if (idx < 0 || idx >= ingredients.length) {
+                    return;
+                }
+                if (fuzzy) {
+                    editFuzzyIngredient(idx, click, cursor);
                     return;
                 }
                 if (click.isShiftClick()) {
@@ -286,6 +337,31 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
                 }
                 render();
                 return;
+            case "match-mode":
+                if (!fuzzy) {
+                    for (RecipeIngredient ingredient : ingredients) {
+                        if (ingredient != null && !(ingredient instanceof RecipeIngredient.Item)) {
+                            player.sendMessage(I18n.getComponent("gui.fuzzy.concrete_items_only", player));
+                            return;
+                        }
+                    }
+                }
+                fuzzy = !fuzzy;
+                render();
+                return;
+            case "equivalent-foods":
+                equivalentFoods = !equivalentFoods;
+                render();
+                return;
+            case "seasonings":
+                seasonings = !seasonings;
+                render();
+                return;
+            case "food-groups":
+                clearCursor();
+                closed = true;
+                EditorNavigation.next(plugin, player, inventory, () -> FoodGroupEditorGui.open(plugin, player, this::reopen));
+                return;
             case "result-count":
                 // Shift-click adjusts by tens, plain click by one.
                 resultCount = clamp(resultCount + (click.isRightClick()
@@ -343,10 +419,57 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
         }
     }
 
+    private void editFuzzyIngredient(int index, ClickType click, ItemStack cursor) {
+        if (click == ClickType.SHIFT_RIGHT) {
+            ingredients[index] = null;
+            weights[index] = 1;
+            render();
+            return;
+        }
+        if (cursor != null && !cursor.getType().isAir() && click.isLeftClick()) {
+            try {
+                String id = FuzzyRecipeSpec.normalizeId(ItemUtils.resolveItemId(cursor));
+                ingredients[index] = new RecipeIngredient.Item(net.momirealms.craftengine.core.util.Key.of(id));
+                clearCursor();
+                render();
+            } catch (IllegalArgumentException invalid) {
+                player.sendMessage(I18n.getComponent("gui.fuzzy.invalid_input", player));
+            }
+            return;
+        }
+        boolean editingWeight = click.isRightClick() && ingredients[index] != null;
+        closed = true;
+        clearCursor();
+        EditorNavigation.next(plugin, player, inventory, () -> {
+            player.closeInventory();
+            RecipeEditorListener.promptChat(player, input -> {
+                if (!EditorNavigation.allowed(plugin, player)) return;
+                if (!"cancel".equalsIgnoreCase(input.trim())) {
+                    try {
+                        if (editingWeight) {
+                            int weight = Integer.parseInt(input.trim());
+                            if (weight < 1 || weight > 64) throw new IllegalArgumentException("Weight out of range");
+                            weights[index] = weight;
+                        } else {
+                            String id = FuzzyRecipeSpec.normalizeId(input);
+                            ItemStack sample = ItemUtils.createItem(id);
+                            if (sample == null || sample.getType().isAir()) throw new IllegalArgumentException("Unknown item");
+                            ingredients[index] = new RecipeIngredient.Item(net.momirealms.craftengine.core.util.Key.of(id));
+                        }
+                    } catch (IllegalArgumentException invalid) {
+                        player.sendMessage(I18n.getComponent("gui.fuzzy.invalid_input", player));
+                    }
+                }
+                reopen();
+            }, editingWeight ? "gui.fuzzy.weight_prompt" : "gui.fuzzy.item_prompt");
+        });
+    }
+
     /** A frozen copy of every editable field. Ingredient records are immutable, so the array is copied
      * shallowly; the two ItemStacks are cloned since they carry mutable stack data. */
     private record Snapshot(RecipeIngredient[] ingredients, ItemStack container, ItemStack result,
-                            int resultCount, int cookTime, float experience, int priority, String category) {
+                            int resultCount, int cookTime, float experience, int priority, String category,
+                            int[] weights, boolean fuzzy, boolean equivalentFoods, boolean seasonings, double minimumScore) {
     }
 
     private Snapshot capture() {
@@ -355,7 +478,8 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
         return new Snapshot(ingredientsCopy,
                 container == null ? null : container.clone(),
                 result == null ? null : result.clone(),
-                resultCount, cookTime, experience, priority, category);
+                resultCount, cookTime, experience, priority, category,
+                weights.clone(), fuzzy, equivalentFoods, seasonings, minimumScore);
     }
 
     private void apply(Snapshot snapshot) {
@@ -367,6 +491,11 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
         experience = snapshot.experience;
         priority = snapshot.priority;
         category = snapshot.category;
+        System.arraycopy(snapshot.weights, 0, weights, 0, weights.length);
+        fuzzy = snapshot.fuzzy;
+        equivalentFoods = snapshot.equivalentFoods;
+        seasonings = snapshot.seasonings;
+        minimumScore = snapshot.minimumScore;
         if (result != null) {
             result.setAmount(resultCount);
         }
@@ -399,9 +528,10 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
 
     @Override
     public void handleClose(InventoryCloseEvent event) {
+        boolean returnToParent = !closed;
         super.close();
         clearCursor();
-        plugin.scheduler().runLaterForEntity(player, this::clearCursor, 1L);
+        if (returnToParent) EditorNavigation.afterPlayerClose(plugin, player, event, back);
     }
 
     private void save() {
@@ -434,9 +564,31 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
             }
         }
 
+        FuzzyRecipeSpec spec = null;
+        if (fuzzy) {
+            Map<String, Integer> perfect = new java.util.LinkedHashMap<>();
+            for (int i = 0; i < ingredients.length; i++) {
+                if (ingredients[i] == null) continue;
+                if (!(ingredients[i] instanceof RecipeIngredient.Item item)) {
+                    player.sendMessage(I18n.getComponent("gui.fuzzy.concrete_items_only", player));
+                    return;
+                }
+                if (perfect.putIfAbsent(item.key().toString(), weights[i]) != null) {
+                    player.sendMessage(I18n.getComponent("gui.fuzzy.duplicate_ingredient", player));
+                    return;
+                }
+            }
+            try {
+                spec = new FuzzyRecipeSpec(perfect, equivalentFoods, seasonings, minimumScore);
+            } catch (IllegalArgumentException invalid) {
+                player.sendMessage(I18n.getComponent("gui.fuzzy.invalid_input", player));
+                return;
+            }
+        }
+
         CookingPotRecipe recipe = new CookingPotRecipe(
                 recipeId, ingredientList, savedContainer, savedContainer != null, savedResult,
-                experience, cookTime, category, priority);
+                experience, cookTime, category, priority, spec);
 
         saving = true;
         finishEdit(RecipeEditorView.store().saveCookingPotRecipeAsync(recipe, customGroupId), false);
@@ -449,8 +601,8 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
             return;
         }
         closed = true;
-        new ConfirmGui(plugin, player, confirmConfig, Map.of("recipe_id", recipeId),
-                this::performDelete, this::reopen).open();
+        EditorNavigation.next(plugin, player, inventory, () -> new ConfirmGui(plugin, player, confirmConfig,
+                Map.of("recipe_id", recipeId), this::performDelete, this::reopen).open());
     }
 
     private void performDelete() {
@@ -482,11 +634,7 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
                     // Completion from an old editor must not close a newly opened screen.
                     if (player.getOpenInventory().getTopInventory() == expected) {
                         if (saved) {
-                            if (deleting) {
-                                player.closeInventory();
-                            } else {
-                                closeEditor();
-                            }
+                            closeEditor(expected);
                         } else if (deleting && closed) {
                             reopen();
                         }
@@ -536,12 +684,12 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
             return;
         }
         closed = true;
-        new TagPickerGui(plugin, player, pickerConfig, source, tags,
+        EditorNavigation.next(plugin, player, inventory, () -> new TagPickerGui(plugin, player, pickerConfig, source, tags,
                 ingredient -> {
                     ingredients[idx] = ingredient;
                     reopen();
                 },
-                this::reopen).open();
+                this::reopen).open());
     }
 
     private void openChoiceBuilder(int idx) {
@@ -552,24 +700,29 @@ public final class CookingPotEditorGui extends AbstractInventoryGui implements E
             return;
         }
         closed = true;
-        new ChoiceBuilderGui(plugin, player, choiceConfig, idx + 1, ingredients[idx],
+        EditorNavigation.next(plugin, player, inventory, () -> new ChoiceBuilderGui(plugin, player, choiceConfig, idx + 1, ingredients[idx],
                 ingredient -> {
                     ingredients[idx] = ingredient;
                     reopen();
                 },
-                this::reopen).open();
+                this::reopen).open());
     }
 
     void reopen() {
+        if (!EditorNavigation.allowed(plugin, player)) return;
         closed = false;
         render();
         player.openInventory(inventory);
     }
 
     private void closeEditor() {
+        closeEditor(inventory);
+    }
+
+    private void closeEditor(org.bukkit.inventory.Inventory expected) {
         super.close();
         clearCursor();
-        player.closeInventory();
+        EditorNavigation.next(plugin, player, expected, back);
     }
 
     private void clearCursor() {

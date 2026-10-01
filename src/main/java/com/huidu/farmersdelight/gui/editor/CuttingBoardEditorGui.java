@@ -40,6 +40,7 @@ public final class CuttingBoardEditorGui extends AbstractInventoryGui implements
     private final String recipeId;
     private final boolean editingExisting;
     private final RecipeViewGuiConfig.BaseConfig config;
+    private final Runnable back;
 
     private final List<Integer> toolSlots;
     private final List<Integer> resultSlots;
@@ -54,7 +55,13 @@ public final class CuttingBoardEditorGui extends AbstractInventoryGui implements
 
     public CuttingBoardEditorGui(FarmersDelightPlugin plugin, Player player, String recipeId,
                                  CuttingBoardRecipe existing, RecipeViewGuiConfig.BaseConfig config) {
+        this(plugin, player, recipeId, existing, config, () -> RecipeEditorMenuGui.openBoardRecipes(plugin, player));
+    }
+
+    public CuttingBoardEditorGui(FarmersDelightPlugin plugin, Player player, String recipeId,
+                                 CuttingBoardRecipe existing, RecipeViewGuiConfig.BaseConfig config, Runnable back) {
         super(plugin, player);
+        this.back = back;
         this.recipeId = recipeId;
         this.editingExisting = existing != null;
         this.config = config;
@@ -97,6 +104,7 @@ public final class CuttingBoardEditorGui extends AbstractInventoryGui implements
     }
 
     public void open() {
+        if (!EditorNavigation.allowed(plugin, player)) return;
         doOpen(this::render);
     }
 
@@ -170,7 +178,7 @@ public final class CuttingBoardEditorGui extends AbstractInventoryGui implements
     @Override
     public void handleClick(InventoryClickEvent event) {
         event.setCancelled(true);
-        if (closed || saving) {
+        if (closed || saving || !EditorNavigation.allowed(plugin, player)) {
             return;
         }
         int raw = event.getRawSlot();
@@ -325,9 +333,10 @@ public final class CuttingBoardEditorGui extends AbstractInventoryGui implements
 
     @Override
     public void handleClose(InventoryCloseEvent event) {
+        boolean returnToParent = !closed;
         super.close();
         clearCursor();
-        plugin.scheduler().runLaterForEntity(player, this::clearCursor, 1L);
+        if (returnToParent) EditorNavigation.afterPlayerClose(plugin, player, event, back);
     }
 
     private void save() {
@@ -370,8 +379,8 @@ public final class CuttingBoardEditorGui extends AbstractInventoryGui implements
             return;
         }
         closed = true;
-        new ConfirmGui(plugin, player, confirmConfig, Map.of("recipe_id", recipeId),
-                this::performDelete, this::reopen).open();
+        EditorNavigation.next(plugin, player, inventory, () -> new ConfirmGui(plugin, player, confirmConfig,
+                Map.of("recipe_id", recipeId), this::performDelete, this::reopen).open());
     }
 
     private void performDelete() {
@@ -403,11 +412,7 @@ public final class CuttingBoardEditorGui extends AbstractInventoryGui implements
                     // Completion from an old editor must not close a newly opened screen.
                     if (player.getOpenInventory().getTopInventory() == expected) {
                         if (saved) {
-                            if (deleting) {
-                                player.closeInventory();
-                            } else {
-                                closeEditor();
-                            }
+                            closeEditor(expected);
                         } else if (deleting && closed) {
                             reopen();
                         }
@@ -436,12 +441,12 @@ public final class CuttingBoardEditorGui extends AbstractInventoryGui implements
             return;
         }
         closed = true;
-        new TagPickerGui(plugin, player, pickerConfig, source, tags,
+        EditorNavigation.next(plugin, player, inventory, () -> new TagPickerGui(plugin, player, pickerConfig, source, tags,
                 ingredient -> {
                     input = ingredient;
                     reopen();
                 },
-                this::reopen).open();
+                this::reopen).open());
     }
 
     private void openToolTagPicker(int idx, ItemStack source) {
@@ -458,7 +463,7 @@ public final class CuttingBoardEditorGui extends AbstractInventoryGui implements
             return;
         }
         closed = true;
-        new TagPickerGui(plugin, player, pickerConfig, source, tags,
+        EditorNavigation.next(plugin, player, inventory, () -> new TagPickerGui(plugin, player, pickerConfig, source, tags,
                 ingredient -> {
                     if (ingredient instanceof RecipeIngredient.Tag tag) {
                         tools[idx] = new CuttingBoardRecipe.ToolRequirement(
@@ -466,7 +471,7 @@ public final class CuttingBoardEditorGui extends AbstractInventoryGui implements
                     }
                     reopen();
                 },
-                this::reopen).open();
+                this::reopen).open());
     }
 
     // Edit an existing tag tool: reopen the picker directly on its exclusion list.
@@ -490,7 +495,7 @@ public final class CuttingBoardEditorGui extends AbstractInventoryGui implements
             return;
         }
         closed = true;
-        new TagPickerGui(plugin, player, pickerConfig, members.get(0), List.of(tagKey.toString()), tagKey,
+        EditorNavigation.next(plugin, player, inventory, () -> new TagPickerGui(plugin, player, pickerConfig, members.get(0), List.of(tagKey.toString()), tagKey,
                 ingredient -> {
                     if (ingredient instanceof RecipeIngredient.Tag tag) {
                         tools[idx] = new CuttingBoardRecipe.ToolRequirement(
@@ -498,7 +503,7 @@ public final class CuttingBoardEditorGui extends AbstractInventoryGui implements
                     }
                     reopen();
                 },
-                this::reopen).open();
+                this::reopen).open());
     }
 
     private List<ItemStack> resolveTagMembers(Key tag) {
@@ -527,13 +532,13 @@ public final class CuttingBoardEditorGui extends AbstractInventoryGui implements
             return;
         }
         closed = true;
-        new ChoiceBuilderGui(plugin, player, choiceConfig, displayIndex,
+        EditorNavigation.next(plugin, player, inventory, () -> new ChoiceBuilderGui(plugin, player, choiceConfig, displayIndex,
                 input,
                 ingredient -> {
                     input = ingredient;
                     reopen();
                 },
-                this::reopen).open();
+                this::reopen).open());
     }
 
     private int displayIndex(int slot) {
@@ -564,15 +569,20 @@ public final class CuttingBoardEditorGui extends AbstractInventoryGui implements
     }
 
     void reopen() {
+        if (!EditorNavigation.allowed(plugin, player)) return;
         closed = false;
         render();
         player.openInventory(inventory);
     }
 
     private void closeEditor() {
+        closeEditor(inventory);
+    }
+
+    private void closeEditor(org.bukkit.inventory.Inventory expected) {
         super.close();
         clearCursor();
-        player.closeInventory();
+        EditorNavigation.next(plugin, player, expected, back);
     }
 
     private void clearCursor() {

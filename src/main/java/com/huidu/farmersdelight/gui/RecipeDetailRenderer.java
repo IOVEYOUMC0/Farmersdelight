@@ -36,6 +36,22 @@ final class RecipeDetailRenderer {
         }
 
         fillIngredientSlots(detailConfig, detailConfig.getIngredientSlots(), recipe.getIngredients(), player);
+        if (recipe.isFuzzy()) {
+            for (int index = 0; index < recipe.ingredients().size() && index < detailConfig.getIngredientSlots().size(); index++) {
+                int slot = detailConfig.getIngredientSlots().get(index);
+                ItemStack displayed = gui.inventory.getItem(slot);
+                if (displayed == null || !(recipe.ingredients().get(index) instanceof RecipeIngredient.Item ingredient)) continue;
+                int weight = recipe.fuzzy().perfect().getOrDefault(ingredient.key().toString(), 1);
+                displayed.setAmount(weight);
+                var meta = displayed.getItemMeta();
+                if (meta != null) {
+                    List<Component> lore = meta.lore() == null ? new ArrayList<>() : new ArrayList<>(meta.lore());
+                    lore.add(com.huidu.farmersdelight.i18n.I18n.getComponent("gui.fuzzy.weight", player, Map.of("weight", String.valueOf(weight))));
+                    meta.lore(lore);
+                    displayed.setItemMeta(meta);
+                }
+            }
+        }
 
         if (recipe.needsContainer() && recipe.getContainer() != null && detailConfig.getContainerSlot() >= 0) {
             ItemStack containerItem = recipe.getContainer().clone();

@@ -329,6 +329,16 @@ cutting-board:
   display-item-spread: 0.1
 
   # Per-item and per-tag display tables live in display-overrides.yml (items / tags).
+compatibility:
+  kaleidoscope:
+    enabled: true
+    recipe-auto-fill: true
+    item-tags: true
+    food-groups: true
+    knives: true
+    knife-tags:
+      - kaleidoscopecookery:kitchen_knife
+
 knife-items:
   tags:
     - farmersdelight:tools/knives

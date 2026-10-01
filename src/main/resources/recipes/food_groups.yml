@@ -1,0 +1,4 @@
+# Groups are also editable from the cooking-pot recipe editor.
+# Local groups take precedence over imported groups with the same id.
+# kind: equivalent (members can substitute for each other) or seasoning (ignored in fuzzy scoring).
+groups: {}

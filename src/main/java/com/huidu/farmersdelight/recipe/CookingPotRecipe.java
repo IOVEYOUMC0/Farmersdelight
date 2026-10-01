@@ -6,7 +6,26 @@ import java.util.List;
 
 public record CookingPotRecipe(String id, List<RecipeIngredient> ingredients, ItemStack container,
                                boolean needsContainer, ItemStack result, float experience, int cookTime,
-                               String category, int priority) {
+                               String category, int priority, FuzzyRecipeSpec fuzzy,
+                               java.util.Map<String, Integer> matchedInputs) {
+    /** Retains the constructor used by existing addons. */
+    public CookingPotRecipe(String id, List<RecipeIngredient> ingredients, ItemStack container,
+                            boolean needsContainer, ItemStack result, float experience, int cookTime,
+                            String category, int priority) {
+        this(id, ingredients, container, needsContainer, result, experience, cookTime, category, priority, null, null);
+    }
+
+    public CookingPotRecipe(String id, List<RecipeIngredient> ingredients, ItemStack container,
+                            boolean needsContainer, ItemStack result, float experience, int cookTime,
+                            String category, int priority, FuzzyRecipeSpec fuzzy) {
+        this(id, ingredients, container, needsContainer, result, experience, cookTime, category, priority, fuzzy, null);
+    }
+
+    public CookingPotRecipe {
+        if (matchedInputs != null) matchedInputs = java.util.Map.copyOf(matchedInputs);
+    }
+
+    public boolean isFuzzy() { return fuzzy != null; }
     public String getId() {
         return id;
     }

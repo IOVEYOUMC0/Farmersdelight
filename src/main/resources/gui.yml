@@ -601,7 +601,7 @@ recipe-editor-gui:
     - "####i####"
     - "#III#C#R#"
     - "#III###N#"
-    - "#########"
+    - "#M#Q#H#F#"
     - "#T#E#P#G#"
     - "X#O#D#K#S"
   legend:
@@ -619,6 +619,10 @@ recipe-editor-gui:
     S: save
     O: undo
     K: redo
+    M: match-mode
+    Q: equivalent-foods
+    H: seasonings
+    F: food-groups
     "#": background
   items:
     background:
@@ -636,6 +640,20 @@ recipe-editor-gui:
         - "<gray><lang:gui.editor.help.number_slot>"
         - "<gray><lang:gui.editor.help.advanced_click>"
         - "<gray><lang:gui.editor.help.no_consume>"
+    match-mode:
+      material: COMPARATOR
+      name: "<yellow><lang:'gui.fuzzy.match_mode':'{mode}'>"
+      lore:
+        - "<gray><lang:gui.fuzzy.mode_hint>"
+    equivalent-foods:
+      material: WHEAT
+      name: "<yellow><lang:'gui.fuzzy.equivalent_foods':'{state}'>"
+    seasonings:
+      material: SUGAR
+      name: "<yellow><lang:'gui.fuzzy.seasonings':'{state}'>"
+    food-groups:
+      material: CHEST
+      name: "<aqua><lang:gui.fuzzy.groups.title>"
     ingredient:
       material: GRAY_STAINED_GLASS_PANE
       name: "<gray><lang:gui.editor.ingredient_empty>"
