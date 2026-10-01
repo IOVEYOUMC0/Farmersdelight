@@ -23,7 +23,7 @@ Farmersdelight-Plugin-Pro 是基于 CraftEngine 的 Farmer's Delight Paper/Folia
 
 先安装 CraftEngine，再将 Farmersdelight-Plugin-Pro 放入 `plugins/`。修改插件配置后使用 `/fd reload`，修改 CraftEngine 资源后使用 `/ce reload`。
 
-成就功能需要单独安装 UltimateAdvancementAPI。`libs/` 中附有 `2.8.1-pro.1` 优化版及对应源码，支持 Paper 26.3 和 Folia 26.2；此构建只包含 26.2/26.3 适配，较旧服务端应使用对应版本的 API。没有安装 API 时，插件其余功能可继续使用。详见 [依赖说明](libs/README.md)。资源包重载后会强制重发成就定义，平时只同步变化的节点。
+成就功能需要单独安装 UltimateAdvancementAPI。`libs/` 中附有 `2.8.1-pro.2` 优化版及对应源码，支持 Paper 26.3 和 Folia 26.2；此构建只包含 26.2/26.3 适配，较旧服务端应使用对应版本的 API。没有安装 API 时，插件其余功能可继续使用。详见 [依赖说明](libs/README.md)。资源包重载后会强制重发成就定义，平时只同步变化的节点。
 
 ## 文档
 
