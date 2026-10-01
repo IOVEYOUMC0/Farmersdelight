@@ -247,7 +247,7 @@ public final class AddonAdvancementTab {
             return;
         }
         try {
-            tab.updateAdvancementsToTeam(player);
+            tab.forceUpdateAdvancements(player);
         } catch (Exception ignored) {
             // team data not loaded yet; UAA re-shows the tab once the player's data finishes loading
         }

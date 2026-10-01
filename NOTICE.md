@@ -26,11 +26,13 @@ MIT 与 AGPL-3.0 兼容，第三方内容的 MIT 声明随 jar 分发，完整�
 
 ## 运行时依赖
 
-以下依赖不打进 jar，只在运行时调用，因此不随本仓库分发其授权文本：
+以下依赖不打进 Farmersdelight-Plugin-Pro 的 jar，只在运行时调用：
 
 - CraftEngine（GPL-3.0），内容平台与配方数据来源
-- UltimateAdvancementAPI，成就系统；本仓库带了一份 fork，见 `libs/` 与
-  [UltimateAdvancementAPI](https://github.com/IOVEYOUMC0/UltimateAdvancementAPI)
+- UltimateAdvancementAPI（LGPL-3.0-or-later），成就系统；`libs/` 中的 `2.8.1-pro.1` 基于
+  [Nodemc-developing/UltimateAdvancementAPI](https://github.com/Nodemc-developing/UltimateAdvancementAPI)，
+  由 fren_gor、EscanorTargaryen 等原作者开发。对应修改源码、构建脚本和许可证随本仓库提供，见
+  [libs/README.md](libs/README.md)。
 
 ## 关于盗版分发
 

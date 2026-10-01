@@ -368,7 +368,7 @@ public class AdvancementManager {
         for (Player player : Bukkit.getOnlinePlayers()) {
             Runnable resend = () -> {
                 try {
-                    tab.updateAdvancementsToTeam(player);
+                    tab.forceUpdateAdvancements(player);
                 } catch (Exception ignored) {
                     // data not loaded; UAA re-shows the tab once the player's data finishes loading
                 }

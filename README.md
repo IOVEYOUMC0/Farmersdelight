@@ -23,6 +23,8 @@ Authors: HuiDu_OwO, ydxc2009.
 
 Install CraftEngine first, then place the Farmersdelight-Plugin-Pro jar in `plugins/`. Use `/fd reload` for plugin configuration and `/ce reload` after changing CraftEngine resources.
 
+Advancements require UltimateAdvancementAPI as a separate server plugin. `libs/` includes the optimized `2.8.1-pro.1` build and corresponding sources, verified on Paper 26.3 and Folia 26.2. This artifact includes only the 26.2/26.3 adapters; older servers need an API distribution matching their version. Other features remain available without the API. See [dependency details](libs/README.md). Resource-pack reloads force a definition resend; ordinary updates synchronize only changed nodes.
+
 ## Documentation
 
 The complete player, server, addon and API documentation is maintained in the [FarmersdelightPluginWiKi](https://github.com/IOVEYOUMC0/FarmersdelightPluginWiKi) repository. It can be connected to GitBook through its GitHub integration.

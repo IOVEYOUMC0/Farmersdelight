@@ -76,7 +76,7 @@ dependencies {
     implementation("net.momirealms:sparrow-yaml:1.0.22")
     implementation("net.momirealms:sparrow-ui:beta.38") { isTransitive = false }
     // UltimateAdvancementAPI: separate server plugin; vendored only for offline compile against its API.
-    compileOnly(files("libs/UltimateAdvancementAPI-Plugin-2.8.0-folia.jar"))
+    compileOnly(files("libs/UltimateAdvancementAPI-Plugin-2.8.1-pro.1.jar"))
     testImplementation("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
     if (ceJar.isPresent) {
         testImplementation(files(ceJar.get()))
