@@ -24,6 +24,10 @@ AGPL 第 13 条还要求：**如果你修改后的版本通过网络对外提供
 MIT 与 AGPL-3.0 兼容，第三方内容的 MIT 声明随 jar 分发，完整文本见
 `src/main/resources/NOTICE.txt`（也就是打进发布 jar 的那一份）。
 
+搬运素材（贴图、模型、音效、语言文件）的**逐条来源**——本仓库路径、上游仓库与钉住的提交、许可证、当前
+文件的 SHA-256——见 [ASSET-ORIGINS.json](ASSET-ORIGINS.json)，人读说明见 [ASSET-NOTICE.txt](ASSET-NOTICE.txt)。
+上游提交与哈希可用 `python tools/gen_asset_origins.py --check` 复验（只读，漂移时退出码 1）。
+
 ## 运行时依赖
 
 以下依赖不打进 jar，只在运行时调用，因此不随本仓库分发其授权文本：

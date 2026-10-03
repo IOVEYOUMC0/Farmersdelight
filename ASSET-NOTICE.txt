@@ -1,0 +1,63 @@
+ASSET-NOTICE — 搬运素材的来源、许可与校验
+==========================================
+
+一、合规口径
+------------
+1. 本插件里搬运自原模组或其它第三方的素材，**权利仍归原作者**；本仓库只按上游许可证再分发。
+2. Farmer's Delight（Minecraft 模组）的上游许可证是 **MIT**，版权声明为
+   `Copyright (c) 2020 vectorwing`（证据：`../Reference/FarmersDelight-1.21/LICENSE` 第 1-3 行）。
+   MIT 与本站的 AGPL-3.0 兼容；MIT 全文随 jar 分发，见 `src/main/resources/NOTICE.txt`。
+3. **没有复制 Pro fork（付费分支）的任何文件。**
+4. 本文件只覆盖"搬运来的素材"。插件自身的代码、数据与本仓库自制的模型/贴图/音效/语言文件不属于第三方素材。
+
+二、上游与钉住的提交
+--------------------
+上游仓库：https://github.com/vectorwing/FarmersDelight
+（本工作区的检出使用 `https://ghfast.top/https://github.com/vectorwing/FarmersDelight.git` 作为 remote，
+镜像前缀不影响上游身份。）
+
+| 本地上游检出 | 提交 | 提交日期 | 素材根目录 |
+|---|---|---|---|
+| `../Reference/FarmersDelight-1.21` | `dd8b9b0bfec916a2da88a6d64e3a37f4a02c3259` | 2026-08-29 | `src/main/resources/assets/farmersdelight` |
+| `../Reference/FarmersDelight-1.4` | `75b85f39e219bd2b9b7c4d2cd08fc03a61091b73` | 2026-09-16 | `src/main/resources/assets/farmersdelight` |
+
+两个检出都是完整的 git clone，提交号由 `git -C <检出> rev-parse HEAD` 取得，可直接复现，**没有一个是
+"unpinned"**。若某个检出缺失或不是 git clone，`ASSET-ORIGINS.json` 会把该上游记成 `"unpinned"` 并写明原因
+（当前没有这种情况）。
+
+三、登记范围与条数
+------------------
+素材根目录：`src/main/resources/craftengine/farmersdelight/resourcepack/assets/farmersdelight`
+
+扫描 752 个文件，其中 **423 个登记为搬运素材**：
+
+* `status: "ported"` —— 343 个：与上游同相对路径的文件**逐字节相同**（贴图 329、音效 14）。
+* `status: "modified"` —— 80 个：上游同相对路径存在该文件，但本仓库改写过
+  （`models/block` 59、`lang` 17、`models/item` 3、`textures/gui` 1）；每条同时记录本仓库 `sha256`
+  与上游 `upstream_sha256`。
+
+其余 **329 个为自制/转换素材**（`models` 276、`textures` 51、`items/skillet_cooking.json`、`sounds.json`）：
+上游不存在同相对路径的文件，因此不登记，只在 `ASSET-ORIGINS.json` 的 `self_authored` 里给出计数与分布。
+
+不在本清单范围内（因此也不逐个登记）：
+* CraftEngine 配置 YAML（`src/main/resources/craftengine/**/configuration/**`）——为本插件编写的数据，
+  与上游 Java/JSON 没有逐字节对应关系；
+* 插件自身 Java 源码、datapack 定义、服务端 `lang/*.yml`；
+* shade 进 jar 的 AntiGriefLib 与 bStats（已在 `NOTICE.md` 登记）。
+
+四、逐条清单
+------------
+`ASSET-ORIGINS.json`（同目录）逐条登记：`path`（相对本插件仓库根）、`asset`（素材根内相对路径）、
+`upstream`、`repo`、`commit`、`license`、`status`、`sha256`（当前文件内容），`modified` 条目另有
+`upstream_sha256`。清单由脚本按文件内容生成，不含时间戳，因此可重复生成且结果一致。
+
+五、校验方法
+------------
+```
+python tools/gen_asset_origins.py            # 只读；重算 SHA-256 比对清单，漂移时退出码 1
+python tools/gen_asset_origins.py --write    # 重新生成 ASSET-ORIGINS.json
+```
+
+`--check` 会报告四类漂移：`CHANGED`（已登记文件内容变了）、`MISSING`（已登记文件不见了）、
+`UNREGISTERED`（磁盘上出现与上游匹配但未登记的文件）、`PIN-MOVED`（上游检出 HEAD 与钉住的提交不一致）。
+素材改动后必须重跑 `--write` 并复核上游归属。

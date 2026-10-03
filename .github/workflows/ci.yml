@@ -95,3 +95,9 @@ jobs:
       # itself in the source with "config-path-check: no shipped key, on purpose".
       - name: Every config path read exists in a shipped file
         run: python tools/check_config_paths.py --quiet
+
+      # Ported third-party assets are registered in ASSET-ORIGINS.json with their upstream, license and
+      # SHA-256. The check fails when a registered file changes, moves or disappears, so the provenance
+      # record cannot silently drift away from the assets we actually ship.
+      - name: Ported asset provenance matches the manifest
+        run: python tools/gen_asset_origins.py --check
